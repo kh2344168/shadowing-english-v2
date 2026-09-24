@@ -1,0 +1,44 @@
+# Frontend
+node_modules/
+dist/
+.angular/
+coverage/
+
+# Backend
+bin/
+obj/
+TestResults/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+**/appsettings.Development.json
+**/appsettings.Production.json
+secrets.json
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local storage / generated uploads
+.local/
+uploads/
+
+# Frontend tooling
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+
+# Playwright browser caches should never be committed/deployed
+.playwright/
+
+# Test artifacts and local package lock state remain controlled by Git
+playwright-report/
+test-results/

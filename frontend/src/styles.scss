@@ -1,0 +1,5 @@
+/* Angular global stylesheet entry.
+   Tailwind setup is added when the Angular project is initialized with the selected Tailwind version.
+   Keep global styles limited to reset, tokens, theme foundations and unavoidable global rules. */
+@use './styles/tokens';
+@use './styles/theme';

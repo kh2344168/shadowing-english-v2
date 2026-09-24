@@ -1,0 +1,20 @@
+{
+  "name": "shadowing-english-v2",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["frontend"],
+  "scripts": {
+    "dev": "npm run start --workspace frontend",
+    "dev:frontend": "npm run start --workspace frontend",
+    "dev:api": "dotnet run --project backend/ShadowingEnglish.Api/ShadowingEnglish.Api.csproj",
+    "build": "npm run build --workspace frontend",
+    "build:frontend": "npm run build --workspace frontend",
+    "build:backend": "dotnet build backend/ShadowingEnglish.sln",
+    "restore:backend": "dotnet restore backend/ShadowingEnglish.sln",
+    "lint": "npm run lint --workspace frontend",
+    "format:check": "npm run format:check --workspace frontend",
+    "test:frontend": "npm run test --workspace frontend",
+    "test:e2e": "npm run e2e --workspace frontend"
+  },
+  "engines": { "node": ">=20.19.0 <25" }
+}

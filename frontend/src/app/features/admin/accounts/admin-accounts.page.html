@@ -1,0 +1,63 @@
+<main class="min-h-screen bg-slate-50 px-4 py-8 text-slate-900" dir="rtl">
+  <section class="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
+    <a routerLink="/admin/dashboard" class="text-sm font-medium text-indigo-700">← لوحة الإدارة</a>
+    <h1 class="mt-3 text-2xl font-bold">إدارة الأدمنز</h1>
+    <p class="mt-2 text-sm text-slate-600">كل الأدمنز يقدروا يضيفوا أدمن جديد. حذف صلاحية الأدمن متاح لخالد فقط.</p>
+
+    @if (error()) { <p role="alert" class="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{{ error() }}</p> }
+    @if (success()) { <p role="status" class="mt-4 rounded-lg bg-green-50 p-3 text-sm text-green-800">{{ success() }}</p> }
+
+    @if (loading()) {
+      <p role="status" class="mt-6 text-slate-600">جارٍ تحميل الصلاحيات...</p>
+    } @else {
+      <form class="mt-6 grid gap-4" (ngSubmit)="create()">
+        <h2 class="text-lg font-semibold">إضافة أدمن جديد</h2>
+        <label for="admin-email" class="text-sm font-medium">البريد الإلكتروني</label>
+        <input id="admin-email" name="email" type="email" required maxlength="256" autocomplete="off"
+          [(ngModel)]="email" [disabled]="saving()"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-left" dir="ltr" />
+        <label for="admin-password" class="text-sm font-medium">كلمة مرور مبدئية</label>
+        <input id="admin-password" name="password" type="password" required minlength="10" maxlength="256"
+          autocomplete="new-password" [(ngModel)]="password" [disabled]="saving()"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-left" dir="ltr" />
+        <p class="text-xs text-slate-600">استخدم كلمة مرور قوية وفريدة، وشاركها بطريقة آمنة. لا يوجد إرسال بريد تلقائي في المرحلة الحالية.</p>
+        <button type="submit" [disabled]="saving()" class="rounded-lg bg-indigo-700 px-4 py-2 font-semibold text-white disabled:opacity-50">
+          {{ saving() ? 'جارٍ الإضافة...' : 'إضافة أدمن' }}
+        </button>
+      </form>
+
+      <section aria-labelledby="admin-list-title" class="mt-9 border-t border-slate-200 pt-6">
+          <h2 id="admin-list-title" class="text-lg font-semibold">حسابات الأدمن</h2>
+          <ul class="mt-4 grid gap-3">
+            @for (admin of admins(); track admin.id) {
+              <li class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+                <div class="min-w-0">
+                  <p class="break-all text-sm font-medium" dir="ltr">{{ admin.email }}</p>
+                  <p class="text-xs text-slate-500">{{ admin.isPrimaryAdmin ? 'خالد — الأدمن الرئيسي المحمي' : 'أدمن عادي' }}</p>
+                </div>
+                @if (admin.isPrimaryAdmin) {
+                  <span class="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">محمي</span>
+                } @else if (isPrimaryAdmin()) {
+                  @if (confirmRemoveId() === admin.id) {
+                    <div class="flex flex-wrap gap-2">
+                      <button type="button" [disabled]="!!removing()" (click)="remove(admin.id)"
+                        class="rounded-lg bg-red-700 px-3 py-2 text-sm text-white disabled:opacity-50">تأكيد سحب الصلاحية</button>
+                      <button type="button" [disabled]="!!removing()" (click)="confirmRemoveId.set(null)"
+                        class="rounded-lg border border-slate-300 px-3 py-2 text-sm">إلغاء</button>
+                    </div>
+                  } @else {
+                    <button type="button" [disabled]="!!removing()" (click)="confirmRemoveId.set(admin.id)"
+                      class="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-800">إزالة الأدمن</button>
+                  }
+                } @else {
+                  <span class="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600">عرض فقط</span>
+                }
+              </li>
+            } @empty {
+              <li class="text-sm text-slate-600">لا توجد حسابات أدمن متاحة.</li>
+            }
+          </ul>
+      </section>
+    }
+  </section>
+</main>
