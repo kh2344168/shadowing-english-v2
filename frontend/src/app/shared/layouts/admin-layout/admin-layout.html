@@ -1,0 +1,95 @@
+<main dir="rtl" class="min-h-screen bg-[#F8F9FF] font-body-md text-[#0B1C30]">
+  <div *ngIf="mobileNavOpen" class="admin-mobile-backdrop fixed inset-0 z-40 bg-[#213145]/35" (click)="toggleMobileNav()"></div>
+
+  <aside
+    class="admin-sidebar fixed right-0 top-0 z-50 flex h-full w-[260px] flex-col bg-white shadow-[0_1px_8px_rgba(0,0,0,0.04)] transition-transform duration-200"
+    [class.admin-sidebar--open]="mobileNavOpen"
+  >
+    <div class="flex h-16 items-center justify-between px-6">
+      <div class="flex items-center gap-2">
+        <div class="grid h-9 w-9 place-items-center rounded-xl bg-[#00685F] text-white shadow-sm">
+          <span class="material-symbols-outlined text-[21px]">graphic_eq</span>
+        </div>
+        <div class="flex flex-col leading-tight">
+          <strong class="text-[18px] font-bold">شادوينج</strong>
+          <span class="text-xs font-medium text-[#3E4947]">لوحة الإدارة</span>
+        </div>
+      </div>
+      <span class="rounded-full bg-[#EFF4FF] px-2 py-0.5 text-xs font-semibold text-[#004E47]">V2</span>
+    </div>
+
+    <div class="px-4 py-2">
+      <div class="flex items-center justify-between rounded-lg bg-[#EFF4FF] px-3 py-2">
+        <div class="flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-[18px] text-[#00685F]">language</span>
+          <span class="text-xs font-semibold">اللغة الإنجليزية</span>
+        </div>
+        <span class="text-[11px] font-semibold text-[#6E7977]">CEFR</span>
+      </div>
+    </div>
+
+    <nav class="flex-1 overflow-y-auto px-2 pb-4 pt-1">
+      <ng-container *ngFor="let section of navSections">
+        <div class="px-3 pb-1 pt-4 text-xs font-semibold text-[#6E7977]">{{ section.label }}</div>
+        <a
+          *ngFor="let item of section.items"
+          [routerLink]="item.path"
+          routerLinkActive="!bg-[#EFF4FF] !text-[#004E47] !font-bold !border-r-4 !border-[#004E47]"
+          [routerLinkActiveOptions]="{ exact: item.exact ?? false }"
+          class="mb-1 flex items-center gap-2 rounded-lg border-r-4 border-transparent px-4 py-2.5 text-sm font-medium text-[#3E4947] no-underline transition-colors hover:bg-[#EFF4FF] hover:text-[#0B1C30]"
+        >
+          <span class="material-symbols-outlined text-[20px]">{{ item.icon }}</span>
+          <span>{{ item.label }}</span>
+        </a>
+      </ng-container>
+    </nav>
+
+    <div class="border-t border-[#E5EEFF] p-4">
+      <div class="flex items-center gap-3">
+        <div class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#DAE2FD] font-bold text-[#004E47]">
+          <span class="material-symbols-outlined text-[19px]">person</span>
+        </div>
+        <div class="min-w-0 flex-1">
+          <strong class="block truncate text-sm">حساب الإدارة</strong>
+          <span class="block truncate text-xs text-[#6E7977]">مدير النظام</span>
+        </div>
+        <a routerLink="/logout" class="grid h-9 w-9 place-items-center rounded-lg text-[#6E7977] hover:bg-[#EFF4FF] hover:text-[#0B1C30]" aria-label="تسجيل الخروج" title="تسجيل الخروج">
+          <span class="material-symbols-outlined text-[20px]">logout</span>
+        </a>
+      </div>
+    </div>
+  </aside>
+
+  <div class="admin-shell-content">
+    <header class="admin-topbar fixed left-0 right-0 top-0 z-30 flex h-16 items-center justify-between bg-white/90 px-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur-xl lg:px-8">
+      <div class="flex min-w-0 items-center gap-3">
+        <button type="button" (click)="toggleMobileNav()" class="admin-mobile-menu-button grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#3E4947] hover:bg-[#EFF4FF]">
+          <span class="material-symbols-outlined">menu</span>
+        </button>
+        <div class="hidden items-center gap-1 text-sm md:flex">
+          <span class="font-medium text-[#6E7977]">المنصة</span>
+          <span class="material-symbols-outlined text-[16px] text-[#6E7977]">chevron_left</span>
+          <span class="font-semibold text-[#0B1C30]">{{ currentSection }}</span>
+        </div>
+        <div class="hidden h-4 w-px bg-[#DCE9FF] md:block"></div>
+        <div class="hidden items-center gap-1 rounded-full bg-[#DAE2FD] px-3 py-1 text-xs font-semibold text-[#5C647A] lg:flex">
+          <span class="material-symbols-outlined text-[16px]">record_voice_over</span>
+          <span>مساحة العمل: اللغة الإنجليزية</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <span class="material-symbols-outlined text-[20px] text-[#3E4947]" aria-hidden="true">notifications</span>
+        <div class="hidden h-6 w-px bg-[#DCE9FF] sm:block"></div>
+        <strong class="hidden text-sm sm:block">حساب الإدارة</strong>
+        <div class="grid h-8 w-8 place-items-center rounded-full bg-[#DAE2FD] text-xs font-bold text-[#004E47]" aria-hidden="true">
+          <span class="material-symbols-outlined text-[18px]">person</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="min-h-screen px-4 pb-8 pt-20 sm:px-6 xl:px-8">
+      <router-outlet></router-outlet>
+    </section>
+  </div>
+</main>

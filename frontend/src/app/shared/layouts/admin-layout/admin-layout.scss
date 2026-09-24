@@ -1,0 +1,51 @@
+:host {
+  display: block;
+}
+
+/*
+ * Keep the admin navigation independent from Tailwind breakpoints.
+ * On desktop/tablet landscape (>= 1024px) the sidebar is always visible.
+ * On smaller screens it becomes an off-canvas drawer opened by the menu button.
+ */
+.admin-sidebar {
+  transform: translateX(100%);
+}
+
+.admin-sidebar--open {
+  transform: translateX(0);
+}
+
+.admin-shell-content {
+  padding-right: 0;
+}
+
+.admin-topbar {
+  right: 0;
+}
+
+.admin-mobile-backdrop {
+  display: block;
+}
+
+.admin-mobile-menu-button {
+  display: grid;
+}
+
+@media (min-width: 1024px) {
+  .admin-sidebar {
+    transform: translateX(0) !important;
+  }
+
+  .admin-shell-content {
+    padding-right: 260px;
+  }
+
+  .admin-topbar {
+    right: 260px;
+  }
+
+  .admin-mobile-backdrop,
+  .admin-mobile-menu-button {
+    display: none !important;
+  }
+}

@@ -1,0 +1,10 @@
+import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+@Component({
+ selector: 'app-supervisor-layout', standalone: true,
+ imports: [CommonModule, RouterLink, RouterLinkActive, RouterOutlet],
+ templateUrl: './supervisor-layout.html', styleUrl: './supervisor-layout.scss',
+ changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class SupervisorLayout {}

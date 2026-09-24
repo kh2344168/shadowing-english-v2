@@ -1,0 +1,5 @@
+52bd18bcaf9451a9955d814bcb2ee08670f40ff7feb52f2808a08f65aef8aee3	frontend/src/app/app.routes.ts
+aadfa02d16ca96619678123a9fbd82c8fcc619a49bc9932db9d49439aa035ede	frontend/src/app/core/auth/auth.service.ts
+c43568a18efc394eb4bbbbb1a969c393fb034c083bed1cae6603c78193afa5bb	frontend/src/app/features/admin/accounts/admin-accounts.page.ts
+36aaf48089f9f1ac4e03d8f64f7eaea8f5041c8a5d90561e83548ab87dbc6a37	frontend/src/styles.scss
+06cb60a62bcd9b5f1e0f7e09096fa49caf8e1b628dadf7a2306179452245e37a	frontend/src/tailwind.css
