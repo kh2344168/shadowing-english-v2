@@ -604,7 +604,7 @@
           <div class="audio-preview">
             <div>
               <strong>
-                اسمع المقطع الحالي
+                اسمع التوقيت المعدّل
               </strong>
 
               <small>
@@ -615,10 +615,27 @@
             </div>
 
             <audio
-              controls
+              #editAudio
+              hidden
               preload="metadata"
               [src]="editingPreviewUrl()"
+              (loadedmetadata)="onEditPreviewMetadata($event)"
+              (timeupdate)="onEditPreviewTimeUpdate($event)"
+              (ended)="stopEditPreview('source_ended')"
+              (error)="onEditPreviewError()"
             ></audio>
+            <button
+              type="button"
+              class="edit-preview-button"
+              (click)="toggleEditPreview(editAudio)"
+              [disabled]="segmentSaving() || !editingPreviewUrl() || !editMediaDuration() || !isEditRangeValid()"
+              [attr.aria-label]="editPreviewPlaying() || editPreviewBusy() ? 'إيقاف المعاينة' : 'تشغيل التوقيت المعدّل'"
+            >
+              {{ editPreviewPlaying() || editPreviewBusy() ? 'إيقاف المعاينة' : 'تشغيل التوقيت المعدّل' }}
+            </button>
+            @if (editPreviewError()) {
+              <small class="preview-error" role="alert">{{ editPreviewError() }}</small>
+            }
           </div>
 
           <label class="modal-field">
@@ -647,6 +664,7 @@
                 [max]="lesson.manifest.duration"
                 step="0.01"
                 [(ngModel)]="editStart"
+                (ngModelChange)="onEditRangeChanged()"
                 [disabled]="segmentSaving()"
               />
 
@@ -666,6 +684,7 @@
                 [max]="lesson.manifest.duration"
                 step="0.01"
                 [(ngModel)]="editEnd"
+                (ngModelChange)="onEditRangeChanged()"
                 [disabled]="segmentSaving()"
               />
 
@@ -694,7 +713,7 @@
             type="button"
             class="primary-button"
             (click)="saveSegmentEdit()"
-            [disabled]="segmentSaving()"
+            [disabled]="segmentSaving() || !isEditRangeValid()"
           >
             {{
               segmentSaving()

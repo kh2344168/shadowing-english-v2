@@ -857,9 +857,25 @@ progress {
     font-size: 10px;
   }
 
-  audio {
+  .edit-preview-button {
     width: min(260px, 52%);
-    height: 36px;
+    min-height: 36px;
+    border: 1px solid #d9ebe7;
+    border-radius: 8px;
+    background: #fff;
+    color: #00685f;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+
+    &:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+  }
+
+  .preview-error {
+    color: #a42f30;
   }
 }
 
@@ -994,7 +1010,7 @@ button:disabled {
     align-items: stretch;
     flex-direction: column;
 
-    audio {
+    .edit-preview-button {
       width: 100%;
     }
   }

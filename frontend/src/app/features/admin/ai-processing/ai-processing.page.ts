@@ -35,6 +35,13 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
   private controller: AbortController | null = null;
   private activeAudio: HTMLAudioElement | null = null;
+  private sourceMedia: File | null = null;
+  private sourceMediaJobId: string | null = null;
+  private editPreviewAudio: HTMLAudioElement | null = null;
+  private editPreviewTimer: number | null = null;
+  private editPreviewAttempt = 0;
+  private editPreviewStartedAt = 0;
+  private editPreviewRange: { start: number; end: number } | null = null;
   private attempt: string | null = null;
   private urls: string[] = [];
   private destroyed = false;
@@ -67,6 +74,11 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   readonly editingIndex = signal<number | null>(null);
   readonly segmentSaving = signal(false);
   readonly playingIndex = signal<number | null>(null);
+  readonly editPreviewSourceUrl = signal('');
+  readonly editMediaDuration = signal<number | null>(null);
+  readonly editPreviewPlaying = signal(false);
+  readonly editPreviewBusy = signal(false);
+  readonly editPreviewError = signal('');
 
   readonly error = signal('');
   readonly notice = signal('');
@@ -320,6 +332,9 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     this.job.set(null);
     this.client.forgetJob();
 
+    this.sourceMedia = this.media;
+    this.sourceMediaJobId = null;
+
     console.info('[Admin.AILesson.Process.Start]', {
       requestId: this.attempt,
       mediaBytes: this.media.size,
@@ -337,10 +352,14 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
         },
         this.media,
         this.controller.signal,
-        (created) => this.job.set(created),
+        (created) => {
+          this.job.set(created);
+          this.sourceMediaJobId = created.jobId;
+        },
       );
 
       this.job.set(createdJob);
+      this.sourceMediaJobId = createdJob.jobId;
 
       await this.waitForResult(
         createdJob.jobId,
@@ -466,161 +485,288 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
   openEditModal(index: number): void {
     const lesson = this.result();
+    const clip = lesson?.manifest.segments[index];
+    if (!lesson || !clip) return;
 
-    if (!lesson) {
-      return;
-    }
-
-    const clip = lesson.manifest.segments[index];
-
-    if (!clip) {
-      return;
-    }
-
+    this.releaseEditPreview();
     this.stopAudio();
-
     this.editingIndex.set(index);
-
     this.editText = clip.text;
     this.editStart = clip.start;
     this.editEnd = clip.end;
-
     this.error.set('');
+
+    const originalMedia =
+      this.sourceMediaJobId === lesson.manifest.jobId ? this.sourceMedia : null;
+    if (originalMedia) {
+      this.editPreviewSourceUrl.set(URL.createObjectURL(originalMedia));
+    } else {
+      this.editPreviewError.set(
+        'الملف الأصلي غير متاح لهذه النتيجة؛ المعاينة قبل الحفظ تحتاج الملف الأصلي.',
+      );
+    }
 
     console.info('[Admin.AILesson.SegmentEdit.Open]', {
       jobId: lesson.manifest.jobId,
-      segment: index + 1,
+      segmentIndex: index,
+      start: clip.start,
+      end: clip.end,
     });
   }
 
   closeEditModal(): void {
-    if (this.segmentSaving()) {
+    if (this.segmentSaving()) return;
+    this.releaseEditPreview();
+    this.stopAudio();
+    this.editingIndex.set(null);
+  }
+
+  onEditPreviewMetadata(event: Event): void {
+    const duration = (event.target as HTMLAudioElement).duration;
+    if (!Number.isFinite(duration) || duration <= 0) {
+      this.failEditPreview('invalid_media_duration');
+      return;
+    }
+    this.editMediaDuration.set(duration);
+    this.editPreviewError.set('');
+  }
+
+  onEditPreviewError(): void {
+    if (this.editingIndex() === null || !this.editPreviewSourceUrl()) return;
+    this.failEditPreview('media_decode_failed');
+  }
+
+  onEditRangeChanged(): void {
+    this.stopEditPreview('range_changed');
+    if (this.editPreviewSourceUrl()) this.editPreviewError.set('');
+  }
+
+  isEditRangeValid(): boolean {
+    return this.currentEditRange() !== null;
+  }
+
+  private currentEditRange(): { start: number; end: number } | null {
+    const lesson = this.result();
+    const index = this.editingIndex();
+    const start = this.editStart;
+    const end = this.editEnd;
+    if (
+      !lesson ||
+      index === null ||
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      start < 0 ||
+      end <= start ||
+      end > lesson.manifest.duration ||
+      (index > 0 && start < lesson.manifest.segments[index - 1].start) ||
+      (index < lesson.manifest.segments.length - 1 &&
+        start > lesson.manifest.segments[index + 1].start)
+    ) return null;
+
+    if (this.editPreviewSourceUrl()) {
+      const mediaDuration = this.editMediaDuration();
+      if (mediaDuration === null || end > mediaDuration) return null;
+    }
+    return { start, end };
+  }
+
+  async toggleEditPreview(audio: HTMLAudioElement): Promise<void> {
+    if (this.editPreviewPlaying() || this.editPreviewBusy()) {
+      this.stopEditPreview('manual');
+      return;
+    }
+    const index = this.editingIndex();
+    const range = this.currentEditRange();
+    if (index === null || !this.editPreviewSourceUrl() || !range) {
+      this.failEditPreview('invalid_range_or_source');
       return;
     }
 
-    this.stopAudio();
-    this.editingIndex.set(null);
+    const attempt = ++this.editPreviewAttempt;
+    this.editPreviewAudio = audio;
+    this.editPreviewRange = range;
+    this.editPreviewStartedAt = performance.now();
+    this.editPreviewBusy.set(true);
+    this.editPreviewError.set('');
+    console.info('[Admin.AILesson.SegmentPreview.Start]', {
+      segmentIndex: index,
+      start: range.start,
+      end: range.end,
+    });
+
+    try {
+      audio.pause();
+      audio.currentTime = range.start;
+      if (audio.seeking) await this.waitForEditSeek(audio);
+      if (attempt !== this.editPreviewAttempt || this.editingIndex() !== index) return;
+      await audio.play();
+      if (attempt !== this.editPreviewAttempt || this.editingIndex() !== index) {
+        audio.pause();
+        return;
+      }
+      this.editPreviewBusy.set(false);
+      this.editPreviewPlaying.set(true);
+      this.editPreviewTimer = window.setInterval(() => this.checkEditPreviewEnd(), 25);
+      this.checkEditPreviewEnd();
+    } catch (error) {
+      if (attempt !== this.editPreviewAttempt) return;
+      this.failEditPreview(error instanceof Error && error.message === 'seek_timeout'
+        ? 'seek_timeout' : 'playback_failed');
+    }
+  }
+
+  private waitForEditSeek(audio: HTMLAudioElement): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        cleanup();
+        reject(new Error('seek_timeout'));
+      }, 5000);
+      function cleanup(): void {
+        window.clearTimeout(timeout);
+        audio.removeEventListener('seeked', onSeeked);
+        audio.removeEventListener('error', onError);
+      }
+      function onSeeked(): void {
+        cleanup();
+        resolve();
+      }
+      function onError(): void {
+        cleanup();
+        reject(new Error('seek_failed'));
+      }
+      audio.addEventListener('seeked', onSeeked, { once: true });
+      audio.addEventListener('error', onError, { once: true });
+    });
+  }
+
+  onEditPreviewTimeUpdate(event: Event): void {
+    if (event.target === this.editPreviewAudio) this.checkEditPreviewEnd();
+  }
+
+  private checkEditPreviewEnd(): void {
+    const audio = this.editPreviewAudio;
+    const range = this.editPreviewRange;
+    if (
+      this.editPreviewPlaying() &&
+      audio &&
+      range &&
+      (audio.currentTime >= range.end || audio.ended)
+    ) this.stopEditPreview('range_end');
+  }
+
+  stopEditPreview(reason: string = 'manual'): void {
+    const active = this.editPreviewBusy() || this.editPreviewPlaying();
+    const range = this.editPreviewRange;
+    const index = this.editingIndex();
+    this.editPreviewAttempt += 1;
+    if (this.editPreviewTimer !== null) {
+      window.clearInterval(this.editPreviewTimer);
+      this.editPreviewTimer = null;
+    }
+    this.editPreviewAudio?.pause();
+    this.editPreviewAudio = null;
+    this.editPreviewBusy.set(false);
+    this.editPreviewPlaying.set(false);
+    this.editPreviewRange = null;
+    if (active && range && index !== null) {
+      console.info('[Admin.AILesson.SegmentPreview.Stop]', {
+        segmentIndex: index,
+        start: range.start,
+        end: range.end,
+        reason,
+        durationMs: Math.round(performance.now() - this.editPreviewStartedAt),
+      });
+    }
+    this.editPreviewStartedAt = 0;
+  }
+
+  private failEditPreview(code: string): void {
+    const index = this.editingIndex();
+    const durationMs = this.editPreviewStartedAt
+      ? Math.round(performance.now() - this.editPreviewStartedAt) : 0;
+    this.stopEditPreview('failed');
+    this.editPreviewError.set('تعذر تشغيل التوقيت المحدد. راجع الملف والبداية والنهاية.');
+    console.warn('[Admin.AILesson.SegmentPreview.Failed]', {
+      segmentIndex: index,
+      start: Number.isFinite(this.editStart) ? this.editStart : null,
+      end: Number.isFinite(this.editEnd) ? this.editEnd : null,
+      code,
+      durationMs,
+    });
+  }
+
+  private releaseEditPreview(): void {
+    this.stopEditPreview('close');
+    const url = this.editPreviewSourceUrl();
+    this.editPreviewSourceUrl.set('');
+    this.editMediaDuration.set(null);
+    this.editPreviewError.set('');
+    if (url) URL.revokeObjectURL(url);
   }
 
   async saveSegmentEdit(): Promise<void> {
     const lesson = this.result();
     const index = this.editingIndex();
-
-    if (
-      !lesson ||
-      index === null ||
-      this.segmentSaving()
-    ) {
-      return;
-    }
-
-    const text = this.editText.trim();
-    const start = Number(this.editStart);
-    const end = Number(this.editEnd);
-
-    if (
-      text.length < 1 ||
-      text.length > 1000 ||
-      !Number.isFinite(start) ||
-      !Number.isFinite(end) ||
-      start < 0 ||
-      end <= start ||
-      end > lesson.manifest.duration
-    ) {
-      this.error.set(
-        'راجع نص المقطع ووقت البداية والنهاية.',
-      );
-      return;
-    }
-
-    if (!this.connected()) {
-      this.error.set(
-        'أداة المعالجة غير متصلة. لا يمكن إعادة قص المقطع الآن.',
-      );
-      return;
-    }
+    if (!lesson || index === null || this.segmentSaving()) return;
 
     const started = performance.now();
+    const text = this.editText.trim();
+    const range = this.currentEditRange();
+    const context = {
+      jobId: lesson.manifest.jobId,
+      segmentIndex: index,
+      start: Number.isFinite(this.editStart) ? this.editStart : null,
+      end: Number.isFinite(this.editEnd) ? this.editEnd : null,
+    };
+    if (!range || text.length < 1 || text.length > 1000) {
+      this.error.set('راجع نص المقطع ووقت البداية والنهاية قبل الحفظ.');
+      console.warn('[Admin.AILesson.SegmentEdit.Save.Failed]', {
+        ...context, code: 'invalid_edit', durationMs: Math.round(performance.now() - started),
+      });
+      return;
+    }
+    if (!this.connected()) {
+      this.error.set('أداة المعالجة غير متصلة. لا يمكن إعادة قص المقطع الآن.');
+      console.warn('[Admin.AILesson.SegmentEdit.Save.Failed]', {
+        ...context, code: 'processor_disconnected', durationMs: Math.round(performance.now() - started),
+      });
+      return;
+    }
 
-    const segments = lesson.manifest.segments.map(
-      (clip, clipIndex) =>
-        clipIndex === index
-          ? {
-              ...clip,
-              text,
-              start,
-              end,
-            }
-          : { ...clip },
+    this.stopEditPreview('save');
+    const segments = lesson.manifest.segments.map((clip, clipIndex) =>
+      clipIndex === index ? { text, start: range.start, end: range.end }
+        : { text: clip.text, start: clip.start, end: clip.end },
     );
-
     this.segmentSaving.set(true);
     this.error.set('');
-
-    console.info(
-      '[Admin.AILesson.SegmentEdit.Start]',
-      {
-        jobId: lesson.manifest.jobId,
-        segment: index + 1,
-        start,
-        end,
-        textLength: text.length,
-      },
-    );
+    console.info('[Admin.AILesson.SegmentEdit.Save.Start]', {
+      ...context,
+      start: range.start,
+      end: range.end,
+    });
 
     try {
-      await this.client.recut(
-        lesson.manifest.jobId,
-        segments.map(
-          ({ text: clipText, start: clipStart, end: clipEnd }) => ({
-            text: clipText,
-            start: clipStart,
-            end: clipEnd,
-          }),
-        ),
-      );
-
-      const refreshed = await this.client.result(
-        lesson.manifest.jobId,
-      );
-
+      await this.client.recut(lesson.manifest.jobId, segments);
+      const refreshed = await this.client.result(lesson.manifest.jobId);
+      this.releaseEditPreview();
       this.setResult(refreshed);
-
       this.reviewed = false;
-
-      this.notice.set(
-        `تم حفظ تعديل المقطع ${index + 1} وإعادة تجهيز صوته.`,
-      );
-
-      console.info(
-        '[Admin.AILesson.SegmentEdit.Success]',
-        {
-          jobId: lesson.manifest.jobId,
-          segment: index + 1,
-          durationMs: Math.round(
-            performance.now() - started,
-          ),
-        },
-      );
-
+      this.notice.set(`تم حفظ تعديل المقطع ${index + 1} وإعادة تجهيز صوته.`);
+      console.info('[Admin.AILesson.SegmentEdit.Save.Success]', {
+        ...context,
+        start: range.start,
+        end: range.end,
+        durationMs: Math.round(performance.now() - started),
+      });
       this.editingIndex.set(null);
     } catch (error) {
       this.error.set(this.describe(error));
-
-      console.warn(
-        '[Admin.AILesson.SegmentEdit.Failed]',
-        {
-          jobId: lesson.manifest.jobId,
-          segment: index + 1,
-          code:
-            error instanceof ProcessorError
-              ? error.code
-              : 'unknown',
-          durationMs: Math.round(
-            performance.now() - started,
-          ),
-        },
-      );
+      console.warn('[Admin.AILesson.SegmentEdit.Save.Failed]', {
+        ...context,
+        code: error instanceof ProcessorError ? error.code : 'unknown',
+        durationMs: Math.round(performance.now() - started),
+      });
     } finally {
       this.segmentSaving.set(false);
     }
@@ -819,13 +965,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   }
 
   editingPreviewUrl(): string {
-    const index = this.editingIndex();
-
-    if (index === null) {
-      return '';
-    }
-
-    return this.previewUrls()[index] ?? '';
+    return this.editPreviewSourceUrl();
   }
 
   private setResult(
@@ -849,6 +989,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   }
 
   private clearResult(): void {
+    this.releaseEditPreview();
     this.stopAudio();
 
     this.urls.forEach((url) =>
@@ -918,6 +1059,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
     this.controller?.abort();
 
+    this.releaseEditPreview();
     this.stopAudio();
 
     this.urls.forEach((url) =>
