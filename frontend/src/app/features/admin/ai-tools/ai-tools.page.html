@@ -1,0 +1,132 @@
+<section class="tools-page" dir="rtl" aria-labelledby="tools-title">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">إعداد الجهاز</p>
+      <h1 id="tools-title">تثبيت أدوات AI</h1>
+      <p>مكان مستقل لتثبيت الأدوات المحلية وفحصها. إنشاء الدرس نفسه يتم من صفحة منفصلة.</p>
+    </div>
+    <a routerLink="/admin/ai-processing" class="head-link">اذهب إلى إنشاء الدرس ←</a>
+  </header>
+
+  <section class="tool-card" aria-labelledby="whisperx-title">
+    <div class="tool-card__head">
+      <div class="tool-icon" aria-hidden="true">AI</div>
+      <div>
+        <div class="tool-title-line">
+          <h2 id="whisperx-title">WhisperX</h2>
+          <span class="local-badge">محلي على جهازك</span>
+        </div>
+        <p>تقطيع صوت أو فيديو المعلم ومطابقته بالنص الإنجليزي لإنتاج مقاطع Shadowing.</p>
+      </div>
+    </div>
+
+    <div
+      class="status-card"
+      [class.status-card--working]="state() === 'preparing' || state() === 'checking'"
+      [class.status-card--success]="state() === 'connected'"
+      [class.status-card--warning]="state() === 'package-ready'"
+      [class.status-card--error]="state() === 'failed'"
+      role="status"
+      aria-live="polite"
+    >
+      <span class="status-icon" aria-hidden="true">
+        @switch (state()) {
+          @case ('preparing') { ⟳ }
+          @case ('checking') { ⟳ }
+          @case ('connected') { ✓ }
+          @case ('package-ready') { ↓ }
+          @case ('failed') { ! }
+          @default { ○ }
+        }
+      </span>
+      <div>
+        <strong>
+          @switch (state()) {
+            @case ('preparing') { جاري تجهيز التثبيت }
+            @case ('checking') { جاري التحقق }
+            @case ('connected') { تم التثبيت بنجاح }
+            @case ('package-ready') { الحزمة جاهزة }
+            @case ('failed') { التثبيت أو الاتصال غير مكتمل }
+            @default { لم يتم التثبيت بعد }
+          }
+        </strong>
+        <p>{{ message() }}</p>
+      </div>
+    </div>
+
+    <ol class="install-steps" aria-label="خطوات تثبيت WhisperX">
+      <li [class.is-done]="state() === 'package-ready' || state() === 'connected'">
+        <span>1</span>
+        <div>
+          <strong>نزّل الحزمة</strong>
+          <small>يتم تجهيز نسخة مرتبطة بحساب الأدمن الحالي.</small>
+        </div>
+      </li>
+      <li [class.is-done]="state() === 'connected'">
+        <span>2</span>
+        <div>
+          <strong>فك الضغط وشغّل Install.cmd</strong>
+          <small>اترك نافذة التثبيت حتى تنتهي. التثبيت الأول قد يحتاج تنزيل نماذج كبيرة.</small>
+        </div>
+      </li>
+      <li [class.is-done]="state() === 'connected'">
+        <span>3</span>
+        <div>
+          <strong>تحقق من التثبيت</strong>
+          <small>الموقع يتأكد أن الخدمة المحلية تعمل ومربوطة بالحساب الصحيح.</small>
+        </div>
+      </li>
+    </ol>
+
+    <div class="actions">
+      <button
+        type="button"
+        class="primary"
+        (click)="downloadInstaller()"
+        [disabled]="!userId || state() === 'preparing' || state() === 'checking'"
+      >
+        {{ state() === 'preparing' ? 'جارٍ تجهيز الحزمة...' : 'نزّل حزمة WhisperX' }}
+      </button>
+
+      <button
+        type="button"
+        class="secondary"
+        (click)="checkConnection()"
+        [disabled]="!userId || state() === 'checking' || state() === 'preparing'"
+      >
+        {{ state() === 'checking' ? 'جارٍ التحقق...' : 'تحقق من التثبيت' }}
+      </button>
+
+      @if (downloadUrl()) {
+        <a
+          class="download-fallback"
+          [href]="downloadUrl()"
+          download="Shadowing-V2-Local-Processor.zip"
+        >
+          لم يبدأ التنزيل؟ اضغط هنا
+        </a>
+      }
+    </div>
+
+    <details class="existing-install">
+      <summary>الأداة مثبتة بالفعل؟</summary>
+      <p>استورد ملف <bdi>shadowing-link.json</bdi> من مجلد الأداة، ثم سيتم فحص الاتصال.</p>
+      <label class="file-button" for="ai-tool-link">اختر ملف الربط</label>
+      <input
+        id="ai-tool-link"
+        type="file"
+        accept=".json,application/json"
+        (change)="importLink($event)"
+        [disabled]="!userId || state() === 'checking'"
+      />
+    </details>
+  </section>
+
+  <section class="future-tools" aria-label="أدوات مستقبلية">
+    <div>
+      <h2>أدوات AI أخرى</h2>
+      <p>الصفحة مجهزة لإضافة أدوات محلية أخرى لاحقًا بدون خلطها بواجهة إنشاء الدرس.</p>
+    </div>
+    <span>سيتم إضافتها عند اعتمادها</span>
+  </section>
+</section>

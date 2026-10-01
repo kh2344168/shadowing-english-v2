@@ -3,10 +3,14 @@ import { SupervisorWeeklySummaryPage } from './weekly-summary.page';
 
 describe('SupervisorWeeklySummaryPage', () => {
   it('renders its page shell', async () => {
-    await TestBed.configureTestingModule({ imports: [SupervisorWeeklySummaryPage] }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SupervisorWeeklySummaryPage],
+    }).compileComponents();
     const fixture = TestBed.createComponent(SupervisorWeeklySummaryPage);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('h1')).toBeTruthy();
-    expect(fixture.nativeElement.textContent).toContain('ليست وظيفة مكتملة');
+    expect(fixture.nativeElement.querySelector('[role="status"]')?.textContent).toContain(
+      'غير متاح',
+    );
   });
 });

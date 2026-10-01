@@ -15,7 +15,7 @@
   min-height: 100vh;
   background: var(--st-canvas);
   color: var(--st-ink);
-  font-family: "Noto Sans Arabic", "Noto Sans", Tahoma, Arial, sans-serif;
+  font-family: 'Noto Sans Arabic', 'Noto Sans', Tahoma, Arial, sans-serif;
 }
 
 .student-topbar {
@@ -50,7 +50,9 @@
 }
 
 .student-topbar__start,
-.student-topbar__end { gap: 16px; }
+.student-topbar__end {
+  gap: 16px;
+}
 
 .student-brand {
   gap: 8px;
@@ -75,10 +77,25 @@
   line-height: 1.05;
 }
 
-.student-brand strong { font-size: 16px; font-weight: 850; }
-.student-brand small { margin-top: 4px; color: var(--st-primary); font-size: 10px; font-weight: 800; direction: ltr; }
-.student-topbar__divider { width: 1px; height: 22px; background: rgba(188, 201, 198, 0.55); }
-.student-desktop-nav { gap: 5px; }
+.student-brand strong {
+  font-size: 16px;
+  font-weight: 850;
+}
+.student-brand small {
+  margin-top: 4px;
+  color: var(--st-primary);
+  font-size: 10px;
+  font-weight: 800;
+  direction: ltr;
+}
+.student-topbar__divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(188, 201, 198, 0.55);
+}
+.student-desktop-nav {
+  gap: 5px;
+}
 
 .student-desktop-nav a {
   min-height: 38px;
@@ -120,34 +137,145 @@
   font-size: 9px;
 }
 
-.student-account { position: relative; }
-.student-account__trigger { gap: 8px; padding: 2px; border: 0; background: transparent; color: var(--st-ink); cursor: pointer; }
-.student-account__trigger > span { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--st-primary); color: white; font-size: 12px; font-weight: 850; box-shadow: 0 4px 12px rgba(0, 104, 95, 0.18); }
-.student-account__trigger small { max-width: 120px; overflow: hidden; color: #4b5856; font-size: 11px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
-.student-account__menu { position: absolute; top: calc(100% + 12px); left: 0; width: 190px; padding: 8px; display: grid; gap: 3px; border: 1px solid var(--st-line); border-radius: 16px; background: #fff; box-shadow: 0 18px 45px rgba(25, 28, 30, 0.13); }
+.student-account {
+  position: relative;
+}
+.student-account__trigger {
+  gap: 8px;
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--st-ink);
+  cursor: pointer;
+}
+.student-account__trigger > span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--st-primary);
+  color: white;
+  font-size: 12px;
+  font-weight: 850;
+  box-shadow: 0 4px 12px rgba(0, 104, 95, 0.18);
+}
+.student-account__trigger small {
+  max-width: 120px;
+  overflow: hidden;
+  color: #4b5856;
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.student-account__menu {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 0;
+  width: 190px;
+  padding: 8px;
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--st-line);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 18px 45px rgba(25, 28, 30, 0.13);
+}
 .student-account__menu a,
-.student-account__menu button { min-height: 42px; padding: 0 12px; display: flex; align-items: center; gap: 9px; border: 0; border-radius: 11px; background: transparent; color: #3d4947; font: inherit; font-size: 12px; font-weight: 750; text-decoration: none; cursor: pointer; }
+.student-account__menu button {
+  min-height: 42px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: #3d4947;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  text-decoration: none;
+  cursor: pointer;
+}
 .student-account__menu a:hover,
-.student-account__menu button:hover { background: #f0f4f3; color: var(--st-primary); }
+.student-account__menu button:hover {
+  background: #f0f4f3;
+  color: var(--st-primary);
+}
 
-.student-shell__content { min-height: calc(100vh - 64px); }
-.student-mobile-nav { display: none; }
+.student-shell__content {
+  min-height: calc(100vh - 64px);
+}
+.student-mobile-nav {
+  display: none;
+}
 
 @media (max-width: 820px) {
-  .student-topbar__inner { width: calc(100% - 28px); }
+  .student-topbar__inner {
+    width: calc(100% - 28px);
+  }
   .student-topbar__divider,
-  .student-desktop-nav { display: none; }
-  .student-account__trigger small { display: none; }
+  .student-desktop-nav {
+    display: none;
+  }
+  .student-account__trigger small {
+    display: none;
+  }
 }
 
 @media (max-width: 640px) {
-  .student-topbar__inner { height: 60px; }
-  .student-brand__mark { width: 35px; height: 35px; }
-  .student-brand strong { font-size: 14px; }
-  .student-level-badge { padding-inline: 9px; }
-  .student-level-badge strong { font-size: 10px; }
-  .student-shell__content { min-height: calc(100vh - 60px); padding-bottom: 78px; }
-  .student-mobile-nav { position: fixed; z-index: 55; right: 12px; bottom: 10px; left: 12px; min-height: 64px; padding: 6px; display: grid; grid-template-columns: repeat(5, 1fr); border: 1px solid rgba(188, 201, 198, 0.55); border-radius: 21px; background: rgba(255, 255, 255, 0.95); box-shadow: 0 16px 42px rgba(25, 28, 30, 0.16); backdrop-filter: blur(18px); }
-  .student-mobile-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-radius: 15px; color: #6d7977; font-size: 9px; font-weight: 800; text-decoration: none; }
-  .student-mobile-nav a.active { background: #008378; color: #fff; }
+  .student-topbar__inner {
+    height: 60px;
+  }
+  .student-brand__mark {
+    width: 35px;
+    height: 35px;
+  }
+  .student-brand strong {
+    font-size: 14px;
+  }
+  .student-level-badge {
+    padding-inline: 9px;
+  }
+  .student-level-badge strong {
+    font-size: 10px;
+  }
+  .student-shell__content {
+    min-height: calc(100vh - 60px);
+    padding-bottom: 78px;
+  }
+  .student-mobile-nav {
+    position: fixed;
+    z-index: 55;
+    right: 12px;
+    bottom: 10px;
+    left: 12px;
+    min-height: 64px;
+    padding: 6px;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    border: 1px solid rgba(188, 201, 198, 0.55);
+    border-radius: 21px;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 16px 42px rgba(25, 28, 30, 0.16);
+    backdrop-filter: blur(18px);
+  }
+  .student-mobile-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border-radius: 15px;
+    color: #6d7977;
+    font-size: 9px;
+    font-weight: 800;
+    text-decoration: none;
+  }
+  .student-mobile-nav a.active {
+    background: #008378;
+    color: #fff;
+  }
 }

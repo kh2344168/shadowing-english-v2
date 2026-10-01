@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 @source "./app";
 
 /*
@@ -69,18 +69,18 @@
   --spacing-margin-mobile: 1rem;
 
   /* Font families */
-  --font-display-lg: "Noto Sans", "Noto Sans Arabic", sans-serif;
-  --font-body-md: "Noto Sans", "Noto Sans Arabic", sans-serif;
-  --font-label-md: "Noto Sans", "Noto Sans Arabic", sans-serif;
-  --font-display-lg-mobile: "Noto Sans", "Noto Sans Arabic", sans-serif;
-  --font-body-lg: "Noto Sans", "Noto Sans Arabic", sans-serif;
-  --font-label-sm: "Noto Sans", "Noto Sans Arabic", sans-serif;
-  --font-headline-lg-mobile: "Noto Sans", "Noto Sans Arabic", sans-serif;
-  --font-label-lg: "Noto Sans", "Noto Sans Arabic", sans-serif;
-  --font-body-sm: "Noto Sans", "Noto Sans Arabic", sans-serif;
-  --font-headline-sm: "Noto Sans", "Noto Sans Arabic", sans-serif;
-  --font-headline-md: "Noto Sans", "Noto Sans Arabic", sans-serif;
-  --font-headline-lg: "Noto Sans", "Noto Sans Arabic", sans-serif;
+  --font-display-lg: 'Noto Sans', 'Noto Sans Arabic', sans-serif;
+  --font-body-md: 'Noto Sans', 'Noto Sans Arabic', sans-serif;
+  --font-label-md: 'Noto Sans', 'Noto Sans Arabic', sans-serif;
+  --font-display-lg-mobile: 'Noto Sans', 'Noto Sans Arabic', sans-serif;
+  --font-body-lg: 'Noto Sans', 'Noto Sans Arabic', sans-serif;
+  --font-label-sm: 'Noto Sans', 'Noto Sans Arabic', sans-serif;
+  --font-headline-lg-mobile: 'Noto Sans', 'Noto Sans Arabic', sans-serif;
+  --font-label-lg: 'Noto Sans', 'Noto Sans Arabic', sans-serif;
+  --font-body-sm: 'Noto Sans', 'Noto Sans Arabic', sans-serif;
+  --font-headline-sm: 'Noto Sans', 'Noto Sans Arabic', sans-serif;
+  --font-headline-md: 'Noto Sans', 'Noto Sans Arabic', sans-serif;
+  --font-headline-lg: 'Noto Sans', 'Noto Sans Arabic', sans-serif;
 
   /* Typography */
   --text-display-lg: 36px;

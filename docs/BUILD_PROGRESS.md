@@ -1,4 +1,6 @@
-# Shadowing English V2 — Build Progress (handoff snapshot 2026-09-23)
+# Shadowing English V2 — Build Progress (updated 2026-09-30)
+
+**هوية المشروع:** العمل الجاري كله داخل V2. التصميم السابق مرجع بصري للواجهات فقط، ولا تُنقل منه وظائف أوبيانات أوBackend. أضيفت أدلة تشغيل جهاز خالد كما وردت في [تقرير الفحص المحلي](RUNBOOKS/DAY2_LOCAL_TEST_REPORT_2026-09-29.md)؛ لا تُنسب نتيجتها إلى تشغيل هذه البيئة.
 
 | المرحلة | الحالة | دليل مختصر |
 |---|---|---|
@@ -7,16 +9,23 @@
 | إنشاء Admin ثانٍ | ✅ user observed | أنشأ محمد وسجّل دخوله. |
 | عرض قائمة الأدمنز للجميع | 🟡 source patch applied in latest ZIP | Structural 4/4؛ **Live browser بعد التصحيح pending**. |
 | حظر حذف المالك/منع ordinary Admin من الإزالة | 🟡 source present | Needs live 403/409 API/browser checks. |
-| V1 design reference | ✅ موجود | أربعة role layouts وشاشات فعلية في V1 ZIP. |
-| Day2 — Frontend role layouts/page shells | 🟡 IN PROGRESS | 4 Layouts + 33 new Page Shells + lazy routes in provided source; static contract 6/6 PASS; Angular build/unit/E2E NOT RUN (npm registry unavailable). |
-| Groups/Lessons/Curriculum/Shadowing/Progress business | ⬜ NOT STARTED | لا actual vertical slices بعد. |
-| Day3 remaining stages | ⬜ NOT STARTED | لاحقًا feature-first. |
-| Day4 role/admin/media expansion | ⬜ NOT STARTED | يعتمد على تقدم slices. |
+| مرجع التصميم لواجهات V2 | ✅ متاح للمقارنة | استُخدمت الواجهات السابقة مرجعًا بصريًا؛ التطبيق والبيانات والوظائف داخل V2 فقط. |
+| Day2 — Frontend role layouts/page shells | 🟡 SOURCE IMPLEMENTED / VISUAL PENDING | 4 Layouts + lazy routes، وصفحات الطالب Day 2 متصلة الآن ببيانات V2 API. بناء Angular والاختبارات المحلية PASS؛ متصفح فعلي وE2E معلّقان. |
+| Day2 — مراجعة التصميم في صفحات V2 الحالية | 🟡 SOURCE VERIFIED / VISUAL PENDING | الدخول ولوحة Admin والمجموعات والأدمنز وحالة الطالب الفارغة تستخدم المرجع البصري. أضيف بحث في المجموعات المحمّلة وخطوات العمل في لوحة الإدارة، ووُحّد شكل هياكل الصفحات غير المنفذة ولغة المستند العربية. كل العمليات والبيانات داخل V2؛ لا بيانات نشر مصطنعة. Angular build PASS، وAngular 43/43، واختبارات Node البنيوية 18/18 بتاريخ 28 سبتمبر. المطابقة البصرية بالمتصفح ما زالت غير مثبتة؛ بقية صفحات الأعمال هياكل حتى تُنفَّذ وظائفها. |
+| Day2 — شريحة 1، تثبيت المصدر وتصحيح اختبار Admin | ✅ LOCAL VERIFIED، بانتظار مراجعة خالد | ملفات المصدر المتتبعة في `package.zip` طابقت `main` عند `a9afd91` بعد توحيد نهايات الأسطر؛ تصحيح اختبار المسار المتداخل المحمي، و15/15 اختبارًا بنيويًا PASS + Angular build PASS. لم يُختبر Backend runtime لعدم توفر .NET SDK هنا. |
+| بوابات الجودة العامة بعد الشريحة 1 | 🟡 LOCAL FE+BE VERIFIED / CI PENDING | الجولة الحالية: clean `npm ci` على Linux وAngular production و54/54 unit و21/21 static وlint وformat و.NET Release PASS. فشل قفل Windows في تقرير جهاز خالد السابق يبقى سجلًا تاريخيًا؛ CI لم يُشغل. |
+| Day2 — شريحة 2، أساس المجموعات | 🟡 SQL VERIFIED / API PENDING | Group وعضوية بتاريخها وقيد عضوية واحدة فعّالة، Admin API وواجهة إدارة فعلية. على قاعدة اختبار V2 منفصلة طُبق `20260928154813_AddGroupsFoundation` وثبت قيد العضوية الفعالة وشرط ترتيب التاريخ باختبار SQL داخل معاملة متراجَع عنها. صلاحيات وعمليات Groups عبر API ما زالت غير منفذة بالحسابات التجريبية. |
+| Day2 — Student Core Flow | 🟡 DB VERIFIED / AUTHENTICATED FLOW PENDING | Lesson/Version/Segment وPublished Curriculum/Assignment/Slot وProgress وfixture Development صريحة؛ واجهات Dashboard/Curriculum/Overview/Shadowing/Progress. على جهاز خالد اجتاز بناء `.NET`، فحص EF snapshot، ومراجعة SQL؛ طُبقت الترحيلات الثلاثة على `ShadowingEnglishV2_Day2Test_20260929` فقط، وتحقق `/health=200` وanonymous `401`. التقرير المحلي: **26 PASS، 1 FAIL بيئي لـ`npm ci`، 10 NOT RUN** بتاريخ 29 سبتمبر. حسابا الاختبار وfixture وAPI المصادق وGroups API وE2E والمتصفح والميكروفون لم تُختبر بعد؛ لا تُعد هذه الشريحة DONE. أصلحت إعداد اختبار E2E المعزول ليتجه إلى الواجهة `4201` والـAPI `5018` ويعمل متسلسلًا لحساب الطالب المشترك؛ هذا التصحيح **لم يُجرب على متصفح جهاز خالد بعد**. |
+| أولوية خالد الجديدة — إنشاء درس Shadowing ونشره | 🟡 REAL API VERIFIED IN ISOLATION / DEPLOYMENT PENDING | API وIdentity وCSRF الفعلية اجتازت Save → Publish → Student curriculum/audio/progress، retry وGET بلا كتابة وفشل التخزين وفقدان الرد بعد commit. SQLite وAzurite مؤقتان؛ ليس SQL Server أوAzure منشورة. 16/16 PASS و.NET Release بلا تحذيرات؛ Angular 54/54. الحفظ والنشر مستقلان، والمنشور ثابت، ولا نقل تقدم صامت. [تقرير 30 سبتمبر](RUNBOOKS/MEDIA_STORAGE_TEST_REPORT_2026-09-30.md). |
+| أداة تجهيز الدروس المحلية — طلب خالد | 🟡 IMPLEMENTED / WINDOWS PENDING | Windows companion بحزمة ربط للحساب والموقع وإعدادات محلية وWhisperX English alignment على CPU، تقدم وإلغاء وإعادة تقطيع ومراجعة ونقل وZIP احتياطية. الجولة الحالية: Python 18/18 وAngular 54/54 وstatic 21/21 وPlaywright desktop/mobile emulation 8/8 PASS. smoke المحرك القصيرة السابقة ناجحة ولم تُكرر. Windows وChrome الحديث غير مثبتين؛ النص الإنجليزي المطابق مطلوب، ولا Transcript/Vocabulary/Quiz/LLM. [الدليل](RUNBOOKS/LOCAL_LESSON_PROCESSOR_AR.md). |
+| تخزين صوت Shadowing للاستضافة | 🟡 IMPLEMENTED / AZURE DEPLOYMENT PENDING | `IShadowingMediaStore` مع DevelopmentLocal وAzureBlob الخاصة؛ WAV validation، immutable keys، retry، rollback آمن، authorized seek/Range/ETag. لا startup provisioning أوSAS أوfallback قرص Production؛ 503 آمن دون الإعداد. 16/16 real API/media PASS على Azurite، Managed Identity/RBAC الحقيقيتان NOT RUN. [الإعداد](RUNBOOKS/AZURE_SHADOWING_MEDIA_AR.md). |
+| Day3 remaining stages | ⬜ NOT STARTED / AFTER SHADOWING PATH | طلب خالد تأجيل Vocabulary وListen & Type وQuiz وConversation حتى يكتمل مسار إنشاء درس Shadowing → نشره → دراسته فعليًا. |
+| Day4 role/admin/media expansion | ⬜ REMAINING SCOPE NOT STARTED | بقية وظائف الإدارة ورفع تسجيلات الطالب مؤجلان. تخزين الصوت النهائي لدروس Shadowing قُدم للمسار الحالي بطلب خالد؛ لا hosted AI. |
 | Day5 hardening/staging/deploy | ⬜ NOT STARTED | لا deployed release مثبت. |
-| Git remote/CI/licensing decision | ❓ UNVERIFIED/UNDECIDED | `.github` placeholder، وLICENSE غير مثبت. |
+| Git remote/CI/licensing decision | 🟡 REMOTE VERIFIED / CI+LICENSE UNDECIDED | تأكد `main` و`origin/main` عند `a9afd91` يوم 2026-09-28؛ `.github` placeholder، وLICENSE غير مثبت. |
 
-**Day count = 5 فقط**. Day2 يبدأ الآن، لكن ترتيب العمل الجديد هو V1→V2 frontend layout/page shell comparison ثم التنفيذ بعد خطة ملفات وموافقة خالد، وبعدها محتوى Admin↔Student بشكل feature-first. لا تنسب نسب إجمالية للمشروع.
+**Day count = 5 فقط في الجدول الأصلي**؛ ترتيب التنفيذ العملي تغيّر بطلب خالد إلى إكمال إنشاء ونشر درس Shadowing أولًا، ثم إضافة الوظائف الأخرى واحدة واحدة. Day2 مصدر المسار الوظيفي وSQL الاختبارية جاهزان، لكن الحالة الرسمية 🟡 وليست DONE حتى نجاح API المصادق والمسار الحقيقي في المتصفح والميكروفون والفحوص المعمول بها حسب القواعد. شريحة الإنشاء تجتاز .NET Release ومسار API الحقيقي على SQLite/Azurite معزولين؛ SQL Server ورحلة المتصفح أمامها والميكروفون والاستضافة غير مثبتة. لا تنسب نسب إجمالية للمشروع.
 
-**ملاحظة التوثيق:** هذه نسخة Handoff محدثة خارج جهاز المستخدم؛ لم تُطبّق على Working Tree المحلي تلقائيًا.
+**ملاحظة التسليم:** الملف `START_HERE_AR.md` دليل تشغيل V2، والتفاصيل في `docs/RUNBOOKS/DAY2_STUDENT_CORE.md`. فك الحزمة في مجلد جديد أولًا؛ تنزيلها لا يغيّر نسخة جهاز خالد تلقائيًا. تم التحقق من Backend/SQL Server على جهاز خالد حسب التقرير المستورد، وأضيف فحص API مع SQLite/Azurite في البيئة الحالية؛ لا تنسخ إعداد اتصال جهازه المحلي أو مخرجات البناء ضمن المصدر.
 
-**Day2 foundation checkpoint:** `docs/DAY2_FRONTEND_FOUNDATION_HANDOFF_AR.md` يوضح الملفات والتجارب المطلوبة على جهاز خالد. لا تعتبر Day2 functional/Production DONE حتى نجاح البناء واختبارات المتصفح وإكمال مسار الطالب الحقيقي. لم تُطبق أي Migration أوتُعدّل ملفات Backend في هذه الدفعة.
+**Day2 foundation checkpoint:** `docs/DAY2_FRONTEND_FOUNDATION_HANDOFF_AR.md` يوثق الهياكل القديمة، و`docs/RUNBOOKS/DAY2_STUDENT_CORE.md` يوثق المسار الحالي. الترحيلات مثبت تطبيقها على قاعدة V2 الاختبارية الخارجية فقط؛ لا تعتبر Day2 functional/Production DONE حتى نجاح مسار الطالب الحقيقي والاختبارات المتبقية. نقطة بدء اليوم الثالث المقترحة في `docs/DAY3_READY_HANDOFF_AR.md`.

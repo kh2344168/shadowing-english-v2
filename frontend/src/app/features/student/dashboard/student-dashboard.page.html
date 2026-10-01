@@ -1,7 +1,59 @@
-<section class="mx-auto max-w-7xl px-4 py-9 lg:px-8" dir="rtl">
-  <div class="rounded-[26px] border border-[#DCE9E5] bg-white p-7 shadow-[0_12px_36px_rgba(25,28,30,0.045)] sm:p-9">
-    <span class="text-xs font-extrabold text-[#00685F]">شادوينج — المسار التعليمي</span>
-    <h1 class="mt-3 text-3xl font-extrabold text-[#191C1E]">المسار التعليمي</h1>
-    <p class="mt-4 text-sm leading-7 text-[#586461]" role="status">لا يوجد منهج منشور معروض في هذه النسخة التأسيسية بعد. لن نعرض دروسًا أو درجات وهمية.</p>
+<section class="learning-page" dir="rtl" aria-labelledby="student-dashboard-title">
+  <h1 id="student-dashboard-title" class="page-title">المسار التعليمي</h1>
+  @if (loading()) {
+  <p role="status" class="learning-status">جارٍ تحميل المسار...</p>
+  } @else if (error()) {
+  <div role="alert" class="learning-status">
+    تعذر تحميل المسار. <button type="button" (click)="load()">إعادة المحاولة</button>
   </div>
+  } @else if (curriculum(); as course) { @if (course.curriculumTitle) {
+  <header class="unit-strip">
+    <div>
+      <span class="unit-strip__eyebrow">{{ course.groupName }}</span>
+      <h2>{{ course.curriculumTitle }}</h2>
+      <p>ركز على خطوتك الحالية، واستكمل التدريب بالترتيب.</p>
+    </div>
+    <a routerLink="/student/curriculum" class="learning-button subtle">عرض المنهج</a>
+  </header>
+  @if (course.items.length) {
+  <ol class="learning-path" aria-label="الدروس المتاحة">
+    @for (lesson of course.items; track lesson.slotId; let i = $index) {
+    <li class="path-lesson" [class.is-completed]="lesson.isComplete">
+      <a
+        class="path-lesson__node"
+        [routerLink]="['/student/lessons', lesson.slotId, 'overview']"
+        [attr.aria-label]="'فتح درس ' + lesson.title"
+        >{{ lesson.isComplete ? '✓' : i + 1 }}</a
+      >
+      <div class="path-lesson__meta">
+        <span>الأسبوع {{ lesson.weekNumber }} · اليوم {{ lesson.dayNumber }}</span>
+        <h3>{{ lesson.title }}</h3>
+        <small
+          >{{ lesson.isComplete ? 'مكتمل' : lesson.completedSegments ? 'أكمل تدريبك' : 'ابدأ من هنا'
+          }}</small
+        >
+      </div>
+      @if (!lesson.isComplete && i === 0) {
+      <a
+        class="learning-button path-action-card"
+        [routerLink]="['/student/lessons', lesson.slotId, 'overview']"
+        >ابدأ الدرس ←</a
+      >
+      }
+    </li>
+    }
+  </ol>
+  @if (course.hasMore) {
+  <a class="learning-button subtle" routerLink="/student/curriculum">شاهد باقي الدروس</a> } } @else
+  {
+  <p class="learning-status" role="status">الدروس المجدولة لم تُتح بعد.</p>
+  } } @else {
+  <div class="student-empty-state" role="status">
+    <span aria-hidden="true">📚</span>
+    <h2>المسار لسه بيتجهز</h2>
+    <p>
+      {{ course.groupName ? 'المنهج لم يُنشر لمجموعتك بعد.' : 'لم تُضف إلى مجموعة دراسية بعد.' }}
+    </p>
+  </div>
+  } }
 </section>

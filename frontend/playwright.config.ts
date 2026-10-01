@@ -2,10 +2,11 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: '../tests/e2e',
-  fullyParallel: true,
+  // The five browser projects share one fixture student and mutable progress.
+  fullyParallel: false,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 2 : 0,
-  workers: process.env['CI'] ? 2 : undefined,
+  workers: 1,
   reporter: process.env['CI'] ? 'html' : 'list',
   use: {
     baseURL: 'http://127.0.0.1:4200',

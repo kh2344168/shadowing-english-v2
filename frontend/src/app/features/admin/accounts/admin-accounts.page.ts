@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
 import { AdminAccount, AdminAccountsApi } from './admin-accounts.api';
@@ -9,7 +8,7 @@ import { AdminAccount, AdminAccountsApi } from './admin-accounts.api';
 @Component({
   selector: 'app-admin-accounts-page',
   standalone: true,
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './admin-accounts.page.html',
   styleUrl: './admin-accounts.page.scss',
@@ -42,7 +41,9 @@ export class AdminAccountsPage implements OnInit {
       this.isPrimaryAdmin.set(access.isPrimaryAdmin);
       this.admins.set(await firstValueFrom(this.api.list()));
       console.info('[Admin.Accounts.UI.Load.Success]', {
-        isPrimaryAdmin: access.isPrimaryAdmin, count: this.admins().length, durationMs: Date.now() - started,
+        isPrimaryAdmin: access.isPrimaryAdmin,
+        count: this.admins().length,
+        durationMs: Date.now() - started,
       });
     } catch (e) {
       this.error.set(this.describeError(e));
@@ -69,7 +70,10 @@ export class AdminAccountsPage implements OnInit {
       } catch {
         this.success.set('تم إنشاء حساب الأدمن، لكن تعذر تحديث القائمة. افتح الصفحة مرة أخرى.');
       }
-      console.info('[Admin.Accounts.UI.Create.Success]', { id: created.id, durationMs: Date.now() - started });
+      console.info('[Admin.Accounts.UI.Create.Success]', {
+        id: created.id,
+        durationMs: Date.now() - started,
+      });
     } catch (e) {
       this.error.set(this.describeError(e));
       console.warn('[Admin.Accounts.UI.Create.Failed]', { durationMs: Date.now() - started });
@@ -90,7 +94,7 @@ export class AdminAccountsPage implements OnInit {
       await firstValueFrom(this.auth.csrf());
       await firstValueFrom(this.api.remove(id));
       this.confirmRemoveId.set(null);
-      this.admins.update(items => items.filter(item => item.id !== id));
+      this.admins.update((items) => items.filter((item) => item.id !== id));
       this.success.set('تم سحب صلاحية Admin. حساب المستخدم وبياناته لم يتم حذفهما.');
       console.info('[Admin.Accounts.UI.Remove.Success]', { id, durationMs: Date.now() - started });
     } catch (e) {
@@ -103,10 +107,13 @@ export class AdminAccountsPage implements OnInit {
 
   private describeError(e: unknown): string {
     if (e instanceof HttpErrorResponse) {
-      if (e.error?.error === 'primary_admin_not_configured') return 'حساب خالد الرئيسي لم يتم ربطه بعد. راجع دليل إعداد Primary Admin.';
+      if (e.error?.error === 'primary_admin_not_configured')
+        return 'حساب خالد الرئيسي لم يتم ربطه بعد. راجع دليل إعداد Primary Admin.';
       if (e.error?.error === 'admin_email_exists') return 'البريد الإلكتروني مسجل بالفعل.';
-      if (e.error?.error === 'primary_admin_protected') return 'لا يمكن إزالة صلاحيات الأدمن الرئيسي.';
-      if (e.error?.error === 'invalid_admin_account') return 'راجع البريد وكلمة المرور: 10 أحرف على الأقل، وحروف كبيرة وصغيرة ورقم ورمز.';
+      if (e.error?.error === 'primary_admin_protected')
+        return 'لا يمكن إزالة صلاحيات الأدمن الرئيسي.';
+      if (e.error?.error === 'invalid_admin_account')
+        return 'راجع البريد وكلمة المرور: 10 أحرف على الأقل، وحروف كبيرة وصغيرة ورقم ورمز.';
       if (e.status === 400) return 'البيانات غير صحيحة أو جلسة الحماية انتهت. حاول مرة أخرى.';
       if (e.status === 401 || e.status === 403) return 'ليس لديك صلاحية لتنفيذ هذه العملية.';
       if (e.status === 429) return 'عدد محاولات الإضافة كبير. حاول لاحقًا.';

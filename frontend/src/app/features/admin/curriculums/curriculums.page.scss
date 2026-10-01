@@ -1,1 +1,26 @@
-:host { display: block; min-width: 0; }
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.curriculum-note {
+  max-width: 760px;
+  margin: 24px auto;
+  padding: 24px;
+  border-radius: 18px;
+  border: 1px solid #dbe8e5;
+  background: white;
+  color: #0b1c30;
+}
+h1 {
+  font-size: 28px;
+  font-weight: 800;
+}
+p {
+  line-height: 1.7;
+  color: #52615f;
+}
+a {
+  color: #00685f;
+  font-weight: 700;
+}

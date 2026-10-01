@@ -1,1 +1,200 @@
-<app-feature-placeholder title="منشئ الدرس" />
+<section class="authoring-page" dir="rtl" aria-labelledby="authoring-title">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">بناء درس Shadowing</p>
+      <h1 id="authoring-title">منشئ الدرس</h1>
+      <p>
+        جهّز الجمل وصوت المعلم أو استورد نتيجة المعالجة المحلية، ثم احفظ وانشر من خطوتين منفصلتين.
+      </p>
+    </div>
+    <a routerLink="/admin/groups">إدارة المجموعات ←</a>
+  </header>
+
+  @if (error()) {
+  <p class="notice error" role="alert">{{ error() }}</p>
+  } @if (success()) {
+  <p class="notice success" role="status">{{ success() }}</p>
+  } @if (loading()) {
+  <p role="status">جارٍ تحميل الدروس والمجموعات...</p>
+  }
+
+  <div class="authoring-grid">
+    <form class="panel" (ngSubmit)="create()">
+      <p><a routerLink="/admin/ai-processing">إنشاء الدرس بالـAI ←</a></p>
+      <label for="lesson-result">أو استورد ZIP صادرًا من أداة V2</label>
+      <input
+        id="lesson-result"
+        type="file"
+        accept=".zip,application/zip"
+        (change)="importResult($event)"
+        [disabled]="saving() || importing()"
+      />
+      @if (importing()) {
+      <p role="status">جارٍ التحقق من النتيجة...</p>
+      }
+      <h2>١. احفظ الدرس</h2>
+      <p>الحفظ لا ينشر الدرس للطلاب.</p>
+      <label for="lesson-title">عنوان الدرس</label>
+      <input
+        id="lesson-title"
+        name="title"
+        [(ngModel)]="title"
+        (ngModelChange)="changed()"
+        maxlength="160"
+        required
+        [disabled]="saving() || importing()"
+        placeholder="مثال: التعريف بالنفس"
+      />
+      <label for="lesson-description">وصف قصير</label>
+      <textarea
+        id="lesson-description"
+        name="description"
+        [(ngModel)]="description"
+        (ngModelChange)="changed()"
+        maxlength="1000"
+        rows="2"
+        [disabled]="saving() || importing()"
+      ></textarea>
+
+      <div class="segment-heading">
+        <h3>الجمل والصوت</h3>
+        <button
+          type="button"
+          class="secondary"
+          (click)="addSegment()"
+          [disabled]="segments().length >= 20 || saving() || importing()"
+        >
+          أضف جملة
+        </button>
+      </div>
+      @for (segment of segments(); track segment.id; let index = $index) {
+      <div class="segment">
+        <div class="segment-heading">
+          <strong>الجملة {{ index + 1 }}</strong>
+          @if (segments().length > 1) {
+          <button
+            type="button"
+            class="text-button"
+            (click)="removeSegment(segment.id)"
+            [disabled]="saving() || importing()"
+            [attr.aria-label]="'احذف الجملة ' + (index + 1)"
+          >
+            حذف
+          </button>
+          }
+        </div>
+        <label [for]="'text-' + segment.id">نص الجملة الإنجليزية</label>
+        <textarea
+          [id]="'text-' + segment.id"
+          [name]="'text-' + segment.id"
+          dir="ltr"
+          [(ngModel)]="segment.text"
+          (ngModelChange)="changed()"
+          maxlength="1000"
+          rows="2"
+          required
+          [disabled]="saving() || importing()"
+        ></textarea>
+        <label [for]="'audio-' + segment.id">صوت المعلم لهذه الجملة (WAV، حتى 2 MB)</label>
+        <input
+          [id]="'audio-' + segment.id"
+          type="file"
+          accept=".wav,audio/wav,audio/x-wav"
+          (change)="chooseAudio($event, segment.id)"
+          [required]="!segment.audio"
+          [disabled]="saving() || importing()"
+        />
+        @if (segment.audio) {
+        <small>ملف مختار، الحجم {{ (segment.audio.size / 1024).toFixed(0) }} KB</small>
+        @if (audioUrls()[segment.id]; as preview) {
+        <audio
+          controls
+          preload="none"
+          [src]="preview"
+          [attr.aria-label]="'استمع للجملة ' + (index + 1)"
+        ></audio>
+        } }
+      </div>
+      } @if (importedDraft()) {
+      <label for="import-reviewed">
+        <input
+          id="import-reviewed"
+          name="import-reviewed"
+          type="checkbox"
+          [(ngModel)]="importedReviewed"
+          [disabled]="saving() || importing()"
+        />
+        راجعت النص والصوت للمقاطع المستوردة
+      </label>
+      }
+      <button
+        class="primary"
+        type="submit"
+        [disabled]="saving() || importing() || (importedDraft() && !importedReviewed)"
+      >
+        {{ saving() ? 'جارٍ حفظ الدرس...' : 'احفظ الدرس' }}
+      </button>
+    </form>
+
+    <div class="panel">
+      <h2>٢. انشر للمجموعة</h2>
+      <p>لن يظهر الدرس للطالب حتى تضغط نشر. النشر ينشئ نسخة منهج جديدة ويحفظ النسخ السابقة.</p>
+      <label for="saved-lesson">درس محفوظ</label>
+      <select id="saved-lesson" name="saved-lesson" [(ngModel)]="selectedVersionId">
+        <option value="">اختر درسًا</option>
+        @for (lesson of lessons(); track lesson.versionId) {
+        <option [value]="lesson.versionId">
+          {{ lesson.title }} — {{ lesson.segmentCount }} جملة
+        </option>
+        }
+      </select>
+      @if (moreLessons()) {
+      <button type="button" class="secondary" (click)="loadLessons(lessonsPage + 1)">
+        دروس أخرى
+      </button>
+      }
+      <label for="target-group">المجموعة</label>
+      <select id="target-group" name="target-group" [(ngModel)]="selectedGroupId">
+        <option value="">اختر مجموعة</option>
+        @for (group of groups(); track group.id) {
+        <option [value]="group.id">{{ group.name }}</option>
+        }
+      </select>
+      @if (moreGroups()) {
+      <button type="button" class="secondary" (click)="loadGroups(groupsPage + 1)">
+        مجموعات أخرى
+      </button>
+      } @if (!loading() && groups().length === 0) {
+      <p>أنشئ مجموعة واسند طالبًا إليها من <a routerLink="/admin/groups">إدارة المجموعات</a>.</p>
+      }
+      <div class="schedule-grid">
+        <div>
+          <label for="week">الأسبوع</label
+          ><input id="week" type="number" min="1" max="52" name="week" [(ngModel)]="weekNumber" />
+        </div>
+        <div>
+          <label for="day">اليوم</label
+          ><input id="day" type="number" min="1" max="7" name="day" [(ngModel)]="dayNumber" />
+        </div>
+        <div>
+          <label for="order">الترتيب</label
+          ><input id="order" type="number" min="1" max="100" name="order" [(ngModel)]="sortOrder" />
+        </div>
+      </div>
+      <button
+        type="button"
+        class="primary"
+        [disabled]="publishing() || !selectedVersionId || !selectedGroupId"
+        (click)="publish()"
+      >
+        {{ publishing() ? 'جارٍ النشر...' : 'انشر الدرس للمجموعة' }}
+      </button>
+      <p class="limit">
+        إذا بدأ طلاب المجموعة التدريب، يمنع النظام إعادة نشر منهجها حاليًا حفاظًا على تقدمهم.
+      </p>
+      <p class="limit">
+        رفع الصوت المحلي متاح في بيئة Development فقط حتى نضيف تخزين الملفات المخصص للإنتاج.
+      </p>
+    </div>
+  </div>
+</section>

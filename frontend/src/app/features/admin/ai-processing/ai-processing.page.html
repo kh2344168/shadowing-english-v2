@@ -1,1 +1,709 @@
-<app-feature-placeholder title="معالجة محتوى الدرس" />
+<section
+  class="ai-lesson-page"
+  dir="rtl"
+  aria-labelledby="ai-lesson-title"
+>
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">
+        إنشاء الدروس
+      </p>
+
+      <h1 id="ai-lesson-title">
+        إنشاء درس الشادوينج
+      </h1>
+
+      <p>
+        ارفع الصوت والنص، ابدأ المعالجة، ثم راجع كل مقطع قبل اعتماد الدرس.
+      </p>
+    </div>
+
+    <div
+      class="processor-status"
+      [class.connected]="connected()"
+      [class.disconnected]="!connected()"
+    >
+      <span class="status-dot"></span>
+
+      <span>
+        {{
+          checking()
+            ? 'جاري التحقق...'
+            : connected()
+              ? 'أداة AI جاهزة'
+              : 'أداة AI غير متصلة'
+        }}
+      </span>
+
+      @if (!connected()) {
+        <a routerLink="/admin/ai-tools">
+          إصلاح الاتصال
+        </a>
+      }
+    </div>
+  </header>
+
+  @if (error()) {
+    <div
+      class="message error-message"
+      role="alert"
+    >
+      <span>!</span>
+
+      <p>
+        {{ error() }}
+      </p>
+    </div>
+  }
+
+  @if (notice()) {
+    <div
+      class="message success-message"
+      role="status"
+    >
+      <span>✓</span>
+
+      <p>
+        {{ notice() }}
+      </p>
+    </div>
+  }
+
+  <div class="workflow-steps">
+    <div class="workflow-step active">
+      <span class="step-number">
+        1
+      </span>
+
+      <div>
+        <small>
+          المرحلة الحالية
+        </small>
+
+        <strong>
+          معالجة الشادوينج
+        </strong>
+      </div>
+    </div>
+
+    <div
+      class="workflow-step"
+      [class.ready]="!!result() && reviewed"
+    >
+      <span class="step-number">
+        @if (result() && reviewed) {
+          ✓
+        } @else {
+          🔒
+        }
+      </span>
+
+      <div>
+        <small>
+          {{
+            result() && reviewed
+              ? 'جاهزة بعد اعتماد الشادوينج'
+              : 'مقفلة حتى انتهاء الشادوينج'
+          }}
+        </small>
+
+        <strong>
+          معالجة كلمات الدرس
+        </strong>
+      </div>
+    </div>
+  </div>
+
+  <section class="setup-section">
+    <div class="upload-grid">
+      <article
+        class="upload-card"
+        [class.complete]="media"
+      >
+        <div class="card-title">
+          <span class="number">
+            1
+          </span>
+
+          <div>
+            <strong>
+              ملف الصوت أو الفيديو
+            </strong>
+
+            <small>
+              MP3 · WAV · M4A · MP4 · OGG · WEBM
+            </small>
+          </div>
+
+          @if (media) {
+            <span class="done-badge">
+              ✓ تم الرفع
+            </span>
+          }
+        </div>
+
+        @if (!media) {
+          <label
+            class="drop-zone"
+            for="lesson-media"
+          >
+            <span class="upload-icon">
+              ↑
+            </span>
+
+            <strong>
+              اختر ملف الصوت أو الفيديو
+            </strong>
+
+            <small>
+              الحد الأقصى 100 MB
+            </small>
+          </label>
+        } @else {
+          <div class="selected-file">
+            <span class="file-icon">
+              ♪
+            </span>
+
+            <div>
+              <strong dir="ltr">
+                {{ media.name }}
+              </strong>
+
+              <small>
+                {{ formatBytes(media.size) }}
+              </small>
+            </div>
+          </div>
+        }
+
+        <input
+          #mediaInput
+          id="lesson-media"
+          type="file"
+          accept=".wav,.mp3,.m4a,.mp4,.ogg,.webm"
+          (change)="chooseMedia($event)"
+          [disabled]="busy()"
+          hidden
+        />
+
+        @if (media) {
+          <div class="card-actions">
+            <label
+              for="lesson-media"
+              class="text-action"
+            >
+              استبدال الملف
+            </label>
+
+            <button
+              type="button"
+              class="danger-action"
+              (click)="clearMedia(mediaInput)"
+              [disabled]="busy()"
+            >
+              حذف
+            </button>
+          </div>
+        }
+      </article>
+
+      <article
+        class="upload-card"
+        [class.complete]="transcriptFile"
+      >
+        <div class="card-title">
+          <span class="number">
+            2
+          </span>
+
+          <div>
+            <strong>
+              ملف نص الدرس
+            </strong>
+
+            <small>
+              كل سطر = مقطع واحد
+            </small>
+          </div>
+
+          @if (transcriptFile) {
+            <span class="done-badge">
+              ✓ تم الرفع
+            </span>
+          }
+        </div>
+
+        @if (!transcriptFile) {
+          <label
+            class="drop-zone"
+            for="lesson-transcript"
+          >
+            <span class="upload-icon">
+              ↑
+            </span>
+
+            <strong>
+              اختر ملف TXT
+            </strong>
+
+            <small>
+              النص المطابق للصوت
+            </small>
+          </label>
+        } @else {
+          <div class="selected-file">
+            <span class="file-icon">
+              T
+            </span>
+
+            <div>
+              <strong dir="ltr">
+                {{ transcriptFile.name }}
+              </strong>
+
+              <small>
+                {{ transcriptLineCount() }}
+                مقطع
+              </small>
+            </div>
+          </div>
+        }
+
+        <input
+          #transcriptInput
+          id="lesson-transcript"
+          type="file"
+          accept=".txt,text/plain"
+          (change)="chooseTranscript($event)"
+          [disabled]="busy()"
+          hidden
+        />
+
+        @if (transcriptFile) {
+          <div class="card-actions">
+            <label
+              for="lesson-transcript"
+              class="text-action"
+            >
+              استبدال النص
+            </label>
+
+            <button
+              type="button"
+              class="danger-action"
+              (click)="clearTranscript(transcriptInput)"
+              [disabled]="busy()"
+            >
+              حذف
+            </button>
+          </div>
+        }
+      </article>
+    </div>
+
+    <article class="lesson-info-card">
+      <div class="section-title">
+        <span class="number">
+          3
+        </span>
+
+        <div>
+          <strong>
+            معلومات الدرس
+          </strong>
+
+          <small>
+            بيانات بسيطة تظهر في منشئ الدرس
+          </small>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <label>
+          <span>
+            عنوان الدرس
+          </span>
+
+          <input
+            type="text"
+            maxlength="160"
+            [(ngModel)]="title"
+            [disabled]="busy()"
+            placeholder="مثال: Asking for Directions"
+          />
+        </label>
+
+        <label>
+          <span>
+            وصف مختصر
+          </span>
+
+          <input
+            type="text"
+            maxlength="1000"
+            [(ngModel)]="description"
+            [disabled]="busy()"
+            placeholder="اختياري"
+          />
+        </label>
+      </div>
+    </article>
+
+    <article class="process-card">
+      @if (!busy() && !result()) {
+        <div>
+          <strong>
+            جاهز لمعالجة الشادوينج
+          </strong>
+
+          <p>
+            سيتم تنفيذ WhisperX على جهازك فقط.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          class="primary-button"
+          (click)="process()"
+          [disabled]="!canProcess()"
+        >
+          ابدأ معالجة الشادوينج
+        </button>
+      }
+
+      @if (busy()) {
+        <div class="processing-block">
+          <div class="processing-head">
+            <div>
+              <strong>
+                {{ phaseLabel() }}
+              </strong>
+
+              <small>
+                لا تغلق الأداة أثناء المعالجة.
+              </small>
+            </div>
+
+            <strong class="percentage">
+              {{ job()?.percent ?? 0 }}%
+            </strong>
+          </div>
+
+          <progress
+            [value]="job()?.percent ?? 0"
+            max="100"
+            aria-label="تقدم معالجة الدرس"
+          ></progress>
+
+          <button
+            type="button"
+            class="cancel-button"
+            (click)="cancel()"
+          >
+            إلغاء المعالجة
+          </button>
+        </div>
+      }
+
+      @if (result(); as lesson) {
+        <div class="process-success">
+          <span class="success-icon">
+            ✓
+          </span>
+
+          <div>
+            <strong>
+              تم تجهيز الشادوينج بنجاح
+            </strong>
+
+            <p>
+              {{ lesson.manifest.segments.length }}
+              مقطعًا جاهزًا للمراجعة
+            </p>
+          </div>
+        </div>
+      }
+    </article>
+  </section>
+
+  @if (result(); as lesson) {
+    <section
+      class="segments-section"
+      aria-labelledby="segments-title"
+    >
+      <div class="segments-header">
+        <div>
+          <p class="eyebrow">
+            المرحلة 4
+          </p>
+
+          <h2 id="segments-title">
+            مراجعة المقاطع
+          </h2>
+
+          <p>
+            اسمع كل مقطع. لو فيه خطأ اضغط تعديل، وعدّل هذا المقطع فقط.
+          </p>
+        </div>
+
+        <span class="segments-count">
+          {{ lesson.manifest.segments.length }}
+          مقطع
+        </span>
+      </div>
+
+      <div class="segments-list">
+        @for (
+          clip of lesson.manifest.segments;
+          track clip.audioFile;
+          let index = $index
+        ) {
+          <article class="segment-row">
+            <span class="segment-number">
+              {{ index + 1 }}
+            </span>
+
+            <div class="segment-content">
+              <strong dir="ltr">
+                {{ clip.text }}
+              </strong>
+
+              <small dir="ltr">
+                {{ formatTime(clip.start) }}
+                →
+                {{ formatTime(clip.end) }}
+                ·
+                {{ segmentDuration(clip.start, clip.end) }}s
+              </small>
+            </div>
+
+            <div class="segment-actions">
+              <button
+                type="button"
+                class="segment-button"
+                (click)="playSegment(index)"
+              >
+                @if (playingIndex() === index) {
+                  ■ إيقاف
+                } @else {
+                  ▶ تشغيل
+                }
+              </button>
+
+              <button
+                type="button"
+                class="segment-button edit"
+                (click)="openEditModal(index)"
+              >
+                ✎ تعديل
+              </button>
+            </div>
+          </article>
+        }
+      </div>
+
+      <div class="review-confirmation">
+        <label>
+          <input
+            type="checkbox"
+            [(ngModel)]="reviewed"
+            [disabled]="busy() || segmentSaving()"
+          />
+
+          <span>
+            راجعت النص والصوت وتوقيت المقاطع
+          </span>
+        </label>
+      </div>
+
+      <div class="final-action">
+        <div>
+          <strong>
+            الشادوينج جاهز؟
+          </strong>
+
+          <p>
+            سيتم نقل النتيجة الحالية إلى منشئ الدرس.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          class="primary-button"
+          (click)="sendToBuilder()"
+          [disabled]="!reviewed || busy() || segmentSaving()"
+        >
+          اعتماد الشادوينج والمتابعة
+        </button>
+      </div>
+
+      <article class="next-stage-card">
+        <div class="next-stage-icon">
+          🔒
+        </div>
+
+        <div>
+          <strong>
+            معالجة كلمات الدرس
+          </strong>
+
+          <p>
+            هنربط المرحلة دي بعد ما نقفل مرحلة الشادوينج بالكامل.
+          </p>
+        </div>
+      </article>
+    </section>
+  }
+
+  @if (editingIndex() !== null && result(); as lesson) {
+    <div
+      class="modal-backdrop"
+      role="presentation"
+      (click)="closeEditModal()"
+    >
+      <section
+        class="edit-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-modal-title"
+        (click)="$event.stopPropagation()"
+      >
+        <header class="modal-header">
+          <div>
+            <span class="segment-number large">
+              {{ (editingIndex() ?? 0) + 1 }}
+            </span>
+
+            <div>
+              <h2 id="edit-modal-title">
+                تعديل المقطع
+                {{ (editingIndex() ?? 0) + 1 }}
+              </h2>
+
+              <small dir="ltr">
+                {{ formatTime(editStart) }}
+                →
+                {{ formatTime(editEnd) }}
+              </small>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            class="close-button"
+            (click)="closeEditModal()"
+            [disabled]="segmentSaving()"
+            aria-label="إغلاق"
+          >
+            ×
+          </button>
+        </header>
+
+        <div class="modal-body">
+          <div class="audio-preview">
+            <div>
+              <strong>
+                اسمع المقطع الحالي
+              </strong>
+
+              <small>
+                المدة الحالية
+                {{ segmentDuration(editStart, editEnd) }}
+                ثانية
+              </small>
+            </div>
+
+            <audio
+              controls
+              preload="metadata"
+              [src]="editingPreviewUrl()"
+            ></audio>
+          </div>
+
+          <label class="modal-field">
+            <span>
+              نص المقطع
+            </span>
+
+            <textarea
+              dir="ltr"
+              rows="4"
+              maxlength="1000"
+              [(ngModel)]="editText"
+              [disabled]="segmentSaving()"
+            ></textarea>
+          </label>
+
+          <div class="time-grid">
+            <label class="modal-field">
+              <span>
+                البداية بالثانية
+              </span>
+
+              <input
+                type="number"
+                min="0"
+                [max]="lesson.manifest.duration"
+                step="0.01"
+                [(ngModel)]="editStart"
+                [disabled]="segmentSaving()"
+              />
+
+              <small dir="ltr">
+                {{ formatTime(editStart) }}
+              </small>
+            </label>
+
+            <label class="modal-field">
+              <span>
+                النهاية بالثانية
+              </span>
+
+              <input
+                type="number"
+                min="0"
+                [max]="lesson.manifest.duration"
+                step="0.01"
+                [(ngModel)]="editEnd"
+                [disabled]="segmentSaving()"
+              />
+
+              <small dir="ltr">
+                {{ formatTime(editEnd) }}
+              </small>
+            </label>
+          </div>
+
+          <p class="modal-help">
+            حفظ التعديل يعيد تجهيز صوت هذا المقطع حسب التوقيت الجديد، ثم يحدثه في القائمة.
+          </p>
+        </div>
+
+        <footer class="modal-footer">
+          <button
+            type="button"
+            class="secondary-button"
+            (click)="closeEditModal()"
+            [disabled]="segmentSaving()"
+          >
+            إلغاء
+          </button>
+
+          <button
+            type="button"
+            class="primary-button"
+            (click)="saveSegmentEdit()"
+            [disabled]="segmentSaving()"
+          >
+            {{
+              segmentSaving()
+                ? 'جاري حفظ التعديل...'
+                : 'حفظ التعديل'
+            }}
+          </button>
+        </footer>
+      </section>
+    </div>
+  }
+</section>

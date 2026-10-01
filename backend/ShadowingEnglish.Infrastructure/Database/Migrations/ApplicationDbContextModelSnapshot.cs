@@ -153,6 +153,311 @@ namespace ShadowingEnglish.Infrastructure.Database.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("ShadowingEnglish.Core.Groups.StudentGroupMembership", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AssignedByAdminId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("EndedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("EndedByAdminId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("StartedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("StudentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedByAdminId");
+
+                    b.HasIndex("EndedByAdminId");
+
+                    b.HasIndex("StudentId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_StudentGroupMemberships_ActiveStudent")
+                        .HasFilter("[EndedAtUtc] IS NULL");
+
+                    b.HasIndex("GroupId", "EndedAtUtc");
+
+                    b.HasIndex("StudentId", "StartedAtUtc");
+
+                    b.ToTable("StudentGroupMemberships", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StudentGroupMemberships_EndAfterStart", "[EndedAtUtc] IS NULL OR [EndedAtUtc] >= [StartedAtUtc]");
+                        });
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Groups.StudyGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CreateRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreateRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("CreatedByAdminId");
+
+                    b.ToTable("StudyGroups", (string)null);
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.CurriculumTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("CurriculumTemplates", (string)null);
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.GroupCurriculumAssignment", b =>
+                {
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PublishedCurriculumVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("GroupId");
+
+                    b.HasIndex("PublishedCurriculumVersionId");
+
+                    b.HasIndex("PublishedCurriculumVersionId", "GroupId");
+
+                    b.ToTable("GroupCurriculumAssignments", (string)null);
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.LessonDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("LessonDefinitions", (string)null);
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.LessonSegment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AudioStorageKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("LessonVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LessonVersionId", "Position")
+                        .IsUnique();
+
+                    b.ToTable("LessonSegments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_LessonSegments_Position", "[Position] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.LessonVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("LessonDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LessonDefinitionId", "VersionNumber")
+                        .IsUnique();
+
+                    b.ToTable("LessonVersions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_LessonVersions_Number", "[VersionNumber] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.PublishedCurriculumVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("AvailableAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CurriculumTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("PublishedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CurriculumTemplateId");
+
+                    b.HasIndex("GroupId", "CurriculumTemplateId", "VersionNumber")
+                        .IsUnique();
+
+                    b.ToTable("PublishedCurriculumVersions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PublishedCurriculumVersions_Number", "[VersionNumber] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.PublishedLessonSlot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("AvailableAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("DayNumber")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("LessonVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PublishedCurriculumVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int>("WeekNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LessonVersionId");
+
+                    b.HasIndex("PublishedCurriculumVersionId", "WeekNumber", "DayNumber", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("PublishedLessonSlots", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PublishedLessonSlots_Order", "[WeekNumber] > 0 AND [DayNumber] > 0 AND [SortOrder] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.StudentStageProgress", b =>
+                {
+                    b.Property<Guid>("StudentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("PublishedCurriculumVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SlotId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("StageKey")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<int>("CompletedSegments")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsComplete")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("StudentId", "PublishedCurriculumVersionId", "SlotId", "StageKey");
+
+                    b.HasIndex("PublishedCurriculumVersionId");
+
+                    b.HasIndex("SlotId", "PublishedCurriculumVersionId");
+
+                    b.ToTable("StudentStageProgress", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StudentStageProgress_Count", "[CompletedSegments] >= 0");
+                        });
+                });
+
             modelBuilder.Entity("ShadowingEnglish.Infrastructure.Identity.ApplicationUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -269,6 +574,127 @@ namespace ShadowingEnglish.Infrastructure.Database.Migrations
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Groups.StudentGroupMembership", b =>
+                {
+                    b.HasOne("ShadowingEnglish.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("AssignedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ShadowingEnglish.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("EndedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ShadowingEnglish.Core.Groups.StudyGroup", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ShadowingEnglish.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Groups.StudyGroup", b =>
+                {
+                    b.HasOne("ShadowingEnglish.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.GroupCurriculumAssignment", b =>
+                {
+                    b.HasOne("ShadowingEnglish.Core.Groups.StudyGroup", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ShadowingEnglish.Core.Learning.PublishedCurriculumVersion", null)
+                        .WithMany()
+                        .HasForeignKey("PublishedCurriculumVersionId", "GroupId")
+                        .HasPrincipalKey("Id", "GroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.LessonSegment", b =>
+                {
+                    b.HasOne("ShadowingEnglish.Core.Learning.LessonVersion", null)
+                        .WithMany()
+                        .HasForeignKey("LessonVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.LessonVersion", b =>
+                {
+                    b.HasOne("ShadowingEnglish.Core.Learning.LessonDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("LessonDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.PublishedCurriculumVersion", b =>
+                {
+                    b.HasOne("ShadowingEnglish.Core.Learning.CurriculumTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("CurriculumTemplateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ShadowingEnglish.Core.Groups.StudyGroup", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.PublishedLessonSlot", b =>
+                {
+                    b.HasOne("ShadowingEnglish.Core.Learning.LessonVersion", null)
+                        .WithMany()
+                        .HasForeignKey("LessonVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ShadowingEnglish.Core.Learning.PublishedCurriculumVersion", null)
+                        .WithMany()
+                        .HasForeignKey("PublishedCurriculumVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.StudentStageProgress", b =>
+                {
+                    b.HasOne("ShadowingEnglish.Core.Learning.PublishedCurriculumVersion", null)
+                        .WithMany()
+                        .HasForeignKey("PublishedCurriculumVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ShadowingEnglish.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ShadowingEnglish.Core.Learning.PublishedLessonSlot", null)
+                        .WithMany()
+                        .HasForeignKey("SlotId", "PublishedCurriculumVersionId")
+                        .HasPrincipalKey("Id", "PublishedCurriculumVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 #pragma warning restore 612, 618

@@ -1,0 +1,83 @@
+<section dir="rtl" class="mx-auto max-w-[1500px]">
+  <header class="mb-7 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <span class="text-xs font-black uppercase tracking-[.18em] text-[#2B78E4]"
+        >Admin Dashboard</span
+      >
+      <h1 class="mt-2 text-3xl font-black text-[#0B2A56] sm:text-4xl">نظرة كاملة على النظام</h1>
+      <p class="mt-2 max-w-2xl text-sm font-bold leading-7 text-[#64748B]">
+        إدارة الحسابات والمجموعات ومتابعة العمل من مكان واحد.
+      </p>
+    </div>
+    <span class="w-fit rounded-2xl bg-white px-4 py-3 text-xs font-black text-[#64748B] shadow-sm">
+      لوحة الإدارة
+    </span>
+  </header>
+
+  <section
+    class="mb-6 rounded-[28px] border border-[#BFE7E3] bg-[linear-gradient(135deg,#F1FBFA,#FFFFFF)] p-5 shadow-sm"
+  >
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <span class="text-xs font-black text-[#0F766E]">المسار السريع</span>
+        <h2 class="mt-1 text-xl font-black text-[#0B2A56]">أنشئ مجموعة واسند إليها الطلاب</h2>
+        <p class="mt-1 text-xs font-bold leading-6 text-[#64748B]">
+          افتح إدارة المجموعات لإنشاء مجموعة، ثم ابحث عن الطلاب وانقلهم إليها.
+        </p>
+      </div>
+      <a
+        routerLink="/admin/groups"
+        class="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[#17B3A6] px-5 text-sm font-black text-white no-underline"
+      >
+        إدارة المجموعات
+      </a>
+    </div>
+    <div class="mt-4 grid gap-3 sm:grid-cols-2">
+      <a
+        routerLink="/admin/accounts"
+        class="rounded-2xl border border-[#D7E5E3] bg-white p-4 text-[#0B2A56] no-underline transition hover:border-[#17B3A6]"
+      >
+        <span class="text-xs font-black text-[#0F766E]">1</span>
+        <strong class="mr-2 text-sm font-black">راجع حسابات الإدارة وصلاحياتها</strong>
+      </a>
+      <a
+        routerLink="/admin/groups"
+        class="rounded-2xl border border-[#D7E5E3] bg-white p-4 text-[#0B2A56] no-underline transition hover:border-[#17B3A6]"
+      >
+        <span class="text-xs font-black text-[#0F766E]">2</span>
+        <strong class="mr-2 text-sm font-black">أنشئ مجموعة واسند إليها الطلاب</strong>
+      </a>
+    </div>
+  </section>
+
+  <div class="grid gap-4 sm:grid-cols-2">
+    <a
+      routerLink="/admin/groups"
+      class="rounded-[24px] border border-[#DCE5F2] bg-white p-5 text-[#0B2A56] no-underline shadow-[0_14px_40px_rgba(11,42,86,.06)] transition hover:shadow-lg"
+    >
+      <span
+        class="material-symbols-outlined mb-3 rounded-xl bg-[#EFF4FF] p-2 text-[#00685F]"
+        aria-hidden="true"
+        >group_work</span
+      >
+      <strong class="block text-lg font-black">المجموعات</strong>
+      <p class="mb-0 mt-2 text-sm leading-6 text-[#64748B]">
+        إنشاء المجموعات، إسناد الطلاب، ومراجعة سجل نقلهم.
+      </p>
+    </a>
+    <a
+      routerLink="/admin/accounts"
+      class="rounded-[24px] border border-[#DCE5F2] bg-white p-5 text-[#0B2A56] no-underline shadow-[0_14px_40px_rgba(11,42,86,.06)] transition hover:shadow-lg"
+    >
+      <span
+        class="material-symbols-outlined mb-3 rounded-xl bg-[#EFF4FF] p-2 text-[#00685F]"
+        aria-hidden="true"
+        >admin_panel_settings</span
+      >
+      <strong class="block text-lg font-black">حسابات الإدارة</strong>
+      <p class="mb-0 mt-2 text-sm leading-6 text-[#64748B]">
+        إضافة أدمن ومراجعة الصلاحيات المتاحة لحسابك.
+      </p>
+    </a>
+  </div>
+</section>

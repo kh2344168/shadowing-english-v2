@@ -7,6 +7,8 @@ describe('TeacherRecordingsPage', () => {
     const fixture = TestBed.createComponent(TeacherRecordingsPage);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('h1')).toBeTruthy();
-    expect(fixture.nativeElement.textContent).toContain('ليست وظيفة مكتملة');
+    expect(fixture.nativeElement.querySelector('[role="status"]')?.textContent).toContain(
+      'غير متاح',
+    );
   });
 });

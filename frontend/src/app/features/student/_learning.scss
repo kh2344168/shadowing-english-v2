@@ -1,0 +1,209 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+.learning-page {
+  width: min(610px, calc(100% - 32px));
+  min-height: calc(100vh - 64px);
+  margin: 0 auto;
+  padding: 26px 0 100px;
+  color: #191c1e;
+}
+.page-title {
+  margin: 0 0 22px;
+  color: #00685f;
+  font-size: 22px;
+  font-weight: 850;
+}
+.learning-card {
+  display: block;
+  margin: 0 0 18px;
+  padding: 24px;
+  border: 1px solid #dce5e3;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 80, 72, 0.05);
+}
+.learning-card h1,
+.learning-card h2 {
+  margin: 6px 0 12px;
+  font-weight: 850;
+}
+.learning-card h1 {
+  font-size: 24px;
+}
+.learning-card h2 {
+  font-size: 19px;
+}
+.learning-card p {
+  color: #586461;
+  line-height: 1.9;
+}
+.learning-eyebrow {
+  color: #00685f;
+  font-size: 12px;
+  font-weight: 750;
+}
+.learning-back {
+  display: inline-block;
+  margin-bottom: 18px;
+  color: #00685f;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+.learning-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin: 8px 0;
+  padding: 10px 20px;
+  border: 0;
+  border-radius: 12px;
+  background: #00685f;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #005049;
+}
+.learning-button:hover {
+  background: #008378;
+}
+.learning-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.learning-button.subtle {
+  border: 1px solid #bcd6d1;
+  background: #edf8f5;
+  color: #005049;
+  box-shadow: none;
+}
+.learning-status {
+  padding: 22px;
+  border: 1px dashed #bcd6d1;
+  border-radius: 18px;
+  background: #fff;
+  color: #586461;
+  line-height: 1.8;
+}
+.learning-status.error {
+  border-color: #b44;
+  color: #942929;
+}
+.learning-status button {
+  border: 0;
+  background: transparent;
+  color: #00685f;
+  font: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.student-empty-state {
+  min-height: 300px;
+  padding: 35px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+  border: 1px dashed #bcd6d1;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.72);
+}
+.student-empty-state > span {
+  font-size: 46px;
+}
+.student-empty-state h2 {
+  margin-bottom: 6px;
+  font-size: 22px;
+}
+.student-empty-state p {
+  color: #6d858a;
+}
+.curriculum-list {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+.lesson-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0;
+  color: #191c1e;
+  text-decoration: none;
+}
+.lesson-row:hover {
+  border-color: #00685f;
+}
+.lesson-row > span:nth-child(2) {
+  display: grid;
+  flex: 1;
+  gap: 6px;
+}
+.lesson-row strong {
+  font-size: 15px;
+}
+.lesson-row small {
+  color: #586461;
+  font-size: 11px;
+}
+.lesson-row__number {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  border-radius: 50%;
+  background: #00685f;
+  color: #fff;
+  font-weight: 850;
+}
+.practice-card {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+.practice-card audio {
+  width: 100%;
+  margin: 12px 0;
+}
+.practice-phrase {
+  width: 100%;
+  padding: 22px;
+  border: 1px solid #bcd6d1;
+  border-radius: 15px;
+  background: #f7f9fb;
+  color: #191c1e !important;
+  font-size: 24px;
+  line-height: 1.4 !important;
+  text-align: left;
+  transition: background 0.2s;
+}
+.practice-phrase.is-playing {
+  background: #d8f4ef;
+  border-color: #00685f;
+}
+.next-action {
+  width: 100%;
+}
+progress {
+  display: block;
+  width: 100%;
+  accent-color: #00685f;
+}
+@media (max-width: 640px) {
+  .learning-page {
+    width: calc(100% - 24px);
+    padding-top: 20px;
+  }
+  .learning-card {
+    padding: 18px;
+  }
+}

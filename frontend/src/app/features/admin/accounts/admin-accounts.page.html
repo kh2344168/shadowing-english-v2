@@ -1,63 +1,170 @@
-<div class="min-w-0 text-slate-900" dir="rtl">
-  <section class="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
-    <a routerLink="/admin/dashboard" class="text-sm font-medium text-indigo-700">← لوحة الإدارة</a>
-    <h1 class="mt-3 text-2xl font-bold">إدارة الأدمنز</h1>
-    <p class="mt-2 text-sm text-slate-600">كل الأدمنز يقدروا يضيفوا أدمن جديد. حذف صلاحية الأدمن متاح لخالد فقط.</p>
+<main class="mx-auto w-full max-w-[1520px] pb-8 text-[#0B1C30]" dir="rtl">
+  <header class="mb-8 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <h1 class="m-0 text-2xl font-bold">إدارة الأدمنز</h1>
+        <span class="rounded-full bg-[#DAE2FD] px-2.5 py-1 text-xs font-semibold text-[#5C647A]"
+          >{{ admins().length }} حسابات</span
+        >
+      </div>
+      <p class="m-0 max-w-2xl text-sm leading-6 text-[#3E4947]">
+        إضافة حسابات الإدارة ومراجعة الصلاحيات. سحب صلاحية الأدمن متاح للأدمن الرئيسي فقط.
+      </p>
+    </div>
+  </header>
 
-    @if (error()) { <p role="alert" class="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{{ error() }}</p> }
-    @if (success()) { <p role="status" class="mt-4 rounded-lg bg-green-50 p-3 text-sm text-green-800">{{ success() }}</p> }
-
-    @if (loading()) {
-      <p role="status" class="mt-6 text-slate-600">جارٍ تحميل الصلاحيات...</p>
-    } @else {
-      <form class="mt-6 grid gap-4" (ngSubmit)="create()">
-        <h2 class="text-lg font-semibold">إضافة أدمن جديد</h2>
-        <label for="admin-email" class="text-sm font-medium">البريد الإلكتروني</label>
-        <input id="admin-email" name="email" type="email" required maxlength="256" autocomplete="off"
-          [(ngModel)]="email" [disabled]="saving()"
-          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-left" dir="ltr" />
-        <label for="admin-password" class="text-sm font-medium">كلمة مرور مبدئية</label>
-        <input id="admin-password" name="password" type="password" required minlength="10" maxlength="256"
-          autocomplete="new-password" [(ngModel)]="password" [disabled]="saving()"
-          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-left" dir="ltr" />
-        <p class="text-xs text-slate-600">استخدم كلمة مرور قوية وفريدة، وشاركها بطريقة آمنة. لا يوجد إرسال بريد تلقائي في المرحلة الحالية.</p>
-        <button type="submit" [disabled]="saving()" class="rounded-lg bg-indigo-700 px-4 py-2 font-semibold text-white disabled:opacity-50">
+  @if (error()) {
+  <p
+    role="alert"
+    class="mb-5 rounded-xl border border-[#FFDAD6] bg-[#FFDAD6]/40 px-4 py-3 text-sm font-semibold text-[#93000A]"
+  >
+    {{ error() }}
+  </p>
+  } @if (success()) {
+  <p
+    role="status"
+    class="mb-5 rounded-xl border border-[#A1F1E5] bg-[#EFFBF8] px-4 py-3 text-sm font-semibold text-[#005137]"
+  >
+    {{ success() }}
+  </p>
+  } @if (loading()) {
+  <p role="status" class="rounded-xl bg-white p-8 text-center text-sm text-[#6E7977] shadow-sm">
+    جارٍ تحميل الصلاحيات...
+  </p>
+  } @else {
+  <section aria-labelledby="add-admin-title" class="rounded-xl bg-white p-5 shadow-sm sm:p-6">
+    <div class="mb-5">
+      <h2 id="add-admin-title" class="m-0 text-lg font-bold">إضافة أدمن جديد</h2>
+      <p class="mb-0 mt-1 text-sm text-[#6E7977]">
+        أدخل البريد الإلكتروني وكلمة مرور مبدئية للحساب.
+      </p>
+    </div>
+    <form class="grid gap-4 md:grid-cols-2" (ngSubmit)="create()">
+      <div class="min-w-0">
+        <label for="admin-email" class="mb-2 block text-sm font-semibold">البريد الإلكتروني</label>
+        <input
+          id="admin-email"
+          name="email"
+          type="email"
+          required
+          maxlength="256"
+          autocomplete="off"
+          [(ngModel)]="email"
+          [disabled]="saving()"
+          dir="ltr"
+          class="min-h-11 w-full rounded-xl bg-[#EFF4FF] px-4 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-[#00685F]"
+        />
+      </div>
+      <div class="min-w-0">
+        <label for="admin-password" class="mb-2 block text-sm font-semibold"
+          >كلمة مرور مبدئية</label
+        >
+        <input
+          id="admin-password"
+          name="password"
+          type="password"
+          required
+          minlength="10"
+          maxlength="256"
+          autocomplete="new-password"
+          [(ngModel)]="password"
+          [disabled]="saving()"
+          dir="ltr"
+          class="min-h-11 w-full rounded-xl bg-[#EFF4FF] px-4 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-[#00685F]"
+        />
+      </div>
+      <p class="mb-0 text-xs leading-6 text-[#6E7977] md:col-span-2">
+        اختر كلمة مرور قوية وفريدة وشاركها بطريقة آمنة. لا يوجد إرسال بريد تلقائي في المرحلة
+        الحالية.
+      </p>
+      <div class="flex justify-end md:col-span-2">
+        <button
+          type="submit"
+          [disabled]="saving()"
+          class="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#00685F] px-5 text-sm font-semibold text-white shadow-sm hover:bg-[#004E47] disabled:opacity-50"
+        >
+          <span class="material-symbols-outlined text-[20px]" aria-hidden="true">person_add</span>
           {{ saving() ? 'جارٍ الإضافة...' : 'إضافة أدمن' }}
         </button>
-      </form>
-
-      <section aria-labelledby="admin-list-title" class="mt-9 border-t border-slate-200 pt-6">
-          <h2 id="admin-list-title" class="text-lg font-semibold">حسابات الأدمن</h2>
-          <ul class="mt-4 grid gap-3">
-            @for (admin of admins(); track admin.id) {
-              <li class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
-                <div class="min-w-0">
-                  <p class="break-all text-sm font-medium" dir="ltr">{{ admin.email }}</p>
-                  <p class="text-xs text-slate-500">{{ admin.isPrimaryAdmin ? 'خالد — الأدمن الرئيسي المحمي' : 'أدمن عادي' }}</p>
-                </div>
-                @if (admin.isPrimaryAdmin) {
-                  <span class="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">محمي</span>
-                } @else if (isPrimaryAdmin()) {
-                  @if (confirmRemoveId() === admin.id) {
-                    <div class="flex flex-wrap gap-2">
-                      <button type="button" [disabled]="!!removing()" (click)="remove(admin.id)"
-                        class="rounded-lg bg-red-700 px-3 py-2 text-sm text-white disabled:opacity-50">تأكيد سحب الصلاحية</button>
-                      <button type="button" [disabled]="!!removing()" (click)="confirmRemoveId.set(null)"
-                        class="rounded-lg border border-slate-300 px-3 py-2 text-sm">إلغاء</button>
-                    </div>
-                  } @else {
-                    <button type="button" [disabled]="!!removing()" (click)="confirmRemoveId.set(admin.id)"
-                      class="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-800">إزالة الأدمن</button>
-                  }
-                } @else {
-                  <span class="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600">عرض فقط</span>
-                }
-              </li>
-            } @empty {
-              <li class="text-sm text-slate-600">لا توجد حسابات أدمن متاحة.</li>
-            }
-          </ul>
-      </section>
-    }
+      </div>
+    </form>
   </section>
-</div>
+
+  <section aria-labelledby="admin-list-title" class="mt-8">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <h2 id="admin-list-title" class="m-0 text-lg font-bold">حسابات الأدمن</h2>
+      <span class="text-xs text-[#6E7977]">{{ admins().length }} حسابات مسجلة</span>
+    </div>
+    <ul class="grid gap-5 md:grid-cols-2">
+      @for (admin of admins(); track admin.id) {
+      <li class="min-w-0 rounded-xl bg-white p-5 shadow-sm transition hover:shadow-md">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <span
+              class="rounded-full px-2.5 py-1 text-xs font-semibold"
+              [class]="admin.isPrimaryAdmin ? 'bg-[#DDF7EC] text-[#005137]' : 'bg-[#E5EEFF] text-[#004E47]'"
+            >
+              {{ admin.isPrimaryAdmin ? 'الأدمن الرئيسي' : 'أدمن' }}
+            </span>
+            <strong class="mt-3 block break-all text-sm" dir="ltr">{{ admin.email }}</strong>
+            <span class="mt-2 block text-xs text-[#6E7977]"
+              >{{ admin.isPrimaryAdmin ? 'حساب محمي' : 'حساب إدارة' }}</span
+            >
+          </div>
+          <span
+            class="material-symbols-outlined rounded-lg bg-[#EFF4FF] p-2 text-[#004E47]"
+            aria-hidden="true"
+            >admin_panel_settings</span
+          >
+        </div>
+        <div class="mt-5 flex flex-wrap justify-end gap-2 border-t border-[#E5EEFF] pt-4">
+          @if (admin.isPrimaryAdmin) {
+          <span
+            class="inline-flex min-h-10 items-center rounded-xl bg-[#DDF7EC] px-4 text-xs font-semibold text-[#005137]"
+            >محمي من الإزالة</span
+          >
+          } @else if (isPrimaryAdmin()) { @if (confirmRemoveId() === admin.id) {
+          <button
+            type="button"
+            [disabled]="!!removing()"
+            (click)="remove(admin.id)"
+            class="min-h-10 rounded-xl bg-[#FFF0EE] px-4 text-sm font-semibold text-[#BA1A1A] disabled:opacity-50"
+          >
+            تأكيد سحب الصلاحية
+          </button>
+          <button
+            type="button"
+            [disabled]="!!removing()"
+            (click)="confirmRemoveId.set(null)"
+            class="min-h-10 rounded-xl bg-[#EFF4FF] px-4 text-sm font-semibold text-[#004E47]"
+          >
+            إلغاء
+          </button>
+          } @else {
+          <button
+            type="button"
+            [disabled]="!!removing()"
+            (click)="confirmRemoveId.set(admin.id)"
+            class="min-h-10 rounded-xl bg-[#FFF0EE] px-4 text-sm font-semibold text-[#BA1A1A] disabled:opacity-50"
+          >
+            إزالة الأدمن
+          </button>
+          } } @else {
+          <span
+            class="inline-flex min-h-10 items-center rounded-xl bg-[#EFF4FF] px-4 text-xs text-[#6E7977]"
+            >عرض فقط</span
+          >
+          }
+        </div>
+      </li>
+      } @empty {
+      <li
+        class="rounded-xl border border-dashed border-[#BEC9C6] bg-white p-8 text-center text-sm text-[#6E7977] md:col-span-2"
+      >
+        لا توجد حسابات أدمن متاحة.
+      </li>
+      }
+    </ul>
+  </section>
+  }
+</main>

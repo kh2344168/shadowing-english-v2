@@ -2,7 +2,8 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { FeaturePlaceholderComponent } from '../../../shared/ui/page-states/feature-placeholder.component';
 
 @Component({
-  selector: 'app-supervisor-dashboard-page', standalone: true,
+  selector: 'app-supervisor-dashboard-page',
+  standalone: true,
   imports: [FeaturePlaceholderComponent],
   templateUrl: './dashboard.page.html',
   styleUrl: './dashboard.page.scss',

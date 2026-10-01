@@ -1,1 +1,40 @@
-<app-feature-placeholder title="نظرة عامة على الدرس" />
+<section class="learning-page" dir="rtl" aria-labelledby="overview-title">
+  <a routerLink="/student/curriculum" class="learning-back">← المنهج الدراسي</a>
+  @if (loading()) {
+  <p role="status" class="learning-status">جارٍ تحميل الدرس...</p>
+  } @else if (missing()) {
+  <h1 id="overview-title" class="page-title">الدرس غير متاح</h1>
+  <p role="alert" class="learning-status">
+    قد لا يكون هذا الدرس منشورًا لمجموعتك أو لم يحن موعده بعد.
+  </p>
+  } @else if (error()) {
+  <h1 id="overview-title" class="page-title">نظرة عامة على الدرس</h1>
+  <p role="alert" class="learning-status">
+    تعذر تحميل الدرس. <button type="button" (click)="load()">إعادة المحاولة</button>
+  </p>
+  } @else if (lesson(); as data) {
+  <header class="learning-card lesson-intro">
+    <span class="learning-eyebrow"
+      >الأسبوع {{ data.weekNumber }} · اليوم {{ data.dayNumber }} · الدرس {{ data.sortOrder }}</span
+    >
+    <h1 id="overview-title">{{ data.title }}</h1>
+    <p>{{ data.description }}</p>
+  </header>
+  <div class="learning-card">
+    <h2>تدريب Shadowing</h2>
+    <p>استمع إلى كل جملة، كررها بصوتك ثم انتقل بنفسك إلى التالية.</p>
+    <p role="status">
+      {{ data.isComplete ? 'أنهيت التدريب؛ يمكنك مراجعته.' : 'أكملت ' + data.completedSegments + '
+      من ' + data.segmentCount + ' جملة.' }}
+    </p>
+    @if (data.segmentCount > 0) {
+    <a class="learning-button" [routerLink]="['/student/lessons', data.slotId, 'shadowing']"
+      >{{ data.isComplete ? 'أعد التدريب' : data.completedSegments ? 'أكمل التدريب' : 'ابدأ التدريب'
+      }} ←</a
+    >
+    } @else {
+    <p role="status">لا توجد جمل لهذا الدرس بعد.</p>
+    }
+  </div>
+  }
+</section>

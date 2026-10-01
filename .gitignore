@@ -42,3 +42,11 @@ frontend/test-results/
 # Test artifacts and local package lock state remain controlled by Git
 playwright-report/
 test-results/
+
+# Native processor environments, models, private links and Python caches
+.venv/
+__pycache__/
+*.pyc
+infrastructure/scripts/local-processor/models/
+infrastructure/scripts/local-processor/jobs/
+infrastructure/scripts/local-processor/shadowing-link.json

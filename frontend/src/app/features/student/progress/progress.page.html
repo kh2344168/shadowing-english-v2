@@ -1,1 +1,22 @@
-<app-feature-placeholder title="تقدمي" />
+<section class="learning-page" dir="rtl" aria-labelledby="progress-title">
+  <a routerLink="/student/dashboard" class="learning-back">← المسار التعليمي</a>
+  <h1 id="progress-title" class="page-title">تقدمي</h1>
+  @if (loading()) {
+  <p role="status" class="learning-status">جارٍ تحميل التقدم...</p>
+  } @else if (error()) {
+  <p role="alert" class="learning-status">
+    تعذر تحميل التقدم. <button type="button" (click)="load()">إعادة المحاولة</button>
+  </p>
+  } @else if (data(); as course) {
+  <div class="learning-card">
+    <h2>{{ course.curriculumTitle ?? 'لم يُنشر منهج بعد' }}</h2>
+    <p>
+      الدروس المكتملة في أول ٢٠ درسًا متاحًا: {{ completed(course) }} من {{ course.items.length }}
+    </p>
+    @if (course.hasMore) {
+    <p>يمكنك استعراض بقية الدروس من صفحة المنهج.</p>
+    }
+    <a routerLink="/student/curriculum" class="learning-button">عرض المنهج</a>
+  </div>
+  }
+</section>

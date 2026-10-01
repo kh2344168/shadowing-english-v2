@@ -1,1 +1,46 @@
-<app-feature-placeholder title="المنهج الدراسي" />
+<section class="learning-page" dir="rtl" aria-labelledby="curriculum-title">
+  <a routerLink="/student/dashboard" class="learning-back">← المسار التعليمي</a>
+  <h1 id="curriculum-title" class="page-title">المنهج الدراسي</h1>
+  @if (loading()) {
+  <p role="status" class="learning-status">جارٍ تحميل المنهج...</p>
+  } @else { @if (course(); as data) { @if (data.curriculumTitle) {
+  <header class="learning-card">
+    <span class="learning-eyebrow">{{ data.groupName }}</span>
+    <h2>{{ data.curriculumTitle }}</h2>
+  </header>
+  <ol class="curriculum-list" aria-label="الدروس المتاحة">
+    @for (lesson of lessons(); track lesson.slotId) {
+    <li>
+      <a
+        class="learning-card lesson-row"
+        [routerLink]="['/student/lessons', lesson.slotId, 'overview']"
+      >
+        <span class="lesson-row__number">{{ lesson.isComplete ? '✓' : lesson.sortOrder }}</span>
+        <span
+          ><small>الأسبوع {{ lesson.weekNumber }} · اليوم {{ lesson.dayNumber }}</small
+          ><strong>{{ lesson.title }}</strong>
+          <small
+            >{{ lesson.isComplete ? 'مكتمل' : lesson.completedSegments ? 'قيد التدريب' : 'جاهز
+            للتدريب' }}</small
+          ></span
+        ><span aria-hidden="true">←</span>
+      </a>
+    </li>
+    }
+  </ol>
+  @if (!lessons().length) {
+  <p role="status" class="learning-status">لا توجد دروس متاحة الآن.</p>
+  } @if (data.hasMore) {
+  <button type="button" class="learning-button" [disabled]="loadingMore()" (click)="nextPage()">
+    {{ loadingMore() ? 'جارٍ التحميل...' : 'عرض المزيد' }}
+  </button>
+  } } @else {
+  <p role="status" class="learning-status">
+    {{ data.groupName ? 'لم يُنشر منهج لمجموعتك بعد.' : 'لم تُضف إلى مجموعة دراسية بعد.' }}
+  </p>
+  } } @if (error()) {
+  <p role="alert" class="learning-status">
+    تعذر تحميل الدروس. <button type="button" (click)="nextPage()">إعادة المحاولة</button>
+  </p>
+  } }
+</section>

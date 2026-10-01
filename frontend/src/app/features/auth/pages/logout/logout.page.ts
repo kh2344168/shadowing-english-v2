@@ -12,9 +12,17 @@ import { AuthService } from '../../../../core/auth/auth.service';
       <section class="mx-auto max-w-md rounded-2xl bg-white p-7 shadow-sm">
         <h1 class="text-2xl font-bold">Sign out</h1>
         <p class="mt-2 text-slate-600">End your current session?</p>
-        @if (error()) { <p role="alert" class="mt-3 text-sm text-red-700">{{ error() }}</p> }
-        <button type="button" class="mt-6 rounded-lg bg-indigo-700 px-4 py-2 text-white disabled:opacity-50"
-          [disabled]="loading()" (click)="signOut()">{{ loading() ? 'Signing out...' : 'Sign out' }}</button>
+        @if (error()) {
+          <p role="alert" class="mt-3 text-sm text-red-700">{{ error() }}</p>
+        }
+        <button
+          type="button"
+          class="mt-6 rounded-lg bg-indigo-700 px-4 py-2 text-white disabled:opacity-50"
+          [disabled]="loading()"
+          (click)="signOut()"
+        >
+          {{ loading() ? 'Signing out...' : 'Sign out' }}
+        </button>
         <a href="/" class="ml-4 text-sm text-indigo-700">Back</a>
       </section>
     </main>

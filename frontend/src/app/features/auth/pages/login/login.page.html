@@ -1,0 +1,74 @@
+<section class="login-screen" dir="rtl" aria-labelledby="login-title">
+  <div class="login-story" aria-hidden="true">
+    <div class="login-story__brand">
+      <span>〽</span><strong>Shadowing</strong><small>English</small>
+    </div>
+    <div class="login-story__copy">
+      <span class="login-kicker">اسمع · ردد · اتكلم بثقة</span>
+      <h1>خلي الإنجليزي<br />جزء من يومك.</h1>
+      <p>دروس قصيرة، خطوات واضحة، ومراجعات ذكية تساعدك تثبّت النطق من غير تشتت.</p>
+    </div>
+    <div class="login-story__visual">
+      <span class="login-float login-float--one">Hello!</span>
+      <span class="login-character">🎧</span>
+      <span class="login-float login-float--two">You sound great</span>
+      <div class="login-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+  </div>
+
+  <main class="login-panel">
+    <div class="login-panel__inner">
+      <div class="login-mobile-brand"><span>〽</span><strong>Shadowing English</strong></div>
+      <span class="login-kicker">أهلًا برجوعك</span>
+      <h2 id="login-title">سجّل دخولك وكمّل من مكانك</h2>
+      <p class="login-hint">استخدم بيانات حسابك في Shadowing English.</p>
+
+      <form class="login-form" (ngSubmit)="submit()">
+        <div class="login-field">
+          <label for="login-email">البريد الإلكتروني</label>
+          <input
+            id="login-email"
+            name="email"
+            type="email"
+            autocomplete="username"
+            [(ngModel)]="email"
+            [disabled]="loading()"
+            placeholder="name@example.com"
+            dir="ltr"
+            required
+          />
+        </div>
+        <div class="login-field">
+          <label for="login-password">كلمة المرور</label>
+          <div class="login-password-wrap">
+            <input
+              id="login-password"
+              name="password"
+              [type]="showPassword ? 'text' : 'password'"
+              autocomplete="current-password"
+              [(ngModel)]="password"
+              [disabled]="loading()"
+              placeholder="••••••••"
+              dir="ltr"
+              required
+            />
+            <button
+              type="button"
+              (click)="showPassword = !showPassword"
+              [attr.aria-label]="showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'"
+            >
+              {{ showPassword ? 'إخفاء' : 'إظهار' }}
+            </button>
+          </div>
+        </div>
+        @if (error()) {
+        <p class="login-error" role="alert">{{ error() }}</p>
+        }
+        <button class="login-submit" type="submit" [disabled]="loading()">
+          {{ loading() ? 'جاري الدخول...' : 'دخول إلى مساري' }}<span aria-hidden="true">←</span>
+        </button>
+      </form>
+      <small class="login-support">محتاج مساعدة؟ تواصل مع مسؤول حسابك.</small>
+    </div>
+  </main>
+</section>

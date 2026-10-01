@@ -1,1 +1,28 @@
-<app-feature-placeholder title="مكتبة الدروس" />
+<section class="library" dir="rtl" aria-labelledby="library-title">
+  <header>
+    <div>
+      <h1 id="library-title">مكتبة دروس Shadowing</h1>
+      <p>الدروس المحفوظة في V2؛ الحفظ وحده لا ينشر الدرس للطلاب.</p>
+    </div>
+    <a routerLink="/admin/lesson-builder">إنشاء درس جديد</a>
+  </header>
+  @if (loading() && lessons().length === 0) {
+  <p role="status">جارٍ تحميل الدروس...</p>
+  } @if (error()) {
+  <p role="alert">
+    تعذر تحميل المكتبة. <button type="button" (click)="load(page() || 1)">إعادة المحاولة</button>
+  </p>
+  } @if (!loading() && lessons().length === 0 && !error()) {
+  <div class="empty">
+    لم تُنشئ درسًا بعد. <a routerLink="/admin/lesson-builder">ابدأ بأول درس Shadowing</a>.
+  </div>
+  } @for (lesson of lessons(); track lesson.versionId) {
+  <article class="lesson">
+    <h2>{{ lesson.title }}</h2>
+    <p>{{ lesson.description }}</p>
+    <span>{{ lesson.segmentCount }} جملة صوتية</span>
+    <a routerLink="/admin/lesson-builder">نشر الدرس لمجموعة ←</a>
+  </article>
+  } @if (more()) {
+  <button type="button" [disabled]="loading()" (click)="load(page() + 1)">عرض المزيد</button> }
+</section>

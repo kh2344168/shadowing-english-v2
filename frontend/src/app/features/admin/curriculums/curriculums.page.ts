@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { FeaturePlaceholderComponent } from '../../../shared/ui/page-states/feature-placeholder.component';
+import { RouterLink } from '@angular/router';
 
 @Component({
-  selector: 'app-admin-curriculums-page', standalone: true,
-  imports: [FeaturePlaceholderComponent],
+  selector: 'app-admin-curriculums-page',
+  standalone: true,
+  imports: [RouterLink],
   templateUrl: './curriculums.page.html',
   styleUrl: './curriculums.page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

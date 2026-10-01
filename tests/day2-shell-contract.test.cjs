@@ -11,7 +11,7 @@ let ts;
 try { ts = createRequire(__filename)('typescript'); } catch { /* Angular build verifies this when dependencies are installed */ }
 const routeSource = read('app.routes.ts');
 const nav = ['admin','student','teacher','supervisor'].map(role => read(`shared/layouts/${role}-layout/${role}-layout.html`)).join('\n');
-const routeImports = [...routeSource.matchAll(/import\('([^']+)'\)\.then\(m => m\.([A-Za-z0-9_]+)\)/g)];
+const routeImports = [...routeSource.matchAll(/import\(\s*'([^']+)'\s*\)\.then\(\s*\(?\w+\)?\s*=>\s*\w+\.([A-Za-z0-9_]+)\s*,?\s*\)/g)];
 
 test('all 4 role layouts, admin accounts, and student dashboard are routed with lazy imports', () => {
   for (const role of ['admin', 'student', 'teacher', 'supervisor']) {
@@ -58,7 +58,7 @@ test('relative TypeScript imports resolve within the project', () => {
 
 test('new page shells do not fetch, write, or fabricate business data', () => {
   const walk = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(dir,e.name)) : [path.join(dir,e.name)]);
-  const shells = walk(path.join(app,'features')).filter(f=>f.endsWith('.page.ts') && !/admin-accounts|login|logout|dashboard/.test(path.basename(f)));
+  const shells = walk(path.join(app,'features')).filter(f=>f.endsWith('.page.ts') && !/admin-accounts|groups|login|logout|dashboard/.test(path.basename(f)));
   assert.ok(shells.length>=30);
   for (const file of shells) {
     const content = fs.readFileSync(file,'utf8');

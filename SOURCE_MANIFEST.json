@@ -1,0 +1,2200 @@
+{
+  "project": "Shadowing English V2",
+  "createdAtUtc": "2026-09-30T13:27:45.118918+00:00",
+  "baseCommit": "5aefba843dacd0e9392f1a88fba36b4c10915e24",
+  "sourceFileCount": 438,
+  "files": [
+    {
+      "path": ".editorconfig",
+      "size": 188,
+      "sha256": "a6b98ea7cb6d61ed8d430dd0dffa46c87012b5cf859d4ce7207898954951fdcd"
+    },
+    {
+      "path": ".github/workflows/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": ".gitignore",
+      "size": 919,
+      "sha256": "b0652e8b852ecbd5c48cd471d1c357c6ec97a64b8be5dc868e4182cc6786491b"
+    },
+    {
+      "path": "APPLY_AND_ROLLBACK_AR.md",
+      "size": 3585,
+      "sha256": "00de065a382b83a283ba6b75cc0140cfc0c6542b8c7a35fd3d9245abf014a57a"
+    },
+    {
+      "path": "BASELINE_VERIFY_SHA256.tsv",
+      "size": 514,
+      "sha256": "0382f09f75370fdc3de54d19bbae297b43200770332cf05ffa92b13b1d6a48b0"
+    },
+    {
+      "path": "PATCH_FILES_SHA256.tsv",
+      "size": 21970,
+      "sha256": "6f4361bd4001d7d01c3e7c354bbd637539cae5af2257dc9afac007bee7e697d5"
+    },
+    {
+      "path": "START_HERE_AR.md",
+      "size": 3766,
+      "sha256": "181351f1752bf935c9070184190e3174a3345f312e2c6979210d278cf852d0b6"
+    },
+    {
+      "path": "backend/README.md",
+      "size": 1573,
+      "sha256": "12608f785257d4aa3041ebb7768f9ae2acc783c050c617f387ca6cf533f83427"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Bootstrap/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Bootstrap/LocalAccountProvisioner.cs",
+      "size": 5753,
+      "sha256": "075868df03a8eb4d871ca1308e4694c999bedef0f198638a52922c7acee58a5c"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Bootstrap/LocalDay2Fixture.cs",
+      "size": 9860,
+      "sha256": "4041c05f57d9c3a2dc49b65c6f4e7d4512f9b4f19744230b32777286a41949a9"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Common/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/DevelopmentMedia/day2-hello.wav",
+      "size": 71438,
+      "sha256": "7fe32cc5dcb7325cf5e7315f53ed170c101fbf738f32eecf311a305a4ce4494a"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/DevelopmentMedia/day2-practice.wav",
+      "size": 68398,
+      "sha256": "1e73a5f3752dd3c0fe1875700603b9bec1c170e20b6013066ccac817a3019423"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Diagnostics/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Middleware/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/AI/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Admin/AdminAccountsEndpoints.cs",
+      "size": 11953,
+      "sha256": "6f1f2cac9d895e18634fc419e914f010e0a33589ee421ce9c25dfecdcf064705"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Auth/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Auth/AuthEndpoints.cs",
+      "size": 7884,
+      "sha256": "7211d4a820cad14554527292b254471f442012bbcb474fc384880fee703d4ab8"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Curriculums/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Groups/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Groups/AdminGroupsEndpoints.cs",
+      "size": 19309,
+      "sha256": "fdc770eaf578f45e564b630e8c6568cef23d434deddada757f6cef412bbb8905"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Lessons/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Lessons/AdminShadowingEndpoints.cs",
+      "size": 24992,
+      "sha256": "779b5e3dd5954016f1ba26874b8e1fb3288d4b5996b9b6d32c6c9f3b0bebd1c4"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Media/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Media/AzureBlobShadowingMediaStore.cs",
+      "size": 5053,
+      "sha256": "bc78c0233d3d1be0fbdce3bb62cb69ee3cac3db58e5e4dd486ae25b3a7748caa"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Media/DevelopmentShadowingMediaStore.cs",
+      "size": 3276,
+      "sha256": "3c639f036819dba5f8a49760c641f005fc979a44b230d0e6f823449f60a59cc1"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Media/IShadowingMediaStore.cs",
+      "size": 4265,
+      "sha256": "354ca2145426fb468b5c16811cc5ad2c072b4136f29ca8bc0a08710660e07c1f"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Media/LocalShadowingMedia.cs",
+      "size": 1919,
+      "sha256": "0c6361c9e2202dda49b438a221d9f6f9123445f4a1bf1dd7162d85bcedbc5e37"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Media/ShadowingMediaStoreFactory.cs",
+      "size": 3912,
+      "sha256": "30e8252ba072aed7102cfc46d683e95b3007c09c9e8f6212f3fe8b4e028b51f9"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Media/WavAudio.cs",
+      "size": 2987,
+      "sha256": "e9a4e1448149aa87bfeaad7eccab7860a2c1a144642e2a658bdc01fe2816c09c"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Messaging/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Progress/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Recordings/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Reports/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/RoleAvailability/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Roles/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Settings/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Student/StudentLearningEndpoints.cs",
+      "size": 19342,
+      "sha256": "7388d8731b9067df3c9a5768fa6c6317cebe8dc939a56103c3de5d7503afcbfd"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Subscriptions/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Supervisors/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Teachers/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Modules/Users/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Program.cs",
+      "size": 6380,
+      "sha256": "44d4d0ec0b669215ee7e930f313de7409b6f260499b2e2e71823aa1b5bc695d7"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Program.cs.before-auth-api.bak",
+      "size": 2822,
+      "sha256": "e49e778251efc070f05bee594dd91e4af84f36bdd1a418c2fc82f274775288d6"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Program.cs.before-identity-db.bak",
+      "size": 621,
+      "sha256": "57f123a1977d59b57bfddfb3dba63cb6b2bf05f4cb178430ff19788cc65a4247"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/Properties/launchSettings.json",
+      "size": 294,
+      "sha256": "331ef114f7adaeae08cb160c5dd09d2a8222c3f52918d0ee717ae8df99f0340b"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/ShadowingEnglish.Api.csproj",
+      "size": 1008,
+      "sha256": "726ec90bf1e5d9f33d2fb489c5a9aad1380651016c15b12e02ed3da32d396016"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Api/appsettings.json",
+      "size": 142,
+      "sha256": "2d8bb40059df22089b94c025be8baad5a869b72d4d755d199c872f03bfe6f225"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Core/Groups/StudentGroupMembership.cs",
+      "size": 479,
+      "sha256": "41a93813018e84ef89765a3f6413845b2b51f29339751858389b560210eb82e0"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Core/Groups/StudyGroup.cs",
+      "size": 395,
+      "sha256": "c434eb00fbf61d7021445a5d9e5f42c16f9d79bee57052727b1a14f4684b2c80"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Core/Learning/CurriculumTemplate.cs",
+      "size": 162,
+      "sha256": "ef6dc27135b94d9e5208685b0dbd666602574e7e033853cc8fd42a21ca86bb75"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Core/Learning/GroupCurriculumAssignment.cs",
+      "size": 277,
+      "sha256": "20213e01c02830689aaf541d5f90f85c43236f37147bb6aafdf1c8353b9709bc"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Core/Learning/LessonDefinition.cs",
+      "size": 161,
+      "sha256": "b9952227aa3ffdd80d7937645e311081aef676cf17f0c27b1804ad79277ed24c"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Core/Learning/LessonSegment.cs",
+      "size": 382,
+      "sha256": "37c2eaeb2530916aa3a5178ecfc4c31da47edf5f101302cbbe6504cf5162372b"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Core/Learning/LessonVersion.cs",
+      "size": 442,
+      "sha256": "6d04cea9e1f764296e0b8b06a300b8ba1e027d7eda4bf31227311092db0d001e"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Core/Learning/PublishedCurriculumVersion.cs",
+      "size": 413,
+      "sha256": "8ff23fe470778beb73a0859dfe83175d1483fd86826490446e139b63ae12814d"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Core/Learning/PublishedLessonSlot.cs",
+      "size": 398,
+      "sha256": "679e365d708c4bbe5cd375bf58f57f1168645cdc0834e434c9f18d528b4be3d2"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Core/Learning/StudentStageProgress.cs",
+      "size": 511,
+      "sha256": "7f3a3e381ec11936d2267dd704fddda0747719fdc3ade75440d1b061cfde6503"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Core/ModuleContracts/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Core/ShadowingEnglish.Core.csproj",
+      "size": 205,
+      "sha256": "3472fccce5613343d3b55f6c2bbc48cbfd3de01f9cf32fd8607b8ac3a7e26395"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Core/Shared/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/AIProviders/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Database/ApplicationDbContext.cs",
+      "size": 9209,
+      "sha256": "8fde906305444c83f5eb8897fd25d46fbd1f40d1174f3f4b5c3a52b5d4b2d8d7"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Database/Configurations/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Database/Migrations/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Database/Migrations/20260923074328_InitialIdentity.Designer.cs",
+      "size": 10672,
+      "sha256": "782f923ef53e5b604bfbf8c6cf4facb2d721518bdfb70a060fc0ffdb963aea15"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Database/Migrations/20260923074328_InitialIdentity.cs",
+      "size": 10294,
+      "sha256": "326252ed90f1855872a4e9409237f32f5092120eb25d78a0ed41bcdb6e0188d3"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Database/Migrations/20260928154813_AddGroupsFoundation.Designer.cs",
+      "size": 15158,
+      "sha256": "293ff87bd3f5b0eb2a9dae0ffaf1a64e35aa8204ac6e027b1f658d965041b61e"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Database/Migrations/20260928154813_AddGroupsFoundation.cs",
+      "size": 5549,
+      "sha256": "6c30fd53616e03b19f8bc9df787774d1a217dfeaacb673722665867d21dbb25d"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Database/Migrations/20260928213000_AddStudentCore.Designer.cs",
+      "size": 27735,
+      "sha256": "601ca98983b77e0b7ce01f73442dbe30e1933d761acf356930344f48b9c86dbc"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Database/Migrations/20260928213000_AddStudentCore.cs",
+      "size": 10549,
+      "sha256": "0afbdf6cf44945aa5ba30f5d621ba116ce028866f5d3a43f14e7cea3ebf23a87"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Database/Migrations/ApplicationDbContextModelSnapshot.cs",
+      "size": 27608,
+      "sha256": "ec5393ead54bb73e7ae4b6595f92d84e009622d986a3e2f839b65a04f2f73310"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Database/Seed/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Identity/ApplicationUser.cs",
+      "size": 250,
+      "sha256": "499396ac5f78ebb176672eb3a393add7456eb565234079cbeb3aedd36a946ad0"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Jobs/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Observability/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/ShadowingEnglish.Infrastructure.csproj",
+      "size": 548,
+      "sha256": "7415f119897f288fd4e514da733b5fe021702815728d2f3bbececc227710be48"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Infrastructure/Storage/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Tests/Contract/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Tests/Integration/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.Tests/Unit/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/ShadowingEnglish.sln",
+      "size": 1968,
+      "sha256": "8204eaee1810bce4af0e729e6ff98b84a6e76ffd4212d6d3ff8cc6c25302b84c"
+    },
+    {
+      "path": "docs/ADR/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/APPROVED_RULES.md",
+      "size": 47467,
+      "sha256": "269288af7b8c08857d1bc8f6ef36236dad8a7219ae94cac19cff289dd62caf40"
+    },
+    {
+      "path": "docs/BUILD_PROGRESS.md",
+      "size": 9851,
+      "sha256": "5ec4fdb0771c8f3fc951d110e168f909d0d03283f39dd307453134125861883e"
+    },
+    {
+      "path": "docs/BUILD_PROGRESS_PRE_DAY2_2026-09-22.md",
+      "size": 15195,
+      "sha256": "1f769ee47f47a383487fe4c06d75721f77f11c8d51d0d7a7c18c41608548a5ec"
+    },
+    {
+      "path": "docs/CHANGELOG.md",
+      "size": 2210,
+      "sha256": "4701e33516ec9809a0ef23e873fef35555682709ec88c6a04ce884b1b08f2b9d"
+    },
+    {
+      "path": "docs/DAY2_DECISION_DELTA_2026-09-23.md",
+      "size": 1866,
+      "sha256": "b3bbf890524e6e4b6fcb06ec9ac787723999caa9423a0a3850f6a8d746c0e46e"
+    },
+    {
+      "path": "docs/DAY2_V1_DESIGN_PORT_HANDOFF_AR.md",
+      "size": 1455,
+      "sha256": "6f09c463cdbd395a2663eabcfd5a34cb4adee0fa228432593b71f6dcac858ddd"
+    },
+    {
+      "path": "docs/DAY3_READY_HANDOFF_AR.md",
+      "size": 5859,
+      "sha256": "2900c8f0558c089d488dde93d66969b3e0065ff4a21ff18d521ea72cff63b72d"
+    },
+    {
+      "path": "docs/HANDOFF.md",
+      "size": 1134,
+      "sha256": "1d97859de2c7cd96d503079434505f923b8230947f32afe6696b57749cf7f85b"
+    },
+    {
+      "path": "docs/PROJECT_MAP.md",
+      "size": 1610,
+      "sha256": "bd384e98b69c74e804c1c61c76dd140f0d4cc5da2e73aff2e633f45d6bfd71d0"
+    },
+    {
+      "path": "docs/RUNBOOKS/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/RUNBOOKS/AZURE_SHADOWING_MEDIA_AR.md",
+      "size": 10256,
+      "sha256": "e8ad7aa5ddd15e13612be0699f09a66246b1936719875358b29a2e43c1f0a23c"
+    },
+    {
+      "path": "docs/RUNBOOKS/DAY2_LOCAL_TEST_REPORT_2026-09-29.md",
+      "size": 14673,
+      "sha256": "5b851fdf3fdc49e2aafe3a46599c068b5d7dd7eded1ecabd85e18db804cebdf4"
+    },
+    {
+      "path": "docs/RUNBOOKS/DAY2_STUDENT_CORE.md",
+      "size": 12685,
+      "sha256": "f6fab0861d6cf0fcf02f7e6aaab4e6a29f4585d54c9b558c17902f02f75bc48e"
+    },
+    {
+      "path": "docs/RUNBOOKS/FIRST_RUN.md",
+      "size": 377,
+      "sha256": "9203844d3aeccf2fd67905c0dcbed3d0b195f8732035355869f1cf88c8a53135"
+    },
+    {
+      "path": "docs/RUNBOOKS/GROUPS_FOUNDATION.md",
+      "size": 4396,
+      "sha256": "bf3221efd30a53efdc63a69cb77d28346fa447ed8b51d12217752bfc13ebab35"
+    },
+    {
+      "path": "docs/RUNBOOKS/LOCAL_LESSON_PROCESSOR_AR.md",
+      "size": 13152,
+      "sha256": "d2489c586da311577b5d84321ff6d42b9d9dc34d43abf9b1020ff94fc59dcfc8"
+    },
+    {
+      "path": "docs/RUNBOOKS/LOCAL_PROCESSOR_TEST_REPORT_2026-09-29.md",
+      "size": 11325,
+      "sha256": "6b14b5b476a1f53e63b1c8c73bed1648e1163fa3833e6fb225e69bc73979fe7e"
+    },
+    {
+      "path": "docs/RUNBOOKS/MEDIA_STORAGE_TEST_REPORT_2026-09-30.md",
+      "size": 9960,
+      "sha256": "35f1b882e238361df3920b116d3e5af59bf4a888fdea38b4140eca9d99da2ec9"
+    },
+    {
+      "path": "docs/RUNBOOKS/PRIMARY_ADMIN_SETUP.md",
+      "size": 3306,
+      "sha256": "a2329ffd7fb2a52021476816d4a65e210fec9c5af6f1627bbe1047560d28e529"
+    },
+    {
+      "path": "docs/RUNBOOKS/SHADOWING_AUTHORING_SLICE.md",
+      "size": 8463,
+      "sha256": "77bd558e0d48ada73c4d155207b9d8e66519647c5c57c7c64b69bb13290e73c9"
+    },
+    {
+      "path": "docs/SELF_REVIEW_TOOLING.md",
+      "size": 3160,
+      "sha256": "c2fc124ca12374fd39762ed0703dd4680976d9b596a2e4388039bee63223535f"
+    },
+    {
+      "path": "docs/STRUCTURE_TREE.txt",
+      "size": 5031,
+      "sha256": "b0dc84492cc2a1fc6b83cbf9d1b4a6d3d1006c15d8b03560e8a4e657f9b2841f"
+    },
+    {
+      "path": "frontend/.postcssrc.json",
+      "size": 54,
+      "sha256": "6c96a7becce80948b52897a8968a815644d70dbe647227ae627a9cca0edcbabb"
+    },
+    {
+      "path": "frontend/.prettierignore",
+      "size": 67,
+      "sha256": "5fb85a60fb494fd84e74a182c5f6c3fac7576c67212a2aed79abda8a3d87bfc6"
+    },
+    {
+      "path": "frontend/.prettierrc.json",
+      "size": 138,
+      "sha256": "eb58e17ff10c65c05f6efdab35b75354d31b105e52fe2af98956a44d558a3d1f"
+    },
+    {
+      "path": "frontend/README.md",
+      "size": 507,
+      "sha256": "143a4f83a9cc98c61fe9fa6bc1efc671fd25980fb4123435586df4e3c1a5e017"
+    },
+    {
+      "path": "frontend/TOOLING.md",
+      "size": 1147,
+      "sha256": "2110b6902b29ebb7b9687d8029e91219398148fee92e6eef05d9013b86f875fd"
+    },
+    {
+      "path": "frontend/angular.json",
+      "size": 1749,
+      "sha256": "85bd251dd2a688788e4bfd4502ba09263e1ce9dd3635fc6eba3ba10597550c92"
+    },
+    {
+      "path": "frontend/eslint.config.mjs",
+      "size": 940,
+      "sha256": "5c29b13313df6e5f4a957dfb396cf7b7fd63daa9b423e125ee40a63637fca9ed"
+    },
+    {
+      "path": "frontend/package.json",
+      "size": 1420,
+      "sha256": "46ddc89515edafad9abded23ef0e357cec8d2b279c9d19db7f1b2557e99c1bc5"
+    },
+    {
+      "path": "frontend/playwright.config.ts",
+      "size": 1021,
+      "sha256": "1ad526a8cc27d2407887e32f72029055b3185b35d60b636b5c2890a3fa500310"
+    },
+    {
+      "path": "frontend/playwright.day2-test.config.ts",
+      "size": 545,
+      "sha256": "bd2b270838a11860b475a855f43277db984264ef089652adfcda76ad83716778"
+    },
+    {
+      "path": "frontend/playwright.local-processor.config.ts",
+      "size": 1104,
+      "sha256": "727f3145bfd58408f5d5733a6385177cd8a266ed3da4eb350e96d6c21225ca09"
+    },
+    {
+      "path": "frontend/postcss.config.mjs.bak",
+      "size": 70,
+      "sha256": "4cae941be9bc3bee9a6905e47ea7a51aee216d587d34a8cc4ae48f78fd6d8159"
+    },
+    {
+      "path": "frontend/public/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/public/downloads/local-processor-package.json",
+      "size": 50158,
+      "sha256": "4429cf677598a963339f71a9300ae6180c5cdc16aeca6481bb7e0c8bd2bd0c1d"
+    },
+    {
+      "path": "frontend/src/app/app.component.ts",
+      "size": 317,
+      "sha256": "f8eb5244d8d197f52608a31d44239812b97e6c12d5f19a25a9414505c89fdb07"
+    },
+    {
+      "path": "frontend/src/app/app.config.ts",
+      "size": 406,
+      "sha256": "d5deb25c842253240b7da7ae905a0f631773b18064717dd812c52932b6104146"
+    },
+    {
+      "path": "frontend/src/app/app.routes.ts",
+      "size": 8999,
+      "sha256": "2219f89693802d812f1e23670da20044f327e3cfdca75e0c27863ab3128afcee"
+    },
+    {
+      "path": "frontend/src/app/core/auth/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/core/auth/auth.service.ts",
+      "size": 788,
+      "sha256": "aadfa02d16ca96619678123a9fbd82c8fcc619a49bc9932db9d49439aa035ede"
+    },
+    {
+      "path": "frontend/src/app/core/config/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/core/config/role-availability.ts",
+      "size": 286,
+      "sha256": "edca103d4e42d7a9c7c5ed0954ab1c86ef8379f7a1fa23fde9915e6c9229bb16"
+    },
+    {
+      "path": "frontend/src/app/core/diagnostics/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/core/guards/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/core/guards/role.guard.ts",
+      "size": 1756,
+      "sha256": "c254e87b4cf145c6d29a32e17f6e0072b4b502538a70587c26a14d361ffa147f"
+    },
+    {
+      "path": "frontend/src/app/core/http/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/core/offline/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/core/role-availability/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/core/session/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/admin/accounts/admin-accounts.api.ts",
+      "size": 898,
+      "sha256": "391aad384926eaf265b333846c82e450bf98ac5daf24e681bbb9bae9fda64e72"
+    },
+    {
+      "path": "frontend/src/app/features/admin/accounts/admin-accounts.page.html",
+      "size": 6972,
+      "sha256": "d7ea7db5c471d39e80e7a9c04aaf37f5828a98c42e207e0940d5a06eb0e79e98"
+    },
+    {
+      "path": "frontend/src/app/features/admin/accounts/admin-accounts.page.scss",
+      "size": 67,
+      "sha256": "fc2f45b70829cc2988eea5db52af835c34c6e476d71cd7b52bc18d0cc9268f43"
+    },
+    {
+      "path": "frontend/src/app/features/admin/accounts/admin-accounts.page.ts",
+      "size": 5361,
+      "sha256": "e221059c836dcd5411a3eddb08dcc0d692ffd51d694b4af18e84a941dd4ea7a3"
+    },
+    {
+      "path": "frontend/src/app/features/admin/ai-processing/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/admin/ai-processing/ai-processing.page.html",
+      "size": 10274,
+      "sha256": "e31eab3daf721a804baaf8f1c1b540e11ab4b257add4086d9282ec8ff243896d"
+    },
+    {
+      "path": "frontend/src/app/features/admin/ai-processing/ai-processing.page.scss",
+      "size": 3073,
+      "sha256": "14f474575d7487eade5443afe3f9c6044899e262c29f757d107dd516a44b0984"
+    },
+    {
+      "path": "frontend/src/app/features/admin/ai-processing/ai-processing.page.spec.ts",
+      "size": 2410,
+      "sha256": "181b15c21630bb0ad4af6ea86706fbae7a397b7fef561914592a8ab194454b6d"
+    },
+    {
+      "path": "frontend/src/app/features/admin/ai-processing/ai-processing.page.ts",
+      "size": 14627,
+      "sha256": "8c9203f6df7b220e639c386b4c1f86ef05c95ae2bb6cd0b611bac8a684350c1d"
+    },
+    {
+      "path": "frontend/src/app/features/admin/ai-processing/local-archive.ts",
+      "size": 5578,
+      "sha256": "34cc5c770353921181b04bc441129fa18b506c0a3a158cf9757ec6bdbb3fe96b"
+    },
+    {
+      "path": "frontend/src/app/features/admin/ai-processing/local-lesson.ts",
+      "size": 5342,
+      "sha256": "ad38af2820961538347a7cce1ac35782904518abffef6a6e43ec48fac5ce0fb8"
+    },
+    {
+      "path": "frontend/src/app/features/admin/ai-processing/local-processor.client.ts",
+      "size": 12022,
+      "sha256": "894b40667f95bca44633a7c0184c2d3f65ab38c19fb60e387884020d4050e2b1"
+    },
+    {
+      "path": "frontend/src/app/features/admin/ai-processing/local-processor.spec.ts",
+      "size": 8279,
+      "sha256": "6294b91683462e1bff682fd40b9b6c1793541949b0b954bea360e08833d4ecba"
+    },
+    {
+      "path": "frontend/src/app/features/admin/curriculums/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/admin/curriculums/curriculums.page.html",
+      "size": 585,
+      "sha256": "b2da1e326d31933051c46ff18a70b206946e9ff272521eff4fec813a74469a74"
+    },
+    {
+      "path": "frontend/src/app/features/admin/curriculums/curriculums.page.scss",
+      "size": 349,
+      "sha256": "b0570599de6e51ea1865e3c0ab04d4ef95a05c9886e4b2ad23ac0222344f133d"
+    },
+    {
+      "path": "frontend/src/app/features/admin/curriculums/curriculums.page.spec.ts",
+      "size": 723,
+      "sha256": "f54ccf092f0ba9e14b4293f48dd624cb7fac9f82fbb8c7a455c6a6c2b3a2d689"
+    },
+    {
+      "path": "frontend/src/app/features/admin/curriculums/curriculums.page.ts",
+      "size": 387,
+      "sha256": "5831d0076762171c91ab29d041ab586ce2b829688ec3cae5dc50a16b9233fed5"
+    },
+    {
+      "path": "frontend/src/app/features/admin/dashboard/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/admin/dashboard/admin-dashboard.page.html",
+      "size": 3802,
+      "sha256": "76150e65ef8c3f5f800a893edf55f15d9a711034167c40aa41d77ca91435d188"
+    },
+    {
+      "path": "frontend/src/app/features/admin/dashboard/admin-dashboard.page.ts",
+      "size": 347,
+      "sha256": "290824d04f6f9bfc2489888b12640fe2b847f737ead1d515c84069d6782fa1f2"
+    },
+    {
+      "path": "frontend/src/app/features/admin/groups/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/admin/groups/groups.api.ts",
+      "size": 2174,
+      "sha256": "d534dacf3bfedc71d5b0c15eb0e12ab7fbeef1526a812077503824bf1e419e44"
+    },
+    {
+      "path": "frontend/src/app/features/admin/groups/groups.page.html",
+      "size": 16254,
+      "sha256": "e96828c69128a1709468dd5b2ffa14312889577a0d1e12b667d396824ff5aa5d"
+    },
+    {
+      "path": "frontend/src/app/features/admin/groups/groups.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/admin/groups/groups.page.spec.ts",
+      "size": 8511,
+      "sha256": "db81de412d4064d1454b940f61912fc3c196c57fe90593730d8b30ec10155e55"
+    },
+    {
+      "path": "frontend/src/app/features/admin/groups/groups.page.ts",
+      "size": 11508,
+      "sha256": "a2872adcdf134394f59bf3ab9987a32bec3a97b6c0075240c7bddd9bfdc0c4b6"
+    },
+    {
+      "path": "frontend/src/app/features/admin/lesson-builder/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/admin/lesson-builder/lesson-builder.page.html",
+      "size": 7598,
+      "sha256": "8ef5e2f7f6d229ccb7eb0f589761b1452c0f16d7d017459c357d720d48b74e23"
+    },
+    {
+      "path": "frontend/src/app/features/admin/lesson-builder/lesson-builder.page.scss",
+      "size": 3135,
+      "sha256": "3af1a52e1cc5170bb9c600199b2ee88d2bbd5b9c7c9d969893fc2113f268fcc8"
+    },
+    {
+      "path": "frontend/src/app/features/admin/lesson-builder/lesson-builder.page.spec.ts",
+      "size": 4692,
+      "sha256": "336f24e6ccd42b45837a8bb1f02d519b8b5451a95bb0a27d9fdd4419d90f8185"
+    },
+    {
+      "path": "frontend/src/app/features/admin/lesson-builder/lesson-builder.page.ts",
+      "size": 15362,
+      "sha256": "b9816b196e01c9ad9412d2d34e865fc7a67c1814add58fd2d8a45effcfc20933"
+    },
+    {
+      "path": "frontend/src/app/features/admin/lesson-builder/shadowing-authoring.api.ts",
+      "size": 1976,
+      "sha256": "fa899bfc31116e81bed9ccf640762a0f9292a673f24abcb26bba59b85fbd921b"
+    },
+    {
+      "path": "frontend/src/app/features/admin/lessons/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/admin/lessons/lessons.page.html",
+      "size": 1294,
+      "sha256": "793b2eda2ff9c2d087c1d2f72e68f9b86e2c48a3730b2e18722c153f589be298"
+    },
+    {
+      "path": "frontend/src/app/features/admin/lessons/lessons.page.scss",
+      "size": 955,
+      "sha256": "e53ce9efc564f020d32d84b567bb1de7a265341e70a5248e2249623e45cf9fbc"
+    },
+    {
+      "path": "frontend/src/app/features/admin/lessons/lessons.page.spec.ts",
+      "size": 1233,
+      "sha256": "481ece564f2a986e3bab67cadcb18fd81549fea3b32122c44a0be1f3e95c9c67"
+    },
+    {
+      "path": "frontend/src/app/features/admin/lessons/lessons.page.ts",
+      "size": 1719,
+      "sha256": "f809939419369f065ef9ce091f22a1b10725d2a180aa94846d6509072b1bfd8e"
+    },
+    {
+      "path": "frontend/src/app/features/admin/reports/reports.page.html",
+      "size": 382,
+      "sha256": "c470c35c9bdae6667bd74ec7c346d31f63c5cf64dc494b67b6bcc4aa4dc52a33"
+    },
+    {
+      "path": "frontend/src/app/features/admin/reports/reports.page.scss",
+      "size": 66,
+      "sha256": "6e3745ea5535e5985d6929d04057171671a10a1710e5873e324bce1a79bde0b9"
+    },
+    {
+      "path": "frontend/src/app/features/admin/reports/reports.page.spec.ts",
+      "size": 154,
+      "sha256": "ecdff92845507d3fd88d317efb0ddeb65de40fe34bdc5153b3cf2822a9439c59"
+    },
+    {
+      "path": "frontend/src/app/features/admin/reports/reports.page.ts",
+      "size": 299,
+      "sha256": "32b9e3bdafcd87c0304fd43d8ccf9809265f0ae93d78228fd436b69df15d105d"
+    },
+    {
+      "path": "frontend/src/app/features/admin/settings/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/admin/settings/settings.page.html",
+      "size": 55,
+      "sha256": "8ee1e4971dde69228eaf6acd24bf20120a9e978ccb5b3328baab2ab9bbeaaf2a"
+    },
+    {
+      "path": "frontend/src/app/features/admin/settings/settings.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/admin/settings/settings.page.spec.ts",
+      "size": 576,
+      "sha256": "3c908e3e1b8d30b8ed8b74ce23d75b7fbca96efe0913079283c9ed21761547d1"
+    },
+    {
+      "path": "frontend/src/app/features/admin/settings/settings.page.ts",
+      "size": 454,
+      "sha256": "786a67ffb83e4f409a56993fb2324f9b6a17115180f1672cae60de2317bdb4aa"
+    },
+    {
+      "path": "frontend/src/app/features/admin/students/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/admin/students/students.page.html",
+      "size": 49,
+      "sha256": "5521dabb59d33a4d9919bcb4696b2495731d05da5e03e787076dc15bacbcc536"
+    },
+    {
+      "path": "frontend/src/app/features/admin/students/students.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/admin/students/students.page.spec.ts",
+      "size": 576,
+      "sha256": "555c7228a45b96a334eaebff8962eae63cab54644bf2cd0821c48fc49dcf43ca"
+    },
+    {
+      "path": "frontend/src/app/features/admin/students/students.page.ts",
+      "size": 454,
+      "sha256": "6eac173ad1884aa5b19eef7cfd1c545d0da3ece5e74a4e1f5cfdaedcbf6510a8"
+    },
+    {
+      "path": "frontend/src/app/features/admin/subscriptions/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/admin/subscriptions/subscriptions.page.html",
+      "size": 57,
+      "sha256": "f3f9036856da9f7c968439dc3edc8e6b2029c7d0e9c19e8d5d25e24949f036b4"
+    },
+    {
+      "path": "frontend/src/app/features/admin/subscriptions/subscriptions.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/admin/subscriptions/subscriptions.page.spec.ts",
+      "size": 601,
+      "sha256": "fbc11cde5e35505c3df4f3ca9bfd5008eb629376300a4349e090d03d853a79ae"
+    },
+    {
+      "path": "frontend/src/app/features/admin/subscriptions/subscriptions.page.ts",
+      "size": 474,
+      "sha256": "45cf1a49b5a85495706955bb6216de08d4b728d6a8617b3718ef86ecf9beebe2"
+    },
+    {
+      "path": "frontend/src/app/features/admin/supervisors/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/admin/supervisors/supervisors.page.html",
+      "size": 53,
+      "sha256": "fad257f0868e1c5e176a1423dc0735f5909d4826030701aa19ab70af0d5c1637"
+    },
+    {
+      "path": "frontend/src/app/features/admin/supervisors/supervisors.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/admin/supervisors/supervisors.page.spec.ts",
+      "size": 591,
+      "sha256": "c3be44507a5fa5c67a2406b0b67beb27537286c3197ec696f52a266082456921"
+    },
+    {
+      "path": "frontend/src/app/features/admin/supervisors/supervisors.page.ts",
+      "size": 466,
+      "sha256": "ff06771bb7f4d089a382fdc7f4e079fc0dfb72ea57873309038f741434f037de"
+    },
+    {
+      "path": "frontend/src/app/features/admin/teachers/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/admin/teachers/teachers.page.html",
+      "size": 53,
+      "sha256": "fd5515a48d1748199e353932530cb3214776030c1fdde14de16f973bf5002d02"
+    },
+    {
+      "path": "frontend/src/app/features/admin/teachers/teachers.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/admin/teachers/teachers.page.spec.ts",
+      "size": 576,
+      "sha256": "2f1927e8341a93f2b3666040c309f4665fe30f8fecf78da4b58ec531eb564fa8"
+    },
+    {
+      "path": "frontend/src/app/features/admin/teachers/teachers.page.ts",
+      "size": 454,
+      "sha256": "b3c46ca1601549ed5e4b8367c8906381e6626f6afac8542302516b613f5e0df0"
+    },
+    {
+      "path": "frontend/src/app/features/admin/weekly-summaries/weekly-summaries.page.html",
+      "size": 446,
+      "sha256": "b227e90cc2b8e6a0b6ac419a95242a34b90f01d7b7be9388ddc8689eaffe58a2"
+    },
+    {
+      "path": "frontend/src/app/features/admin/weekly-summaries/weekly-summaries.page.scss",
+      "size": 66,
+      "sha256": "6e3745ea5535e5985d6929d04057171671a10a1710e5873e324bce1a79bde0b9"
+    },
+    {
+      "path": "frontend/src/app/features/admin/weekly-summaries/weekly-summaries.page.spec.ts",
+      "size": 187,
+      "sha256": "4778aedb62fc83bb1bbcc79fb784d66046fd29149ace6d889159210f3be923b5"
+    },
+    {
+      "path": "frontend/src/app/features/admin/weekly-summaries/weekly-summaries.page.ts",
+      "size": 334,
+      "sha256": "c9b3aa3d5f9c4353ba2554235e448db9b5102dd160e083f274f18ea85c21347f"
+    },
+    {
+      "path": "frontend/src/app/features/auth/pages/login/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/auth/pages/login/login.page.html",
+      "size": 3119,
+      "sha256": "27992f1da637cf553e6ea76ef70bf5ed907b8a5d80de4c43f4801a02e7d18d77"
+    },
+    {
+      "path": "frontend/src/app/features/auth/pages/login/login.page.scss",
+      "size": 7280,
+      "sha256": "a272a0355b7ac77f6207330a5336898c9487adf0f4619d3ee1697c427e1f507b"
+    },
+    {
+      "path": "frontend/src/app/features/auth/pages/login/login.page.ts",
+      "size": 1905,
+      "sha256": "41505762b31954d7a2a947428d1607d36d4404e7cfd0f6c060bc3476b9a5116a"
+    },
+    {
+      "path": "frontend/src/app/features/auth/pages/logout/logout.page.ts",
+      "size": 1962,
+      "sha256": "b021deb7f112ded37e54353436e3b22f3a77911383f27e0a2e6bff6763f06513"
+    },
+    {
+      "path": "frontend/src/app/features/student/_learning.scss",
+      "size": 3672,
+      "sha256": "b25ab524a7eda6b8be0cfb112a988e75a84c6a3161861cf08e1378c5ab6f8db1"
+    },
+    {
+      "path": "frontend/src/app/features/student/curriculum/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/student/curriculum/curriculum.page.html",
+      "size": 2106,
+      "sha256": "2945ef3d3e65b9e6c85109e5acf39a12774e1b0cc212fed259315178a0fb42de"
+    },
+    {
+      "path": "frontend/src/app/features/student/curriculum/curriculum.page.scss",
+      "size": 20,
+      "sha256": "49cc997b11b43d17b01096bc68e98cdfa9b23b2909da1a9e2a63b393fe2c3cce"
+    },
+    {
+      "path": "frontend/src/app/features/student/curriculum/curriculum.page.spec.ts",
+      "size": 2123,
+      "sha256": "4d87a06fd172f408c54ca9c4280261baf30a60999e09d8bf78436a7b2fda816b"
+    },
+    {
+      "path": "frontend/src/app/features/student/curriculum/curriculum.page.ts",
+      "size": 2172,
+      "sha256": "a83f52b1aab013f6a57fa6ae3b6f57ae3cf4d6c4c63bf2ac57cd739dc3e27c89"
+    },
+    {
+      "path": "frontend/src/app/features/student/dashboard/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/student/dashboard/student-dashboard.page.html",
+      "size": 2578,
+      "sha256": "50a9b3e47edd2547a6e846e437686178440d583b19cdad42509a27da9e40441d"
+    },
+    {
+      "path": "frontend/src/app/features/student/dashboard/student-dashboard.page.scss",
+      "size": 1892,
+      "sha256": "d30118e58892de49eaa4f439df8c83c551c3a64094ac5375faa1c1593b7c781a"
+    },
+    {
+      "path": "frontend/src/app/features/student/dashboard/student-dashboard.page.spec.ts",
+      "size": 1352,
+      "sha256": "59ddb766a78358e160f3d3fb6502f3ce5b3af4ae2edde8032f7c8a749a3b04e5"
+    },
+    {
+      "path": "frontend/src/app/features/student/dashboard/student-dashboard.page.ts",
+      "size": 1584,
+      "sha256": "4143fbd539148515ab1572eed2e9f41163aa9af5c9fd8eea8793e6587290f747"
+    },
+    {
+      "path": "frontend/src/app/features/student/knowledge-bank/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/student/knowledge-bank/knowledge-bank.page.html",
+      "size": 71,
+      "sha256": "b315b3f3c94b97f4e171a935b28233b6757bcec9f8b542c82b01c017c830541a"
+    },
+    {
+      "path": "frontend/src/app/features/student/knowledge-bank/knowledge-bank.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/student/knowledge-bank/knowledge-bank.page.spec.ts",
+      "size": 621,
+      "sha256": "9142580f0a4392f4930756004ca863d82bcd5c7d120c2b0dd62797b67d3cc31d"
+    },
+    {
+      "path": "frontend/src/app/features/student/knowledge-bank/knowledge-bank.page.ts",
+      "size": 481,
+      "sha256": "4fac66c86fb4687f709dc8ac84344ea3e0caa1818da5741ece436c8e9abe25e8"
+    },
+    {
+      "path": "frontend/src/app/features/student/learning.api.ts",
+      "size": 1861,
+      "sha256": "7b572e0c9354dac91f3513bd8d53e1802cf6ab61072c33b364e6cdd0da6a6dbf"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/conversation/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/conversation/conversation.page.html",
+      "size": 53,
+      "sha256": "e8675dfd0321a3b3c7f78a8c96ca8e40bb960b62a072c45871b71f7af291b803"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/conversation/conversation.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/conversation/conversation.page.spec.ts",
+      "size": 615,
+      "sha256": "3d8bf00c0802c204212e50d4509afea56b42837d5175aadb38edf1ce74930820"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/conversation/conversation.page.ts",
+      "size": 477,
+      "sha256": "20025f89599da891fe567e530c270707e8cba5a260342e8e2e80b2aec62cbe73"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/listen-type/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/listen-type/listen-type.page.html",
+      "size": 58,
+      "sha256": "99435110c1105bb8eeabb4301b097d5fb7854a4e4a9c9f98621ad05943e88776"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/listen-type/listen-type.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/listen-type/listen-type.page.spec.ts",
+      "size": 595,
+      "sha256": "2def87e53bdf9f6e1a692a0af013bb7fb14fa8eeaa9ef79d1de7beb0c7571431"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/listen-type/listen-type.page.ts",
+      "size": 472,
+      "sha256": "a9bec865030e9c773009f2b8b057a67824cb3c92893fe79ef6b22526d3b8ab0c"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/overview/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/overview/overview.page.html",
+      "size": 1938,
+      "sha256": "d749b1de7017a0a41f50f1a35e4c78497c46b6f7f1c3395e74eeb7a7849ffbc8"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/overview/overview.page.scss",
+      "size": 23,
+      "sha256": "0c213de62576aa3a5efad783639079dcb12f598c82ca161a67edc608077a57ae"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/overview/overview.page.spec.ts",
+      "size": 1620,
+      "sha256": "fb80b33ee12192bdcd55641341c9ffa9a460548c4ab20260ac6ea1c1c0840eac"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/overview/overview.page.ts",
+      "size": 1897,
+      "sha256": "08d6bcc2cbb24a6d02271d6703c66254cd31fe57367b0442d8689c3e0f49f5d5"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/quiz/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/quiz/quiz.page.html",
+      "size": 53,
+      "sha256": "10a0d89641fd64f7e8bb8005db2c2ac05747685f9d10a8228d1f94e8d4ffe319"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/quiz/quiz.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/quiz/quiz.page.spec.ts",
+      "size": 564,
+      "sha256": "a3e53945d8ef5e7baa3d93ba7089c436ec275afe1276d77d373a98cc3aa48dac"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/quiz/quiz.page.ts",
+      "size": 445,
+      "sha256": "7a97537bdf9e530b6a982bfe1be3ef69f768b9bba945f556d7ac095c47002ef7"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/shadowing/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/shadowing/shadowing.page.html",
+      "size": 2986,
+      "sha256": "aa3dbb1aba061f6d76aa7ef26581a77071434377bcabe82b9b8bbef4bf052a58"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/shadowing/shadowing.page.scss",
+      "size": 23,
+      "sha256": "0c213de62576aa3a5efad783639079dcb12f598c82ca161a67edc608077a57ae"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/shadowing/shadowing.page.spec.ts",
+      "size": 10175,
+      "sha256": "cda30bb84a248f7ab9af65906cee54f48006830e41556a21b099e59a99c9df98"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/shadowing/shadowing.page.ts",
+      "size": 10896,
+      "sha256": "374cafee5a19922f49d4a3acb3de4ff7bcf8c8be85d802280cc164ec23ebe95c"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/vocabulary/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/vocabulary/vocabulary.page.html",
+      "size": 53,
+      "sha256": "96e869b0ed2896b276d5f8733b1e80a1bedad79bba58123fd6fd4c4ea0306628"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/vocabulary/vocabulary.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/vocabulary/vocabulary.page.spec.ts",
+      "size": 594,
+      "sha256": "db6575eaea15615e8d351b7acfb75bfef28adb066917d456250d880a540aeb65"
+    },
+    {
+      "path": "frontend/src/app/features/student/lesson/vocabulary/vocabulary.page.ts",
+      "size": 469,
+      "sha256": "fa78c72ae65657893f5c3c279ac6cbf719161f8dd523cc63e53b515cbb019c24"
+    },
+    {
+      "path": "frontend/src/app/features/student/messages/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/student/messages/messages.page.html",
+      "size": 51,
+      "sha256": "bfcaf42c7170bea27e0eaecb621a3aeee71d5ab30a0c201f3dc069748db91951"
+    },
+    {
+      "path": "frontend/src/app/features/student/messages/messages.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/student/messages/messages.page.spec.ts",
+      "size": 584,
+      "sha256": "d0f7b45c1571ea4f8613ae0fb5f03866d445a3f8a5d27733f46d7fd404eeff26"
+    },
+    {
+      "path": "frontend/src/app/features/student/messages/messages.page.ts",
+      "size": 458,
+      "sha256": "789d6109f14d74b5bff7667acac1a1072f1d4a2f2e99c5e00643c42947747199"
+    },
+    {
+      "path": "frontend/src/app/features/student/progress/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/student/progress/progress.page.html",
+      "size": 1051,
+      "sha256": "d73f85503ddc648e4572d0c5af059e64537460e3dc221f786bedcd0933a0925b"
+    },
+    {
+      "path": "frontend/src/app/features/student/progress/progress.page.scss",
+      "size": 20,
+      "sha256": "49cc997b11b43d17b01096bc68e98cdfa9b23b2909da1a9e2a63b393fe2c3cce"
+    },
+    {
+      "path": "frontend/src/app/features/student/progress/progress.page.spec.ts",
+      "size": 1294,
+      "sha256": "48066289a1206b95fc214c4c59cb5009013f77b6962ddb7868e0b220becae120"
+    },
+    {
+      "path": "frontend/src/app/features/student/progress/progress.page.ts",
+      "size": 1662,
+      "sha256": "4cd6ff0c0b1f612b6249385496d45e5c424d693825c47e9c2f99eddc5b7d9194"
+    },
+    {
+      "path": "frontend/src/app/features/student/recordings/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/student/recordings/recordings.page.html",
+      "size": 53,
+      "sha256": "92239a45b30f1aece18a729d4a3cdaee0d8313f274e3fb9364cc63b2e1d0fb7c"
+    },
+    {
+      "path": "frontend/src/app/features/student/recordings/recordings.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/student/recordings/recordings.page.spec.ts",
+      "size": 594,
+      "sha256": "051bac61fb3ef29e16497369edd382bb12f130e1f375b957636820b040b6c1a9"
+    },
+    {
+      "path": "frontend/src/app/features/student/recordings/recordings.page.ts",
+      "size": 466,
+      "sha256": "561f2e0e6fe796fbdfe0bb880bd5dd52b5a38d67e118a56cacd82636020c6b14"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/dashboard/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/dashboard/dashboard.page.html",
+      "size": 58,
+      "sha256": "24414bb92384e0473fe0c7c6d1c7d4a8c328084023b20bd88a5bd9c1f4ac7ba3"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/dashboard/dashboard.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/dashboard/dashboard.page.spec.ts",
+      "size": 612,
+      "sha256": "3f4756489187b11a1882f32c58b494f9d3ca0a66170a4e90b76e6d3d79ec1806"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/dashboard/dashboard.page.ts",
+      "size": 468,
+      "sha256": "5a870788a2559ce1ac2909f4b99af6940bb09bd9e393f091cd0ff6ff32d68f85"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/messages/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/messages/messages.page.html",
+      "size": 51,
+      "sha256": "bfcaf42c7170bea27e0eaecb621a3aeee71d5ab30a0c201f3dc069748db91951"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/messages/messages.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/messages/messages.page.spec.ts",
+      "size": 596,
+      "sha256": "0e8509e9ee685ed084e8e13384ea272c342dd89cb8762d6b8db782a155a0b93c"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/messages/messages.page.ts",
+      "size": 464,
+      "sha256": "44c718853c78b940fb2d35b4072d3ae229b79e858fa73107721e398a6b9ebd06"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/reports/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/reports/reports.page.html",
+      "size": 53,
+      "sha256": "23e2fae10a588a59ff3a06fd347c47ac62ec0bb8a87bb33d7716d05e3389f6ca"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/reports/reports.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/reports/reports.page.spec.ts",
+      "size": 591,
+      "sha256": "dee90141f48b2bec59367556ee894f1208cbb950e2c94f3e45e628cfac17c2da"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/reports/reports.page.ts",
+      "size": 460,
+      "sha256": "d1c46da589421f2463f97dcedb2df2bb5f805c1e57598ecb2c16c92a2d984e43"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/students/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/students/students.page.html",
+      "size": 49,
+      "sha256": "5521dabb59d33a4d9919bcb4696b2495731d05da5e03e787076dc15bacbcc536"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/students/students.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/students/students.page.spec.ts",
+      "size": 596,
+      "sha256": "56bf8e264a93dff18403ee68d3a356897f058b773aa8f142f4b7864713d48fab"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/students/students.page.ts",
+      "size": 464,
+      "sha256": "b439bdf9128ddfb6e0dbec1adf641897f5f683461643d0b6fbf294086da5cc63"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/teachers/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/teachers/teachers.page.html",
+      "size": 53,
+      "sha256": "fd5515a48d1748199e353932530cb3214776030c1fdde14de16f973bf5002d02"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/teachers/teachers.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/teachers/teachers.page.spec.ts",
+      "size": 596,
+      "sha256": "95e340306b30ca9b54bb81af5ae99bea8bca43d5aa75884fa29be1b187bd9a75"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/teachers/teachers.page.ts",
+      "size": 464,
+      "sha256": "c4210d8dceb38d917e30c14bb1b6128a9b2f15611c1285a0214c5bcf0e7fd6e1"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/weekly-summary/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/weekly-summary/weekly-summary.page.html",
+      "size": 66,
+      "sha256": "fd4d358f9231ce285aa459cb8016595719ae28858921fedb8ef65aaabbceb74b"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/weekly-summary/weekly-summary.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/weekly-summary/weekly-summary.page.spec.ts",
+      "size": 633,
+      "sha256": "3083138df8dc96f67f2ef7df546704c3bc9c6f051368cc060207820714fed8e2"
+    },
+    {
+      "path": "frontend/src/app/features/supervisor/weekly-summary/weekly-summary.page.ts",
+      "size": 487,
+      "sha256": "3b8760f52994aa586f687a6046ace642d5ac9df116e3d1bdb44dae5ff78df4c7"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/dashboard/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/dashboard/dashboard.page.html",
+      "size": 58,
+      "sha256": "f7817cdc83d1b461e7b2645658b5e3fc8fa508b0e29109cc3b63906cb4b6922d"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/dashboard/dashboard.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/dashboard/dashboard.page.spec.ts",
+      "size": 589,
+      "sha256": "bdb1001901e53ef65490882b3f57de478df312cd28af966e71c5e04739da36e9"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/dashboard/dashboard.page.ts",
+      "size": 462,
+      "sha256": "28491decdc3eb3fabd26fc59f429c10f23d85ef9aee79ec866211204bc7d1ff7"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/feedback/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/feedback/feedback.page.html",
+      "size": 55,
+      "sha256": "bb804acf998443d468a954e1ed25226c98f946fd3cb09d8cc3ee2e2b5245b051"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/feedback/feedback.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/feedback/feedback.page.spec.ts",
+      "size": 584,
+      "sha256": "2500ca0165a79a0cdbc5692ef7137b2475c8e613d4bc089f5d22144dcb6c75c1"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/feedback/feedback.page.ts",
+      "size": 458,
+      "sha256": "d542e5eab65e5a4dd97610649f56fda863fe544978e53df493952e001e9de299"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/messages/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/messages/messages.page.html",
+      "size": 51,
+      "sha256": "bfcaf42c7170bea27e0eaecb621a3aeee71d5ab30a0c201f3dc069748db91951"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/messages/messages.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/messages/messages.page.spec.ts",
+      "size": 584,
+      "sha256": "c5cfff5914f71f72b279b519eb81b77da36cbb83d8fdfd52da32dae02694bd8f"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/messages/messages.page.ts",
+      "size": 458,
+      "sha256": "7710af0ee53e6d0ef04c342331b493d0e2e206afee3474753d166546eabc99e0"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/progress/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/progress/progress.page.html",
+      "size": 62,
+      "sha256": "0ee6efc388238e7f5b8aa7edf90758d25f0f988a8e4ddaebc9de1016941ec8a6"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/progress/progress.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/progress/progress.page.spec.ts",
+      "size": 584,
+      "sha256": "251363289e6203771e837a3086b49aba3f263c1ddbff545fa50182d9978d1a38"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/progress/progress.page.ts",
+      "size": 458,
+      "sha256": "2785266f0aa123d220fa53bcdafebb663d1ef6f5011c006e1e997a872a2c3612"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/recordings/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/recordings/recordings.page.html",
+      "size": 55,
+      "sha256": "3bda116e7e9e90316e29e32855a09a410335cb315352fad543a1b35a96fce0d0"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/recordings/recordings.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/recordings/recordings.page.spec.ts",
+      "size": 594,
+      "sha256": "78608fc4ff77b03e996db624e91924725f3b110142e989ff602fa3a19978210c"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/recordings/recordings.page.ts",
+      "size": 466,
+      "sha256": "17ed879e0be1ae48792c926ec2e8979c0c74772590abb58cd7e09c34d44062ff"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/students/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/students/students.page.html",
+      "size": 49,
+      "sha256": "5521dabb59d33a4d9919bcb4696b2495731d05da5e03e787076dc15bacbcc536"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/students/students.page.scss",
+      "size": 44,
+      "sha256": "f3a6dad9082a845b6e1d71b32517305a8db153bb2ad1be129efb7fde892d96dd"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/students/students.page.spec.ts",
+      "size": 584,
+      "sha256": "eab1d8ede817f417441226cb7c15c563703e4146ffbb8319dfcb068fe46dbbe1"
+    },
+    {
+      "path": "frontend/src/app/features/teacher/students/students.page.ts",
+      "size": 458,
+      "sha256": "f770ab97e6d4579edc8bf5588a3dda4389ccedf467ec6c616bb0217f96bb88e7"
+    },
+    {
+      "path": "frontend/src/app/shared/a11y/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/shared/directives/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/admin-layout/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/admin-layout/admin-layout.html",
+      "size": 5465,
+      "sha256": "2eb345062cd5b57f9ca0a7d586b437e3148f85e67aaed87a56b922238342d914"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/admin-layout/admin-layout.scss",
+      "size": 818,
+      "sha256": "a89c926f608820d64cd4e0385c4ca1533dd87daa56eee90d115916390ccc0686"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/admin-layout/admin-layout.ts",
+      "size": 3566,
+      "sha256": "80f0736a3e9c03bea1b0337d41d08a9e74338abe0a33973835d7d5763f038202"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/student-layout/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/student-layout/student-layout.html",
+      "size": 7004,
+      "sha256": "8300858782b5050d36b4067716c3225669987523a787c21e3e8a3352a1192f95"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/student-layout/student-layout.scss",
+      "size": 5394,
+      "sha256": "a5241b3a2d61c59acf3c9bd07f7bd50096e47e6950c2d51baa6b0904d20aaba0"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/student-layout/student-layout.ts",
+      "size": 590,
+      "sha256": "8cbc2d5fe9403a469e7f384e81b6b4ff9bf4c681e418ef8dc03ef87076b2e073"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/supervisor-layout/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/supervisor-layout/supervisor-layout.html",
+      "size": 4380,
+      "sha256": "60abeeb3768adeee0f5eb839fca67e9ee0a18e2388a3682a8f7a57570e6b4769"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/supervisor-layout/supervisor-layout.scss",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/supervisor-layout/supervisor-layout.ts",
+      "size": 505,
+      "sha256": "2891d351e5b6b1a70afd36ac479bfac37b2247ffe10b641e289f5161772a9f7f"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/teacher-layout/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/teacher-layout/teacher-layout.html",
+      "size": 6651,
+      "sha256": "e324030ddceeafb88f251d4359928aba796d77b413b60e8e44aa666049fee04a"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/teacher-layout/teacher-layout.scss",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/shared/layouts/teacher-layout/teacher-layout.ts",
+      "size": 493,
+      "sha256": "83a26bb9262c863fd0e56044c709c3d89d8c2b7e39c9b4c966a8f04ecefaf8b4"
+    },
+    {
+      "path": "frontend/src/app/shared/models/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/shared/pipes/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/shared/ui/buttons/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/shared/ui/feedback/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/shared/ui/forms/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/shared/ui/page-states/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/app/shared/ui/page-states/feature-placeholder.component.ts",
+      "size": 933,
+      "sha256": "d072254fd77f50842e12c3f4d8f1ae3f64907f2d786eff7fdb60e9a6ae37bfce"
+    },
+    {
+      "path": "frontend/src/app/shared/utils/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/environments/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/index.html",
+      "size": 769,
+      "sha256": "010bbb9d846ea3d723b3f06dfa6e4d96bf9d031297299ff1438abf7b70f7849a"
+    },
+    {
+      "path": "frontend/src/main.ts",
+      "size": 307,
+      "sha256": "b5c062ca699ad47b9ad4e0f1553be3a4c94fc9c603193afb10aa7f13e6b42ee9"
+    },
+    {
+      "path": "frontend/src/proxy.conf.json",
+      "size": 119,
+      "sha256": "5aa4f895000080d673f0163e0ce508a64829c7a8fc0f7c62908b26c8ed985a7b"
+    },
+    {
+      "path": "frontend/src/proxy.day2-test.conf.json",
+      "size": 119,
+      "sha256": "b97611d9c0efc38e06f59fbb4417fbb103225cdab64f1e3dd3cade615ce788ad"
+    },
+    {
+      "path": "frontend/src/styles.scss",
+      "size": 1539,
+      "sha256": "41047b839e25de18f80a6d84540c6bb8c114aa0cae493f5230e9662848e4a692"
+    },
+    {
+      "path": "frontend/src/styles/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/src/styles/_mixins.scss",
+      "size": 72,
+      "sha256": "728b0fa3d9805891ef72e755e90371dfc8433b14b47578d75d00b5441e96928d"
+    },
+    {
+      "path": "frontend/src/styles/_theme.scss",
+      "size": 85,
+      "sha256": "c54264e83e4eae21e5048b63afb975a4d8f8fd2a0acf3b23472ddddfc6734e75"
+    },
+    {
+      "path": "frontend/src/styles/_tokens.scss",
+      "size": 228,
+      "sha256": "77fb9919cc5ce513ddcbf5b25e869c478e1e87dcbf4ddc8a023996446be93af7"
+    },
+    {
+      "path": "frontend/src/tailwind.css",
+      "size": 4452,
+      "sha256": "079f83596cae21ffb1e8c2502509b5eff386d23ceb980a2716c0fc2796c52ef6"
+    },
+    {
+      "path": "frontend/tsconfig.app.json",
+      "size": 170,
+      "sha256": "5f4183f0947c9a412d936e7ae2a5967d5692a0c9952325f9e8050fccb135d82a"
+    },
+    {
+      "path": "frontend/tsconfig.json",
+      "size": 809,
+      "sha256": "cb73a8e79833e05fbc1a7a8e45e46ff5b14e31537250342cd52f4da6e1c77f48"
+    },
+    {
+      "path": "frontend/tsconfig.spec.json",
+      "size": 187,
+      "sha256": "3f802355c57bb9b3edeb2acd285ee6f43467746a8560dd4f669a9c345868a73a"
+    },
+    {
+      "path": "infrastructure/azure/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "infrastructure/environments/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "infrastructure/scripts/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "infrastructure/scripts/build-local-processor-package.py",
+      "size": 931,
+      "sha256": "3ed43f2381e5d88854a0ff63717199576c31b3c0960e4d35cb2035f95bfb3f7d"
+    },
+    {
+      "path": "infrastructure/scripts/local-processor/Install.cmd",
+      "size": 121,
+      "sha256": "5c87a15b1434d4d27d4d00dd55d11f34df1cc7c50e9958a1cfac926d52f1891e"
+    },
+    {
+      "path": "infrastructure/scripts/local-processor/Install.ps1",
+      "size": 5756,
+      "sha256": "566aa07a0df60322ea04e0fec896000c6b25dbbd896ac23cb53221c4d734cc19"
+    },
+    {
+      "path": "infrastructure/scripts/local-processor/PrepareLesson.cmd",
+      "size": 127,
+      "sha256": "1681258b2216a1641c1f5d812ff2d780ea93f0d04839b94ae8771a9f57047149"
+    },
+    {
+      "path": "infrastructure/scripts/local-processor/PrepareLesson.ps1",
+      "size": 1582,
+      "sha256": "8755bc23a38c7ceac8a8c22fbd235d1722895fbc16806ccccbdb72c4efc3f940"
+    },
+    {
+      "path": "infrastructure/scripts/local-processor/README_AR.md",
+      "size": 6796,
+      "sha256": "25b5629e067120c5bf6a86a60b6a7f0a777c32a03d5c4829f806e3bc41dc68b2"
+    },
+    {
+      "path": "infrastructure/scripts/local-processor/Start.cmd",
+      "size": 119,
+      "sha256": "3675479e48db9fa27499ddef598bc72529100846c4ae3fa77e82d3243d7b2119"
+    },
+    {
+      "path": "infrastructure/scripts/local-processor/Start.ps1",
+      "size": 565,
+      "sha256": "ae494367d797f57f700cb8834de9bcc81a4a9fbe3a577eeaca17e01c62bb855b"
+    },
+    {
+      "path": "infrastructure/scripts/local-processor/contracts.py",
+      "size": 5950,
+      "sha256": "56f0a4109abcdfad1cf223d7bd303eb3f53e775dfeca6860b9eb0993203da290"
+    },
+    {
+      "path": "infrastructure/scripts/local-processor/prepare.py",
+      "size": 3754,
+      "sha256": "cb89d97ec24606d69e940f9ac51eb7632b56e7256fe2895af09fc3a93909bea6"
+    },
+    {
+      "path": "infrastructure/scripts/local-processor/requirements.txt",
+      "size": 167,
+      "sha256": "aeff03da3d4cc4b773c8600c9e7b9222df4fda3c79960a81f98e1225cddb6dc8"
+    },
+    {
+      "path": "infrastructure/scripts/local-processor/server.py",
+      "size": 17879,
+      "sha256": "e0000fa0e926ecea3c0347a6e1a713d28a12ba46e29706b86772299e61c4340a"
+    },
+    {
+      "path": "infrastructure/scripts/local-processor/worker.py",
+      "size": 4857,
+      "sha256": "c03fc1eeb0a799b9f1208164c502319d7a5cb815144bbb4f2101d8deb969352d"
+    },
+    {
+      "path": "package-lock.json",
+      "size": 373858,
+      "sha256": "41dccaf8c5ef9e707879cd15d70cfa8ce7d7f83d9cf4d3fd5689872d6806b0c3"
+    },
+    {
+      "path": "package.json",
+      "size": 927,
+      "sha256": "8731877d27570e5b73669408f7ec3094dd9ca7f4d2fa6bbfd85dce4ad8710f28"
+    },
+    {
+      "path": "patches/_backups/day1-finish/backend/ShadowingEnglish.Api/Modules/Auth/AuthEndpoints.cs",
+      "size": 6778,
+      "sha256": "e185cb2b1d04b591adc74f947104db0cd1b5c480a9dc2803059e04b8283f2fda"
+    },
+    {
+      "path": "patches/_backups/day1-finish/backend/ShadowingEnglish.Api/Program.cs",
+      "size": 3245,
+      "sha256": "a0edb14f11da3edab7cc469a1510b5cb9d5bcb7d491897dd18301ea9307a4a3f"
+    },
+    {
+      "path": "patches/_backups/day1-finish/frontend/src/app/app.routes.ts",
+      "size": 305,
+      "sha256": "9c3817d682c9151cb53538180cfadea645c01dcb89e7b84e7faa3f2000dc3aac"
+    },
+    {
+      "path": "patches/_backups/day1-finish/frontend/src/app/features/student/dashboard/student-dashboard.page.html",
+      "size": 2196,
+      "sha256": "6a27a34ff8c861f9cf468953fff0ccfe0a3606eec4eac85df8ae91b192abca4f"
+    },
+    {
+      "path": "patches/shadowing-v2-auth-api/README-AR.txt",
+      "size": 1897,
+      "sha256": "c15dfa885a0557c8b5f13dd43aac12ffe01f27a373fb358655c4f5d7c5cc8ed1"
+    },
+    {
+      "path": "patches/shadowing-v2-auth-api/apply.ps1",
+      "size": 1965,
+      "sha256": "dd851100afcb77f457c0f0486f81c9a1321a091aec1d95427f1f8f898f77ab3b"
+    },
+    {
+      "path": "patches/shadowing-v2-auth-api/baseline/backend/ShadowingEnglish.Api/Program.cs",
+      "size": 2822,
+      "sha256": "e49e778251efc070f05bee594dd91e4af84f36bdd1a418c2fc82f274775288d6"
+    },
+    {
+      "path": "patches/shadowing-v2-auth-api/payload/backend/ShadowingEnglish.Api/Modules/Auth/AuthEndpoints.cs",
+      "size": 6778,
+      "sha256": "e185cb2b1d04b591adc74f947104db0cd1b5c480a9dc2803059e04b8283f2fda"
+    },
+    {
+      "path": "patches/shadowing-v2-auth-api/payload/backend/ShadowingEnglish.Api/Program.cs",
+      "size": 3245,
+      "sha256": "a0edb14f11da3edab7cc469a1510b5cb9d5bcb7d491897dd18301ea9307a4a3f"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/README-AR.txt",
+      "size": 2196,
+      "sha256": "20d9ac41a15ce97ad98a7a51a4d8de443c1a4019294497dba0ce6657dc001c4e"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/apply.ps1",
+      "size": 5122,
+      "sha256": "1448de36ef77de37288e86d25606feb6de6338cd5a167817ceb29149db2a3b2f"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/baseline/backend/ShadowingEnglish.Api/Modules/Auth/AuthEndpoints.cs",
+      "size": 6778,
+      "sha256": "e185cb2b1d04b591adc74f947104db0cd1b5c480a9dc2803059e04b8283f2fda"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/baseline/backend/ShadowingEnglish.Api/Program.cs",
+      "size": 3245,
+      "sha256": "a0edb14f11da3edab7cc469a1510b5cb9d5bcb7d491897dd18301ea9307a4a3f"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/baseline/frontend/src/app/app.routes.ts",
+      "size": 305,
+      "sha256": "9c3817d682c9151cb53538180cfadea645c01dcb89e7b84e7faa3f2000dc3aac"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/payload/backend/ShadowingEnglish.Api/Bootstrap/LocalAccountProvisioner.cs",
+      "size": 5753,
+      "sha256": "075868df03a8eb4d871ca1308e4694c999bedef0f198638a52922c7acee58a5c"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/payload/backend/ShadowingEnglish.Api/Modules/Auth/AuthEndpoints.cs",
+      "size": 7884,
+      "sha256": "7211d4a820cad14554527292b254471f442012bbcb474fc384880fee703d4ab8"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/payload/backend/ShadowingEnglish.Api/Program.cs",
+      "size": 3502,
+      "sha256": "6a14d39ef3c9af45597df36abdb7fe04a3d63c4d45211f848b14c2483803b135"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/payload/frontend/src/app/app.routes.ts",
+      "size": 879,
+      "sha256": "58ed06418e3e53e52bd5393f82feb6fcaccf0167a23bc53cd85378389438d96e"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/payload/frontend/src/app/core/auth/auth.service.ts",
+      "size": 788,
+      "sha256": "aadfa02d16ca96619678123a9fbd82c8fcc619a49bc9932db9d49439aa035ede"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/payload/frontend/src/app/core/guards/role.guard.ts",
+      "size": 1326,
+      "sha256": "a1eb18f709731235eba2c3a625750e91ab6a65f5838c8fe2d025f950f788a485"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/payload/frontend/src/app/features/admin/dashboard/admin-dashboard.page.ts",
+      "size": 835,
+      "sha256": "a2f3da72493be132944cccc7226c49707ffe9e1ae8d99d3d0dadb7bf028cb1e7"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/payload/frontend/src/app/features/auth/pages/login/login.page.ts",
+      "size": 3111,
+      "sha256": "4520e2904a4e9b87aa7bdac8451a092835c898e0abc7e2872c5b0abccef30795"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/payload/frontend/src/app/features/auth/pages/logout/logout.page.ts",
+      "size": 1885,
+      "sha256": "85454d31e06a6b16da88c9ec173fb07a2f8ccc7f921811a3d7c51895ca6c1728"
+    },
+    {
+      "path": "patches/shadowing-v2-day1-finish/verify-auth.ps1",
+      "size": 4070,
+      "sha256": "57de7a65bbf1f9085acd39a5ee5b1338bb025d7bed8fa3b84797c65553582c90"
+    },
+    {
+      "path": "patches/shadowing-v2-identity-db-foundation/README-AR.txt",
+      "size": 1423,
+      "sha256": "7033d7150161c32557f1080a692476757cf223c8602b1624ed21a338c6ce0156"
+    },
+    {
+      "path": "patches/shadowing-v2-identity-db-foundation/apply.ps1",
+      "size": 3066,
+      "sha256": "9bb2e2a3832c9edef1466f6813311b1206e0a69d63f355f68f543492f2fc5062"
+    },
+    {
+      "path": "patches/shadowing-v2-identity-db-foundation/baseline/backend/ShadowingEnglish.Api/Program.cs",
+      "size": 621,
+      "sha256": "57f123a1977d59b57bfddfb3dba63cb6b2bf05f4cb178430ff19788cc65a4247"
+    },
+    {
+      "path": "patches/shadowing-v2-identity-db-foundation/payload/backend/ShadowingEnglish.Api/Program.cs",
+      "size": 2822,
+      "sha256": "e49e778251efc070f05bee594dd91e4af84f36bdd1a418c2fc82f274775288d6"
+    },
+    {
+      "path": "patches/shadowing-v2-identity-db-foundation/payload/backend/ShadowingEnglish.Infrastructure/Database/ApplicationDbContext.cs",
+      "size": 838,
+      "sha256": "40c48fbb36fab9e1266ae12fd8badee109795bfe14008b281d0ffeccbf4564bf"
+    },
+    {
+      "path": "patches/shadowing-v2-identity-db-foundation/payload/backend/ShadowingEnglish.Infrastructure/Identity/ApplicationUser.cs",
+      "size": 250,
+      "sha256": "499396ac5f78ebb176672eb3a393add7456eb565234079cbeb3aedd36a946ad0"
+    },
+    {
+      "path": "tests/README.md",
+      "size": 248,
+      "sha256": "41a999a7bf22ace7b83ceb5cd4ddf39d581b1a52776007afbc4e9e43fad1b409"
+    },
+    {
+      "path": "tests/ShadowingEnglish.MediaChecks/Runner.cs",
+      "size": 34390,
+      "sha256": "67c7a87a77a8336f16f2773df8c9fe636ab8b5f6e3c776bcf7b91b65a0439a98"
+    },
+    {
+      "path": "tests/ShadowingEnglish.MediaChecks/ShadowingEnglish.MediaChecks.csproj",
+      "size": 701,
+      "sha256": "3f7744ce9e990deb6c247b8c25eb5968fa428e00115f9dbaa8de75059255d778"
+    },
+    {
+      "path": "tests/day2-api-smoke.mjs",
+      "size": 5089,
+      "sha256": "196af24724b85879cdd44fa382267958dfacccd2cc04b80d3e8f21d92c7e499f"
+    },
+    {
+      "path": "tests/day2-shell-contract.test.cjs",
+      "size": 4699,
+      "sha256": "311e14216cc9bfbe655717f430ae95e4bf6c97e3f8f7a13a5cd3c4f7481845a9"
+    },
+    {
+      "path": "tests/day2-v1-layout-parity.test.cjs",
+      "size": 2274,
+      "sha256": "82821e2d9abca5809b8666ac86b60f10ddbf618e081ccccb6e8f7fb746857c3e"
+    },
+    {
+      "path": "tests/e2e/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tests/e2e/smoke.spec.ts",
+      "size": 1920,
+      "sha256": "d6e414c6bf4faa60dcf05d41d83d7da68ad8d703966c508156d3c0fe31439c73"
+    },
+    {
+      "path": "tests/groups-foundation.static.test.mjs",
+      "size": 2689,
+      "sha256": "d25480a16090f8d6e35a467470ebf0c87a4f0c5b19afc4bbe6fc7ce34d492e0e"
+    },
+    {
+      "path": "tests/local-e2e/local-processor.spec.ts",
+      "size": 9302,
+      "sha256": "189cb6a6ca240a0df278bc2ad548199b83f9027eeadce2d3d9fc0f6fb58b9b36"
+    },
+    {
+      "path": "tests/local-processor-fixture-server.py",
+      "size": 667,
+      "sha256": "4b3621f0ed47015f001aca5b4d504101f28738f0328b866d42826e5d3bd17d0a"
+    },
+    {
+      "path": "tests/local_processor_test.py",
+      "size": 16884,
+      "sha256": "6af4e0a2d48a535d68f84a08a94d91c67df952eaf1d7e354b3b8b27f2ecd49fc"
+    },
+    {
+      "path": "tests/performance/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tests/run_media_checks.py",
+      "size": 3485,
+      "sha256": "d3c1f9fef3624890adcab5bb98ce44fd2582ea5af372a02b64c4a07938d0d3c9"
+    },
+    {
+      "path": "tests/security/.gitkeep",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tests/security/admin-accounts.static.test.mjs",
+      "size": 3191,
+      "sha256": "c92d69ffce2ec9c837aa3572a102445f0155edb5a55d7b1534a33e3129301db3"
+    },
+    {
+      "path": "tests/student-core.static.test.mjs",
+      "size": 3057,
+      "sha256": "63bde1f0d5f20a392877a1cbb9da7ce4c5a8e4aaeb85cf78debd38f55abffc2c"
+    }
+  ],
+  "verificationReport": "docs/RUNBOOKS/MEDIA_STORAGE_TEST_REPORT_2026-09-30.md",
+  "rulesSha256": "269288af7b8c08857d1bc8f6ef36236dad8a7219ae94cac19cff289dd62caf40"
+}

@@ -7,10 +7,15 @@ const program = readFileSync(new URL('../../backend/ShadowingEnglish.Api/Program
 const routes = readFileSync(new URL('../../frontend/src/app/app.routes.ts', import.meta.url), 'utf8');
 const page = readFileSync(new URL('../../frontend/src/app/features/admin/accounts/admin-accounts.page.ts', import.meta.url), 'utf8');
 const template = readFileSync(new URL('../../frontend/src/app/features/admin/accounts/admin-accounts.page.html', import.meta.url), 'utf8');
-test('admin HTTP group is role protected and route is lazy', () => {
+test('admin HTTP group is role protected and the guarded accounts child route is lazy', () => {
   assert.match(source, /RequireAuthorization\(new AuthorizeAttribute \{ Roles = "Admin" \}\)/);
   assert.match(program, /app\.MapAdminAccountsEndpoints\(\)/);
-  assert.match(routes, /path: 'admin\/accounts'[\s\S]*?canActivate: \[roleGuard\('Admin'\)\][\s\S]*?loadComponent/);
+  const adminStart = routes.indexOf("path: 'admin',");
+  const studentStart = routes.indexOf("path: 'student',", adminStart);
+  assert.ok(adminStart >= 0 && studentStart > adminStart, 'Admin must have a parent route');
+  const adminRoutes = routes.slice(adminStart, studentStart);
+  assert.match(adminRoutes, /canActivateChild:\s*\[roleGuard\('Admin'\)\]/);
+  assert.match(adminRoutes, /children:\s*\[[\s\S]*?path:\s*'accounts',[\s\S]*?loadComponent:\s*\(\)\s*=>\s*import\(\s*'\.\/features\/admin\/accounts\/admin-accounts\.page'\s*\)\.then\(\s*\(?m\)?\s*=>\s*m\.AdminAccountsPage\s*,?\s*\)/);
 });
 test('owner is verified from configured identity GUID; not from email or first login', () => {
   assert.match(source, /Guid\.TryParse\(config\["PrimaryAdmin:UserId"\]/);

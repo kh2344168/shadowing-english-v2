@@ -1,1 +1,65 @@
-:host { display: block; min-width: 0; }
+:host {
+  display: block;
+}
+.library {
+  max-width: 980px;
+  margin: 24px auto;
+  color: #0b1c30;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+h1 {
+  font-size: clamp(26px, 3vw, 34px);
+  font-weight: 800;
+}
+h2 {
+  font-size: 20px;
+  font-weight: 700;
+}
+p {
+  color: #52615f;
+  line-height: 1.7;
+}
+a {
+  color: #00685f;
+  font-weight: 700;
+}
+header > a {
+  color: white;
+  background: #00685f;
+  border-radius: 10px;
+  padding: 11px 16px;
+}
+.lesson,
+.empty {
+  background: white;
+  border: 1px solid #dbe8e5;
+  border-radius: 16px;
+  padding: 20px;
+  margin: 16px 0;
+}
+.lesson span {
+  display: block;
+  margin-bottom: 12px;
+}
+button {
+  cursor: pointer;
+  border: 1px solid #00685f;
+  background: white;
+  color: #00685f;
+  padding: 9px 15px;
+  border-radius: 10px;
+}
+@media (max-width: 620px) {
+  header {
+    display: block;
+  }
+  header > a {
+    display: inline-block;
+    margin-top: 8px;
+  }
+}

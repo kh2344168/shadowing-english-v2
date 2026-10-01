@@ -4,12 +4,58 @@
 @use './styles/tokens';
 @use './styles/theme';
 
-/* Visual tokens and common empty-page treatment derived from V1; business styling remains scoped. */
-html { min-width: 320px; }
-body { min-width: 320px; margin: 0; font-family: "Noto Sans Arabic", "Noto Sans", Tahoma, Arial, sans-serif; }
-.material-symbols-outlined { font-family: "Material Symbols Outlined"; font-weight: normal; font-style: normal; font-size: 24px; line-height: 1; letter-spacing: normal; text-transform: none; display: inline-block; white-space: nowrap; word-wrap: normal; direction: ltr; -webkit-font-feature-settings: "liga"; font-feature-settings: "liga"; -webkit-font-smoothing: antialiased; }
-.v1-empty-page { max-width: 980px; padding: 30px 32px; border: 1px solid #dce9e5; border-radius: 22px; background: #fff; color: #0b1c30; box-shadow: 0 12px 32px rgba(11,28,48,.045); }
-.v1-empty-page__kicker { color: #00685f; font-size: 12px; font-weight: 800; }
-.v1-empty-page h1 { margin: 10px 0 14px; font-size: clamp(24px,3vw,32px); font-weight: 800; }
-.v1-empty-page p { color: #586461; font-size: 14px; line-height: 1.9; }
-@media(max-width:640px) { .v1-empty-page { padding: 22px 20px; border-radius: 18px; } }
+/* Shared visual treatment for V2 pages that are still awaiting their feature implementation. */
+html {
+  min-width: 320px;
+}
+body {
+  min-width: 320px;
+  margin: 0;
+  font-family: 'Noto Sans Arabic', 'Noto Sans', Tahoma, Arial, sans-serif;
+}
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+.v2-placeholder-panel {
+  max-width: 980px;
+  padding: 30px 32px;
+  border: 1px solid #dce9e5;
+  border-radius: 22px;
+  background: #fff;
+  color: #0b1c30;
+  box-shadow: 0 12px 32px rgba(11, 28, 48, 0.045);
+}
+.v2-placeholder-panel__kicker {
+  color: #00685f;
+  font-size: 12px;
+  font-weight: 800;
+}
+.v2-placeholder-panel h1 {
+  margin: 10px 0 14px;
+  font-size: clamp(24px, 3vw, 32px);
+  font-weight: 800;
+}
+.v2-placeholder-panel p {
+  color: #586461;
+  font-size: 14px;
+  line-height: 1.9;
+}
+@media (max-width: 640px) {
+  .v2-placeholder-panel {
+    padding: 22px 20px;
+    border-radius: 18px;
+  }
+}

@@ -1,1 +1,70 @@
-<app-feature-placeholder title="تدريب Shadowing" />
+<section class="learning-page" dir="rtl" aria-labelledby="shadowing-title">
+  <a class="learning-back" [routerLink]="['/student/lessons', slotId, 'overview']">← نظرة الدرس</a>
+  <h1 id="shadowing-title" class="page-title">تدريب Shadowing</h1>
+  @if (loading()) {
+  <p role="status" class="learning-status">جارٍ تحميل التدريب...</p>
+  } @else if (lesson(); as data) {
+  <header class="learning-card">
+    <span class="learning-eyebrow">{{ data.title }}</span>
+    <h2>الجملة {{ position() }} من {{ data.segmentCount }}</h2>
+    <p>استمع، كرر بصوتك، ثم اضغط «التالي» حين تكون جاهزًا.</p>
+    <progress
+      [value]="data.completedSegments"
+      [max]="data.segmentCount || 1"
+      [attr.aria-label]="'أكملت ' + data.completedSegments + ' من ' + data.segmentCount"
+    ></progress>
+  </header>
+  @if (finished()) {
+  <div class="learning-card" role="status">
+    <h2>أحسنت! اكتمل تدريب Shadowing</h2>
+    <a class="learning-button" routerLink="/student/curriculum">العودة إلى المنهج</a>
+  </div>
+  } @else if (segment(); as current) {
+  <div class="learning-card practice-card">
+    <span class="learning-eyebrow">استمع إلى الجملة</span>
+    <p class="practice-phrase" dir="ltr" [class.is-playing]="playing()">{{ current.text }}</p>
+    <audio
+      #teacher
+      controls
+      preload="none"
+      (play)="playing.set(true)"
+      (pause)="playing.set(false)"
+      (ended)="playing.set(false)"
+      aria-label="صوت المعلم"
+    ></audio>
+    <button type="button" class="learning-button" (click)="playTeacher()">استمع من البداية</button>
+  </div>
+  <div class="learning-card practice-card">
+    <h2>جرّب بصوتك</h2>
+    <p>التسجيل مؤقت على جهازك في هذه الصفحة، ولا يُرفع إلى الخادم.</p>
+    @if (!recording()) {
+    <button
+      type="button"
+      class="learning-button subtle"
+      [disabled]="microphonePending()"
+      (click)="startRecording()"
+    >
+      ابدأ تسجيل صوتك
+    </button>
+    } @else {
+    <button type="button" class="learning-button" (click)="stopRecording()">أوقف التسجيل</button> }
+    @if (recordingUrl(); as localUrl) {
+    <audio controls [src]="localUrl" aria-label="استمع إلى تسجيلك"></audio> }
+  </div>
+  <button
+    type="button"
+    class="learning-button next-action"
+    [disabled]="saving() || recording() || microphonePending()"
+    (click)="next()"
+  >
+    {{ saving() ? 'جارٍ حفظ التقدم...' : position() === data.segmentCount ? 'إنهاء التدريب' :
+    'التالي ←' }}
+  </button>
+  } @else {
+  <p role="status" class="learning-status">لا توجد جمل متاحة لهذا الدرس.</p>
+  } } @if (error()) {
+  <p role="alert" class="learning-status error">
+    {{ error() }} <button type="button" (click)="load()">تحديث</button>
+  </p>
+  }
+</section>
