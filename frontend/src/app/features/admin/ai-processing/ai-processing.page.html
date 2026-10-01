@@ -183,7 +183,7 @@
           type="file"
           accept=".wav,.mp3,.m4a,.mp4,.ogg,.webm"
           (change)="chooseMedia($event)"
-          [disabled]="busy()"
+          [disabled]="busy() || lessonSaving() || !!savedLesson() || newLessonBusy()"
           hidden
         />
 
@@ -200,7 +200,7 @@
               type="button"
               class="danger-action"
               (click)="clearMedia(mediaInput)"
-              [disabled]="busy()"
+              [disabled]="busy() || lessonSaving() || !!savedLesson() || newLessonBusy()"
             >
               حذف
             </button>
@@ -276,7 +276,7 @@
           type="file"
           accept=".txt,text/plain"
           (change)="chooseTranscript($event)"
-          [disabled]="busy()"
+          [disabled]="busy() || lessonSaving() || !!savedLesson() || newLessonBusy()"
           hidden
         />
 
@@ -293,7 +293,7 @@
               type="button"
               class="danger-action"
               (click)="clearTranscript(transcriptInput)"
-              [disabled]="busy()"
+              [disabled]="busy() || lessonSaving() || !!savedLesson() || newLessonBusy()"
             >
               حذف
             </button>
@@ -314,7 +314,7 @@
           </strong>
 
           <small>
-            بيانات بسيطة تظهر في منشئ الدرس
+            بيانات بسيطة تظهر في قائمة الدروس
           </small>
         </div>
       </div>
@@ -329,7 +329,7 @@
             type="text"
             maxlength="160"
             [(ngModel)]="title"
-            [disabled]="busy()"
+            [disabled]="busy() || lessonSaving() || !!savedLesson() || newLessonBusy()"
             placeholder="مثال: Asking for Directions"
           />
         </label>
@@ -343,7 +343,7 @@
             type="text"
             maxlength="1000"
             [(ngModel)]="description"
-            [disabled]="busy()"
+            [disabled]="busy() || lessonSaving() || !!savedLesson() || newLessonBusy()"
             placeholder="اختياري"
           />
         </label>
@@ -495,6 +495,7 @@
                 type="button"
                 class="segment-button edit"
                 (click)="openEditModal(index)"
+                [disabled]="lessonSaving() || !!savedLesson() || segmentSaving() || newLessonBusy()"
               >
                 ✎ تعديل
               </button>
@@ -508,7 +509,7 @@
           <input
             type="checkbox"
             [(ngModel)]="reviewed"
-            [disabled]="busy() || segmentSaving()"
+            [disabled]="busy() || segmentSaving() || lessonSaving() || !!savedLesson() || newLessonBusy() || editingIndex() !== null"
           />
 
           <span>
@@ -518,24 +519,66 @@
       </div>
 
       <div class="final-action">
-        <div>
+        <div role="status" aria-live="polite">
           <strong>
-            الشادوينج جاهز؟
+            {{ savedLesson() ? 'الدرس محفوظ بالفعل في قائمة الدروس' : 'الشادوينج جاهز؟' }}
           </strong>
 
           <p>
-            سيتم نقل النتيجة الحالية إلى منشئ الدرس.
+            @if (savedLesson()) {
+              تم حفظ النص والصوت المعتمدين. النشر للطلاب خطوة مستقلة لاحقًا.
+            } @else {
+              اعتمد الدرس لحفظ النص والصوت الحاليين في قائمة الدروس.
+            }
           </p>
         </div>
 
-        <button
-          type="button"
-          class="primary-button"
-          (click)="sendToBuilder()"
-          [disabled]="!reviewed || busy() || segmentSaving()"
-        >
-          اعتماد الشادوينج والمتابعة
-        </button>
+        <div class="final-action-actions">
+          @if (!savedLesson() || !saveChoicePending()) {
+            <button
+              type="button"
+              class="secondary-button"
+              (click)="createNewLesson()"
+              [disabled]="newLessonBusy() || busy() || segmentSaving() || lessonSaving()"
+            >
+              @if (newLessonBusy()) {
+                جاري تنظيف الدرس السابق...
+              } @else {
+                إنشاء درس جديد
+              }
+            </button>
+          }
+
+          @if (savedLesson()) {
+            <button
+              type="button"
+              class="primary-button"
+              (click)="goToLessons()"
+              [disabled]="newLessonBusy()"
+            >
+              الانتقال إلى قائمة الدروس
+            </button>
+
+            @if (saveChoicePending()) {
+              <button
+                type="button"
+                class="secondary-button"
+                (click)="stayOnAIProcessing()"
+              >
+                البقاء في الصفحة
+              </button>
+            }
+          } @else {
+            <button
+              type="button"
+              class="primary-button"
+              (click)="approveAndSaveLesson()"
+              [disabled]="!canSaveLesson()"
+            >
+              {{ lessonSaving() ? 'جاري حفظ الدرس...' : 'اعتماد الدرس وحفظه' }}
+            </button>
+          }
+        </div>
       </div>
 
       <article class="next-stage-card">
@@ -568,6 +611,7 @@
         aria-modal="true"
         aria-labelledby="edit-modal-title"
         (click)="$event.stopPropagation()"
+        (keydown)="$event.stopPropagation()"
       >
         <header class="modal-header">
           <div>
@@ -601,42 +645,174 @@
         </header>
 
         <div class="modal-body">
-          <div class="audio-preview">
-            <div>
+          <audio
+            #editAudio
+            hidden
+            preload="metadata"
+            [src]="editingPreviewUrl()"
+            (loadedmetadata)="onEditPreviewMetadata($event)"
+            (timeupdate)="onEditPreviewTimeUpdate($event)"
+            (ended)="stopEditPreview('source_ended')"
+            (error)="onEditPreviewError()"
+          ></audio>
+
+          <section class="waveform-editor" aria-label="معاينة التموجات الصوتية للمقطع">
+            <div class="waveform-heading">
               <strong>
-                اسمع التوقيت المعدّل
+                <span aria-hidden="true">≋</span>
+                محرر التموجات الصوتية
               </strong>
 
-              <small>
-                المدة الحالية
-                {{ segmentDuration(editStart, editEnd) }}
-                ثانية
-              </small>
+              <span class="waveform-clock" dir="ltr">
+                {{ formatTime(editWaveformElapsed()) }}
+                /
+                {{ formatTime(editRangeDuration()) }}
+              </span>
             </div>
 
-            <audio
-              #editAudio
-              hidden
-              preload="metadata"
-              [src]="editingPreviewUrl()"
-              (loadedmetadata)="onEditPreviewMetadata($event)"
-              (timeupdate)="onEditPreviewTimeUpdate($event)"
-              (ended)="stopEditPreview('source_ended')"
-              (error)="onEditPreviewError()"
-            ></audio>
-            <button
-              type="button"
-              class="edit-preview-button"
-              (click)="toggleEditPreview(editAudio)"
-              [disabled]="segmentSaving() || !editingPreviewUrl() || !editMediaDuration() || !isEditRangeValid()"
-              [attr.aria-label]="editPreviewPlaying() || editPreviewBusy() ? 'إيقاف المعاينة' : 'تشغيل التوقيت المعدّل'"
+            <div class="waveform-scale" dir="ltr">
+              <span>{{ formatTime(editWaveformViewStart()) }}</span>
+              <span>{{ formatTime(editWaveformViewMidpoint()) }}</span>
+              <span>{{ formatTime(editWaveformViewEnd()) }}</span>
+            </div>
+
+            <div
+              #waveformTrack
+              class="waveform-track"
+              role="group"
+              tabindex="0"
+              aria-label="موجة الصوت ومقبضا بداية المقطع ونهايته"
+              dir="ltr"
+              [class.disabled]="!editMediaDuration() || !isEditRangeValid() || editWaveformLoading() || editWaveformPeaks().length === 0"
+              [attr.aria-disabled]="!editMediaDuration() || !isEditRangeValid() || editWaveformLoading() || editWaveformPeaks().length === 0"
+              (click)="seekEditPreview(editAudio, $event)"
+              (keydown)="seekEditPreviewWithKeyboard(editAudio, $event)"
+              (pointermove)="moveEditRangeHandle($event, waveformTrack)"
+              (pointerup)="finishEditRangeHandleDrag($event)"
+              (pointercancel)="finishEditRangeHandleDrag($event)"
             >
-              {{ editPreviewPlaying() || editPreviewBusy() ? 'إيقاف المعاينة' : 'تشغيل التوقيت المعدّل' }}
-            </button>
+              @if (editWaveformLoading()) {
+                <span class="waveform-message">جاري تحليل صوت الملف...</span>
+              } @else if (editWaveformError()) {
+                <span class="waveform-message waveform-error">{{ editWaveformError() }}</span>
+              } @else if (!editingPreviewUrl()) {
+                <span class="waveform-message waveform-error">الملف الأصلي مطلوب لعرض الموجة ومعاينة الصوت.</span>
+              } @else {
+                <span class="waveform-timeline">
+                  <span class="waveform-bars" aria-hidden="true">
+                    @for (peak of editWaveformPeaks(); track $index) {
+                      <span
+                        class="waveform-bar"
+                        [class.played]="waveformBarPlayed($index)"
+                        [style.height.%]="peak * 100"
+                      ></span>
+                    }
+                  </span>
+                  <span
+                    class="waveform-selection"
+                    [style.left.%]="editRangeStartProgress() * 100"
+                    [style.width.%]="(editRangeEndProgress() - editRangeStartProgress()) * 100"
+                    aria-hidden="true"
+                  ></span>
+                  <span
+                    class="waveform-range-handle start"
+                    [style.left.%]="editRangeStartProgress() * 100"
+                    role="slider"
+                    tabindex="0"
+                    [attr.aria-label]="'بداية المقطع ' + formatTime(editStart)"
+                    [attr.aria-valuemin]="editStartHandleMinimum()"
+                    [attr.aria-valuemax]="editStartHandleMaximum()"
+                    [attr.aria-valuenow]="editStart"
+                    [attr.aria-valuetext]="formatTime(editStart)"
+                    title="اسحب لتغيير بداية المقطع"
+                    (pointerdown)="beginEditRangeHandleDrag('start', $event)"
+                    (keydown)="adjustEditRangeHandle('start', $event)"
+                  ></span>
+                  <span
+                    class="waveform-range-handle end"
+                    [style.left.%]="editRangeEndProgress() * 100"
+                    role="slider"
+                    tabindex="0"
+                    [attr.aria-label]="'نهاية المقطع ' + formatTime(editEnd)"
+                    [attr.aria-valuemin]="editStart + 0.01"
+                    [attr.aria-valuemax]="editEndHandleMaximum()"
+                    [attr.aria-valuenow]="editEnd"
+                    [attr.aria-valuetext]="formatTime(editEnd)"
+                    title="اسحب لتغيير نهاية المقطع"
+                    (pointerdown)="beginEditRangeHandleDrag('end', $event)"
+                    (keydown)="adjustEditRangeHandle('end', $event)"
+                  ></span>
+                  <span
+                    class="waveform-playhead"
+                    [style.left.%]="editWaveformProgress() * 100"
+                    aria-hidden="true"
+                  >
+                    <span></span>
+                  </span>
+                </span>
+              }
+            </div>
+
+            @if (!editingPreviewUrl() || editWaveformError()) {
+              <div class="waveform-source-required">
+                <div>
+                  <strong>ملف المصدر غير متاح</strong>
+                  <small>اختر نفس الملف الأصلي لعرض الكلمات قبل المقطع وبعده. الملف للمعاينة المحلية فقط ولن يعيد تشغيل WhisperX.</small>
+                </div>
+                <label class="waveform-source-button" for="edit-source-media">اختيار الملف الأصلي</label>
+                <input
+                  id="edit-source-media"
+                  class="waveform-source-input"
+                  type="file"
+                  accept=".wav,.mp3,.m4a,.mp4,.ogg,.webm,audio/*,video/*"
+                  (change)="chooseEditSourceMedia($event)"
+                  [disabled]="segmentSaving()"
+                />
+              </div>
+            }
+
+            <small class="waveform-instructions">
+              اسحب المقبض الأخضر للبداية والذهبي للنهاية لتضمين كلمات قبل المقطع أو بعده، ثم شغّل الجزء المحدد.
+            </small>
+
+            <div class="waveform-controls">
+              <button
+                type="button"
+                class="waveform-skip"
+                title="إرجاع 5 ثوانٍ"
+                aria-label="إرجاع خمس ثوانٍ داخل المقطع"
+                (click)="skipEditPreview(editAudio, -5)"
+                [disabled]="!editMediaDuration() || !isEditRangeValid()"
+              >
+                −5s
+              </button>
+
+              <button
+                type="button"
+                class="edit-preview-button"
+                (click)="toggleEditPreview(editAudio)"
+                [disabled]="segmentSaving() || !editingPreviewUrl() || !editMediaDuration() || !isEditRangeValid()"
+                [attr.aria-label]="editPreviewPlaying() || editPreviewBusy() ? 'إيقاف المعاينة' : 'تشغيل التوقيت المعدّل'"
+              >
+                {{ editPreviewPlaying() || editPreviewBusy() ? '■ إيقاف المعاينة' : '▶ تشغيل المقطع' }}
+              </button>
+
+              <button
+                type="button"
+                class="waveform-skip"
+                title="تقديم 5 ثوانٍ"
+                aria-label="تقديم خمس ثوانٍ داخل المقطع"
+                (click)="skipEditPreview(editAudio, 5)"
+                [disabled]="!editMediaDuration() || !isEditRangeValid()"
+              >
+                +5s
+              </button>
+            </div>
+
             @if (editPreviewError()) {
               <small class="preview-error" role="alert">{{ editPreviewError() }}</small>
             }
-          </div>
+          </section>
 
           <label class="modal-field">
             <span>

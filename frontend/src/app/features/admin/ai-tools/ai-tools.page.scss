@@ -4,7 +4,7 @@
 }
 
 .tools-page {
-  max-width: 1040px;
+  max-width: 980px;
   margin-inline: auto;
   padding: 1.5rem;
   color: #17324d;
@@ -14,21 +14,20 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 1.25rem;
+  gap: 1rem;
   margin-bottom: 1.5rem;
 }
 
 .page-head h1 {
-  margin: 0.25rem 0 0.5rem;
-  font-size: clamp(1.65rem, 3vw, 2.15rem);
+  margin: 0.25rem 0 0.45rem;
+  font-size: clamp(1.7rem, 3vw, 2.2rem);
 }
 
 .page-head p,
-.tool-card p,
-.future-tools p {
+.tool-card p {
   margin: 0;
-  line-height: 1.8;
   color: #5b6f82;
+  line-height: 1.8;
 }
 
 .eyebrow {
@@ -39,6 +38,7 @@
 
 .head-link {
   flex-shrink: 0;
+  padding-top: 0.4rem;
   color: #0f6f78;
   font-weight: 800;
   text-decoration: none;
@@ -60,9 +60,9 @@
 
 .tool-icon {
   display: grid;
-  width: 3.6rem;
-  height: 3.6rem;
-  flex: 0 0 3.6rem;
+  width: 3.5rem;
+  height: 3.5rem;
+  flex: 0 0 3.5rem;
   place-items: center;
   border-radius: 16px;
   background: linear-gradient(135deg, #0f7f87, #18a9a4);
@@ -81,7 +81,7 @@
 
 .tool-title-line h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.2rem;
 }
 
 .local-badge {
@@ -93,97 +93,29 @@
   font-weight: 800;
 }
 
-.status-card {
+.setup-steps {
   display: grid;
-  grid-template-columns: 2.6rem minmax(0, 1fr);
-  gap: 0.8rem;
-  align-items: start;
-  margin-top: 1.4rem;
-  padding: 1rem;
-  border: 1px solid #d9e3ea;
-  border-radius: 16px;
-  background: #f7fafc;
-}
-
-.status-card strong {
-  display: block;
-  margin-bottom: 0.2rem;
-}
-
-.status-card p {
-  color: inherit;
-}
-
-.status-icon {
-  display: grid;
-  width: 2.6rem;
-  height: 2.6rem;
-  place-items: center;
-  border-radius: 50%;
-  background: #e9eef3;
-  font-size: 1.15rem;
-  font-weight: 900;
-}
-
-.status-card--working {
-  border-color: #9acbd0;
-  background: #f1fbfb;
-  color: #0b6970;
-}
-.status-card--working .status-icon {
-  background: #d8f2f1;
-  animation: pulse 1.2s ease-in-out infinite;
-}
-
-.status-card--success {
-  border-color: #9fd8b8;
-  background: #f0fbf4;
-  color: #1f6b45;
-}
-.status-card--success .status-icon {
-  background: #d8f2e2;
-}
-
-.status-card--warning {
-  border-color: #efd198;
-  background: #fff9ee;
-  color: #895000;
-}
-.status-card--warning .status-icon {
-  background: #ffedc9;
-}
-
-.status-card--error {
-  border-color: #efb5b5;
-  background: #fff4f4;
-  color: #8c2b2b;
-}
-.status-card--error .status-icon {
-  background: #ffe1e1;
-}
-
-.install-steps {
-  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
   margin: 1.4rem 0;
   padding: 0;
   list-style: none;
 }
 
-.install-steps li {
+.setup-steps li {
   display: grid;
-  grid-template-columns: 2.25rem minmax(0, 1fr);
-  gap: 0.75rem;
-  align-items: center;
-  padding: 0.8rem;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: start;
+  padding: 0.85rem;
   border: 1px solid #e0e8ed;
   border-radius: 14px;
 }
 
-.install-steps li > span {
+.step-number {
   display: grid;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2rem;
+  height: 2rem;
   place-items: center;
   border-radius: 50%;
   background: #edf2f5;
@@ -191,33 +123,119 @@
   font-weight: 900;
 }
 
-.install-steps li.is-done {
+.setup-steps li.is-done {
   border-color: #b8ddd0;
   background: #f7fcf9;
 }
-.install-steps li.is-done > span {
+
+.setup-steps li.is-done .step-number {
   background: #d9f2e5;
   color: #206a47;
 }
 
-.install-steps strong,
-.install-steps small {
+.setup-steps strong,
+.setup-steps small {
   display: block;
 }
-.install-steps small {
-  margin-top: 0.15rem;
+
+.setup-steps strong {
+  margin: 0.15rem 0 0.25rem;
+}
+
+.setup-steps small {
   color: #6a7d8e;
   line-height: 1.6;
+}
+
+.download-panel,
+.connection-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid #d9e3ea;
+  border-radius: 16px;
+  background: #f7fafc;
+}
+
+.download-panel h3,
+.connection-panel h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.download-panel--busy,
+.connection-panel--checking {
+  border-color: #9acbd0;
+  background: #f1fbfb;
+}
+
+.download-panel--error,
+.connection-panel--error {
+  border-color: #efb5b5;
+  background: #fff4f4;
+}
+
+.download-message {
+  color: #206a47 !important;
+  font-weight: 700;
+}
+
+.connection-panel {
+  justify-content: flex-start;
+  margin-top: 0.9rem;
+}
+
+.connection-panel--connected {
+  border-color: #9fd8b8;
+  background: #f0fbf4;
+}
+
+.connection-mark {
+  display: grid;
+  width: 2.55rem;
+  height: 2.55rem;
+  flex: 0 0 2.55rem;
+  place-items: center;
+  border-radius: 50%;
+  background: #e9eef3;
+  color: #435a6c;
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+
+.connection-panel--checking .connection-mark {
+  background: #d8f2f1;
+  color: #0b6970;
+}
+
+.connection-panel--connected .connection-mark {
+  background: #d8f2e2;
+  color: #1f6b45;
+}
+
+.connection-panel--error .connection-mark {
+  background: #ffe1e1;
+  color: #8c2b2b;
+}
+
+.verified-label {
+  display: inline-block;
+  margin-top: 0.35rem;
+  color: #206a47;
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+  margin-top: 1rem;
 }
 
 button,
-.download-fallback,
 .file-button {
   min-height: 2.8rem;
   box-sizing: border-box;
@@ -228,7 +246,6 @@ button,
   font-weight: 800;
   cursor: pointer;
   text-align: center;
-  text-decoration: none;
 }
 
 button:disabled {
@@ -237,87 +254,71 @@ button:disabled {
 }
 
 .primary {
+  flex-shrink: 0;
   background: #0f7f87;
   color: #fff;
 }
 
 .secondary,
-.download-fallback,
 .file-button {
   border-color: #bfd1d9;
   background: #f6f9fa;
   color: #174d61;
 }
 
-.existing-install {
+.recovery-panel {
   margin-top: 1.25rem;
   padding-top: 1rem;
   border-top: 1px solid #e1e8ed;
 }
 
-.existing-install summary {
+.recovery-panel summary {
   cursor: pointer;
   font-weight: 800;
 }
 
-.existing-install input[type='file'] {
-  display: block;
-  max-width: 100%;
-  margin-top: 0.75rem;
+.recovery-panel p {
+  margin: 0.75rem 0;
 }
 
-.future-tools {
-  display: flex;
+.recovery-panel input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.file-button {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-top: 1rem;
-  padding: 1.1rem 1.25rem;
-  border: 1px dashed #cad8df;
-  border-radius: 18px;
-  background: #fbfcfd;
-}
-
-.future-tools h2 {
-  margin: 0 0 0.25rem;
-  font-size: 1rem;
-}
-
-.future-tools > span {
-  flex-shrink: 0;
-  color: #6d7f8e;
-  font-size: 0.8rem;
-  font-weight: 800;
 }
 
 button:focus-visible,
-a:focus-visible,
-summary:focus-visible,
-input:focus-visible {
-  outline: 3px solid #86cbd0;
-  outline-offset: 2px;
+.head-link:focus-visible,
+.file-button:focus-within,
+.recovery-panel summary:focus-visible {
+  outline: 3px solid #36a6aa;
+  outline-offset: 3px;
 }
 
-@keyframes pulse {
-  50% {
-    transform: scale(0.94);
-    opacity: 0.72;
-  }
-}
-
-@media (max-width: 720px) {
-  .tools-page {
-    padding: 1rem;
-  }
-  .page-head,
-  .future-tools {
+@media (max-width: 760px) {
+  .page-head {
     flex-direction: column;
+  }
+
+  .setup-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .download-panel {
     align-items: stretch;
+    flex-direction: column;
   }
-  .tool-card__head {
-    align-items: flex-start;
-  }
-  .actions > * {
+
+  .primary {
     width: 100%;
   }
 }

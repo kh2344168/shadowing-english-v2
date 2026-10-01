@@ -1,11 +1,11 @@
-<section class="tools-page" dir="rtl" aria-labelledby="tools-title">
+<main class="tools-page" dir="rtl" aria-labelledby="tools-title">
   <header class="page-head">
     <div>
-      <p class="eyebrow">إعداد الجهاز</p>
-      <h1 id="tools-title">تثبيت أدوات AI</h1>
-      <p>مكان مستقل لتثبيت الأدوات المحلية وفحصها. إنشاء الدرس نفسه يتم من صفحة منفصلة.</p>
+      <p class="eyebrow">إعداد الأدوات المحلية</p>
+      <h1 id="tools-title">أدوات AI</h1>
+      <p>نزّل معالج الصوت المحلي، ثم شغّل ملف التثبيت وتحقق من اتصاله.</p>
     </div>
-    <a routerLink="/admin/ai-processing" class="head-link">اذهب إلى إنشاء الدرس ←</a>
+    <a routerLink="/admin/ai-processing" class="head-link">العودة إلى إنشاء الدرس</a>
   </header>
 
   <section class="tool-card" aria-labelledby="whisperx-title">
@@ -13,120 +13,125 @@
       <div class="tool-icon" aria-hidden="true">AI</div>
       <div>
         <div class="tool-title-line">
-          <h2 id="whisperx-title">WhisperX</h2>
-          <span class="local-badge">محلي على جهازك</span>
+          <h2 id="whisperx-title">معالج WhisperX المحلي</h2>
+          <span class="local-badge">يعمل على هذا الجهاز</span>
         </div>
-        <p>تقطيع صوت أو فيديو المعلم ومطابقته بالنص الإنجليزي لإنتاج مقاطع Shadowing.</p>
+        <p>يجهّز المقاطع الصوتية محليًا لاستخدامها في دروس Shadowing.</p>
       </div>
     </div>
 
-    <div
-      class="status-card"
-      [class.status-card--working]="state() === 'preparing' || state() === 'checking'"
-      [class.status-card--success]="state() === 'connected'"
-      [class.status-card--warning]="state() === 'package-ready'"
-      [class.status-card--error]="state() === 'failed'"
-      role="status"
-      aria-live="polite"
-    >
-      <span class="status-icon" aria-hidden="true">
-        @switch (state()) {
-          @case ('preparing') { ⟳ }
-          @case ('checking') { ⟳ }
-          @case ('connected') { ✓ }
-          @case ('package-ready') { ↓ }
-          @case ('failed') { ! }
-          @default { ○ }
-        }
-      </span>
-      <div>
-        <strong>
-          @switch (state()) {
-            @case ('preparing') { جاري تجهيز التثبيت }
-            @case ('checking') { جاري التحقق }
-            @case ('connected') { تم التثبيت بنجاح }
-            @case ('package-ready') { الحزمة جاهزة }
-            @case ('failed') { التثبيت أو الاتصال غير مكتمل }
-            @default { لم يتم التثبيت بعد }
-          }
-        </strong>
-        <p>{{ message() }}</p>
-      </div>
-    </div>
-
-    <ol class="install-steps" aria-label="خطوات تثبيت WhisperX">
-      <li [class.is-done]="state() === 'package-ready' || state() === 'connected'">
-        <span>1</span>
+    <ol class="setup-steps" aria-label="خطوات إعداد المعالج المحلي">
+      <li [class.is-done]="downloadState() === 'downloaded'">
+        <span class="step-number">1</span>
         <div>
-          <strong>نزّل الحزمة</strong>
-          <small>يتم تجهيز نسخة مرتبطة بحساب الأدمن الحالي.</small>
+          <strong>تنزيل ملف التثبيت</strong>
+          <small>يُجهّز الملف بربط خاص بحساب الأدمن الحالي.</small>
         </div>
       </li>
-      <li [class.is-done]="state() === 'connected'">
-        <span>2</span>
+      <li [class.is-done]="downloadState() === 'downloaded'">
+        <span class="step-number">2</span>
         <div>
-          <strong>فك الضغط وشغّل Install.cmd</strong>
-          <small>اترك نافذة التثبيت حتى تنتهي. التثبيت الأول قد يحتاج تنزيل نماذج كبيرة.</small>
+          <strong>فتح ملف التثبيت</strong>
+          <small>افتح الملف الذي تم تنزيله مرة واحدة واتركه يكمل الإعداد.</small>
         </div>
       </li>
-      <li [class.is-done]="state() === 'connected'">
-        <span>3</span>
+      <li [class.is-done]="processorState() === 'connected'">
+        <span class="step-number">3</span>
         <div>
-          <strong>تحقق من التثبيت</strong>
-          <small>الموقع يتأكد أن الخدمة المحلية تعمل ومربوطة بالحساب الصحيح.</small>
+          <strong>التحقق من الاتصال</strong>
+          <small>تظهر حالة الاتصال بعد استجابة الخدمة المحلية المرتبطة بهذا الحساب.</small>
         </div>
       </li>
     </ol>
 
-    <div class="actions">
+    <section
+      class="download-panel"
+      [class.download-panel--busy]="downloadState() === 'downloading'"
+      [class.download-panel--error]="downloadState() === 'failed'"
+      aria-labelledby="download-title"
+      aria-live="polite"
+    >
+      <div class="panel-copy">
+        <h3 id="download-title">1. تنزيل الأداة</h3>
+        @if (downloadState() === 'ready') {
+        <p>نزّل ملف التثبيت لإعداد WhisperX والربط تلقائيًا.</p>
+        } @else if (downloadState() === 'downloading') {
+        <p>جارٍ تجهيز وتنزيل ملف التثبيت...</p>
+        } @else if (downloadState() === 'downloaded') {
+        <p class="download-message">{{ downloadMessage() }}</p>
+        } @else {
+        <p>{{ downloadMessage() }}</p>
+        }
+      </div>
       <button
         type="button"
         class="primary"
         (click)="downloadInstaller()"
-        [disabled]="!userId || state() === 'preparing' || state() === 'checking'"
+        [disabled]="!userId || busyOperation() !== null"
       >
-        {{ state() === 'preparing' ? 'جارٍ تجهيز الحزمة...' : 'نزّل حزمة WhisperX' }}
+        {{ downloadState() === 'downloading' ? 'جارٍ التنزيل...' : 'تنزيل ملف التثبيت' }}
       </button>
+    </section>
 
+    <section
+      class="connection-panel"
+      [class.connection-panel--checking]="processorState() === 'checking'"
+      [class.connection-panel--connected]="processorState() === 'connected'"
+      [class.connection-panel--error]="processorState() === 'offline' || processorState() === 'failed'"
+      aria-labelledby="connection-title"
+      role="status"
+      aria-live="polite"
+    >
+      <span class="connection-mark" aria-hidden="true">
+        @switch (processorState()) { @case ('checking') { … } @case ('connected') { ✓ } @case
+        ('unlinked') { ! } @case ('offline') { × } @case ('failed') { × } }
+      </span>
+      <div class="connection-copy">
+        <h3 id="connection-title">
+          @switch (processorState()) { @case ('checking') { جارٍ التحقق من الأداة } @case
+          ('connected') { الأداة متصلة } @case ('unlinked') { الخدمة تعمل والربط غير مكتمل } @case
+          ('offline') { الخدمة المحلية لا تستجيب } @case ('failed') { تعذر التحقق من الأداة } }
+        </h3>
+        <p>{{ processorMessage() }}</p>
+        @if (verificationCompleted()) {
+        <span class="verified-label">اكتمل التحقق من الحالة الحالية</span>
+        }
+      </div>
+    </section>
+
+    <div class="actions" aria-label="إجراءات الاتصال والتحقق">
       <button
         type="button"
         class="secondary"
-        (click)="checkConnection()"
-        [disabled]="!userId || state() === 'checking' || state() === 'preparing'"
+        (click)="connectToProcessor()"
+        [disabled]="!userId || busyOperation() !== null"
       >
-        {{ state() === 'checking' ? 'جارٍ التحقق...' : 'تحقق من التثبيت' }}
+        {{ busyOperation() === 'connect' ? 'جارٍ الاتصال...' : 'اتصال بالخدمة المحلية' }}
       </button>
-
-      @if (downloadUrl()) {
-        <a
-          class="download-fallback"
-          [href]="downloadUrl()"
-          download="Shadowing-V2-Local-Processor.zip"
-        >
-          لم يبدأ التنزيل؟ اضغط هنا
-        </a>
-      }
+      <button
+        type="button"
+        class="secondary"
+        (click)="verifyProcessor()"
+        [disabled]="!userId || busyOperation() !== null"
+      >
+        {{ busyOperation() === 'verify' ? 'جارٍ التحقق...' : 'تحقق من الحالة' }}
+      </button>
     </div>
 
-    <details class="existing-install">
-      <summary>الأداة مثبتة بالفعل؟</summary>
-      <p>استورد ملف <bdi>shadowing-link.json</bdi> من مجلد الأداة، ثم سيتم فحص الاتصال.</p>
-      <label class="file-button" for="ai-tool-link">اختر ملف الربط</label>
+    <details class="recovery-panel">
+      <summary>استعادة ربط أداة مثبتة مسبقًا</summary>
+      <p>
+        استخدم هذا الخيار فقط إذا فقد المتصفح بيانات الربط. اختر <bdi>shadowing-link.json</bdi> من
+        مجلد الأداة.
+      </p>
+      <label class="file-button" for="ai-tool-link">اختيار ملف الربط</label>
       <input
         id="ai-tool-link"
         type="file"
         accept=".json,application/json"
         (change)="importLink($event)"
-        [disabled]="!userId || state() === 'checking'"
+        [disabled]="!userId || busyOperation() !== null"
       />
     </details>
   </section>
-
-  <section class="future-tools" aria-label="أدوات مستقبلية">
-    <div>
-      <h2>أدوات AI أخرى</h2>
-      <p>الصفحة مجهزة لإضافة أدوات محلية أخرى لاحقًا بدون خلطها بواجهة إنشاء الدرس.</p>
-    </div>
-    <span>سيتم إضافتها عند اعتمادها</span>
-  </section>
-</section>
+</main>
