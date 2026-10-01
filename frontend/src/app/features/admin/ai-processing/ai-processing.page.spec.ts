@@ -33,27 +33,27 @@ describe('AdminAIProcessingPage', () => {
     expect(client.start).not.toHaveBeenCalled();
     expect(fixture.componentInstance.connected()).toBe(false);
   });
-  it('requires review of the current clips before transferring a draft and never saves it', async () => {
+  it('requires review before transferring the current draft', async () => {
     const fixture = TestBed.createComponent(AdminAIProcessingPage);
     fixture.detectChanges();
     await fixture.whenStable();
     const page = fixture.componentInstance;
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
     const draft = {
       manifest: { title: 'First lesson', segments: [] },
       files: [],
     } as unknown as ImportedLesson;
     page.result.set(draft);
-    const router = TestBed.inject(Router);
-    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    const transfer = TestBed.inject(LocalDraftTransfer);
+    const setDraft = vi.spyOn(transfer, 'set');
     page.sendToBuilder();
-    expect(navigate).not.toHaveBeenCalled();
+    expect(setDraft).not.toHaveBeenCalled();
     page.reviewed = true;
-    page.dirty.set(true);
     page.sendToBuilder();
-    expect(navigate).not.toHaveBeenCalled();
-    page.dirty.set(false);
-    page.sendToBuilder();
+    expect(setDraft).toHaveBeenCalledOnce();
+    expect(setDraft).toHaveBeenCalledWith('admin-1', draft);
+    expect(transfer.take('admin-1')).toBe(draft);
     expect(navigate).toHaveBeenCalledWith(['/admin/lesson-builder']);
-    expect(TestBed.inject(LocalDraftTransfer).take('admin-1')).toBe(draft);
   });
 });

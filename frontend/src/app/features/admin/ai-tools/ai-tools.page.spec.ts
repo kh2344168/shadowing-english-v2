@@ -2,12 +2,16 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
-import { LocalProcessorClient } from '../ai-processing/local-processor.client';
+import {
+  DEFAULT_PROCESSOR_SETTINGS,
+  LocalProcessorClient,
+  ProcessorLink,
+} from '../ai-processing/local-processor.client';
 import { AdminAIToolsPage } from './ai-tools.page';
 
 describe('AdminAIToolsPage', () => {
   const client = {
-    initialize: vi.fn(() => null),
+    initialize: vi.fn<LocalProcessorClient['initialize']>(() => null),
     downloadInstaller: vi.fn(async () => new Blob(['installer'])),
     health: vi.fn(async () => ({ linked: true })),
     importLink: vi.fn(async () => ({})),
@@ -51,11 +55,19 @@ describe('AdminAIToolsPage', () => {
   });
 
   it('marks WhisperX connected only after the local health check succeeds', async () => {
-    client.initialize.mockReturnValue({ settings: { profile: 'shadowing-v2-1', leadingMs: 150, trailingMs: 100 } });
+    const savedLink: ProcessorLink = {
+      schemaVersion: 1,
+      protocolVersion: 1,
+      userId: 'admin-1',
+      origin: 'http://localhost:4200',
+      token: 'a'.repeat(64),
+      settings: { ...DEFAULT_PROCESSOR_SETTINGS },
+    };
+    client.initialize.mockReturnValue(savedLink);
     const fixture = TestBed.createComponent(AdminAIToolsPage);
     fixture.detectChanges();
     await fixture.whenStable();
     expect(client.health).toHaveBeenCalledTimes(1);
-    expect(fixture.componentInstance.state()).toBe('connected');
+    await vi.waitFor(() => expect(fixture.componentInstance.state()).toBe('connected'));
   });
 });
