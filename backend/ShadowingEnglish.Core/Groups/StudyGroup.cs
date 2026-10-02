@@ -8,4 +8,8 @@ public sealed class StudyGroup
     public Guid CreateRequestId { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; }
     public Guid CreatedByAdminId { get; set; }
+    public Guid? AssignedCurriculumTemplateId { get; set; }
+    public Guid CurriculumAssignmentRevision { get; set; }
+    public Guid? LastCurriculumAssignmentRequestId { get; set; }
+    public string? LastCurriculumAssignmentRequestHash { get; set; }
 }

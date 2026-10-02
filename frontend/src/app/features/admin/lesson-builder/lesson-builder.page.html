@@ -4,7 +4,8 @@
       <p class="eyebrow">بناء درس Shadowing</p>
       <h1 id="authoring-title">منشئ الدرس</h1>
       <p>
-        جهّز الجمل وصوت المعلم أو استورد نتيجة المعالجة المحلية، ثم احفظ وانشر من خطوتين منفصلتين.
+        جهّز الجمل وصوت المعلم أو استورد نتيجة المعالجة المحلية، ثم احفظ الدرس وأضفه إلى منهج مستقل
+        من إدارة المناهج.
       </p>
     </div>
     <a routerLink="/admin/groups">إدارة المجموعات ←</a>
@@ -137,8 +138,8 @@
     </form>
 
     <div class="panel">
-      <h2>٢. انشر للمجموعة</h2>
-      <p>لن يظهر الدرس للطالب حتى تضغط نشر. النشر ينشئ نسخة منهج جديدة ويحفظ النسخ السابقة.</p>
+      <h2>٢. أضف الدرس إلى منهج</h2>
+      <p>اختر درسًا محفوظًا ثم افتح إدارة المناهج. الحفظ والإسناد والنشر خطوات منفصلة.</p>
       <label for="saved-lesson">درس محفوظ</label>
       <select id="saved-lesson" name="saved-lesson" [(ngModel)]="selectedVersionId">
         <option value="">اختر درسًا</option>
@@ -150,50 +151,19 @@
       </select>
       @if (moreLessons()) {
       <button type="button" class="secondary" (click)="loadLessons(lessonsPage + 1)">
-        دروس أخرى
+        عرض دروس أخرى
       </button>
       }
-      <label for="target-group">المجموعة</label>
-      <select id="target-group" name="target-group" [(ngModel)]="selectedGroupId">
-        <option value="">اختر مجموعة</option>
-        @for (group of groups(); track group.id) {
-        <option [value]="group.id">{{ group.name }}</option>
-        }
-      </select>
-      @if (moreGroups()) {
-      <button type="button" class="secondary" (click)="loadGroups(groupsPage + 1)">
-        مجموعات أخرى
-      </button>
-      } @if (!loading() && groups().length === 0) {
-      <p>أنشئ مجموعة واسند طالبًا إليها من <a routerLink="/admin/groups">إدارة المجموعات</a>.</p>
-      }
-      <div class="schedule-grid">
-        <div>
-          <label for="week">الأسبوع</label
-          ><input id="week" type="number" min="1" max="52" name="week" [(ngModel)]="weekNumber" />
-        </div>
-        <div>
-          <label for="day">اليوم</label
-          ><input id="day" type="number" min="1" max="7" name="day" [(ngModel)]="dayNumber" />
-        </div>
-        <div>
-          <label for="order">الترتيب</label
-          ><input id="order" type="number" min="1" max="100" name="order" [(ngModel)]="sortOrder" />
-        </div>
-      </div>
       <button
         type="button"
         class="primary"
-        [disabled]="publishing() || !selectedVersionId || !selectedGroupId"
+        [disabled]="publishing() || !selectedVersionId"
         (click)="publish()"
       >
-        {{ publishing() ? 'جارٍ النشر...' : 'انشر الدرس للمجموعة' }}
+        {{ publishing() ? 'جارٍ فتح المناهج...' : 'إضافة الدرس إلى منهج' }}
       </button>
       <p class="limit">
-        إذا بدأ طلاب المجموعة التدريب، يمنع النظام إعادة نشر منهجها حاليًا حفاظًا على تقدمهم.
-      </p>
-      <p class="limit">
-        رفع الصوت المحلي متاح في بيئة Development فقط حتى نضيف تخزين الملفات المخصص للإنتاج.
+        لن يظهر الدرس للطلاب حتى يُحفظ داخل منهج ويُسند المنهج إلى مجموعة ويُنشر صراحة.
       </p>
     </div>
   </div>

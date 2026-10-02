@@ -1,321 +1,753 @@
-<main class="mx-auto w-full max-w-[1520px] pb-8 text-[#0B1C30]" dir="rtl">
-  <header class="mb-8">
-    <h1 class="m-0 text-2xl font-bold">إدارة المناهج</h1>
-    <p class="mb-0 mt-2 max-w-2xl text-sm leading-6 text-[#3E4947]">
-      اختر مجموعة وأضف إليها الدروس المحفوظة وحدد ترتيبها قبل النشر.
-    </p>
+<main
+  dir="rtl"
+  class="mx-auto w-full max-w-[1520px] pb-8 text-[#0B1C30]"
+  aria-labelledby="curriculum-title"
+  [attr.aria-busy]="loading() || !!busy()"
+>
+  <header class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div>
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <h1 id="curriculum-title" class="m-0 text-2xl font-bold tracking-tight">إدارة المناهج</h1>
+        <span class="badge bg-[#DAE2FD] text-[#5C647A]">{{ curriculums().length }} منهج محمّل</span>
+      </div>
+      <p class="m-0 max-w-2xl text-sm leading-6 text-[#3E4947]">
+        جهّز منهجًا من الدروس المحفوظة، ثم اسنده للمجموعة وانشره بعد المراجعة.
+      </p>
+    </div>
+    @if (!draft()) {
+    <button
+      type="button"
+      class="btn btn-primary"
+      (click)="createOpen.set(true)"
+      [disabled]="loading() || locked()"
+    >
+      <span class="material-symbols-outlined" aria-hidden="true">add</span>إنشاء منهج
+    </button>
+    }
   </header>
 
-  <form (ngSubmit)="publish()" novalidate class="grid gap-6 lg:grid-cols-2">
-    <section
-      class="min-w-0 rounded-xl bg-white p-5 shadow-sm"
-      aria-labelledby="group-section-title"
-    >
-      <h2 id="group-section-title" class="mb-4 mt-0 flex items-center gap-2 text-lg font-bold">
-        <span
-          class="material-symbols-outlined rounded-lg bg-[#EFF4FF] p-2 text-[#004E47]"
-          aria-hidden="true"
-          >groups</span
-        >1. اختيار المجموعة
-      </h2>
-      <label for="curriculum-group" class="mb-2 block text-sm font-semibold">المجموعة</label>
-      <select
-        id="curriculum-group"
-        name="group"
-        [ngModel]="selectedGroupId()"
-        (ngModelChange)="selectGroup($event)"
-        [disabled]="loadingGroups() || publishing()"
-        class="min-h-11 w-full rounded-xl bg-[#EFF4FF] px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[#00685F]"
-      >
-        <option value="">اختر مجموعة</option>
-        @for (group of groups(); track group.id) {
-        <option [value]="group.id">{{ group.name }}</option>
-        }
-      </select>
-      @if (loadingGroups()) {
-      <p role="status" class="mt-3 text-sm text-[#6E7977]">جارٍ تحميل المجموعات...</p>
-      } @if (groupsError()) {
-      <p role="alert" class="mt-3 text-sm text-[#93000A]">{{ groupsError() }}</p>
-      <button
-        type="button"
-        (click)="loadGroups()"
-        [disabled]="loadingGroups() || publishing()"
-        class="min-h-11 rounded-xl bg-[#EFF4FF] px-4 text-sm font-semibold text-[#004E47] disabled:opacity-50"
-      >
-        إعادة تحميل المجموعات
-      </button>
-      } @else if (!loadingGroups() && groups().length === 0) {
-      <p class="mt-3 text-sm text-[#6E7977]">
-        لا توجد مجموعات بعد.
-        <a routerLink="/admin/groups" class="font-semibold text-[#00685F]"
-          >انتقل إلى إدارة المجموعات</a
-        >.
-      </p>
-      } @if (moreGroups()) {
-      <button
-        type="button"
-        (click)="loadGroups(groupsPage() + 1)"
-        [disabled]="loadingGroups() || publishing()"
-        class="mt-3 min-h-11 rounded-xl bg-[#EFF4FF] px-4 text-sm font-semibold text-[#004E47] disabled:opacity-50"
-      >
-        عرض مجموعات أكثر
-      </button>
-      } @if (selectedGroup(); as group) {
-      <div class="mt-4 rounded-xl bg-[#EFF4FF] p-4">
-        <strong class="block text-sm">{{ group.name }}</strong>
-        <p class="mb-0 mt-2 text-xs text-[#3E4947]">
-          {{ group.currentVersionId ? 'يوجد منهج منشور للمجموعة' : 'لا يوجد منهج منشور للمجموعة بعد'
-          }}
-        </p>
-      </div>
-      }
-    </section>
-
-    <section
-      class="min-w-0 rounded-xl bg-white p-5 shadow-sm"
-      aria-labelledby="lesson-section-title"
-    >
-      <h2 id="lesson-section-title" class="mb-4 mt-0 flex items-center gap-2 text-lg font-bold">
-        <span
-          class="material-symbols-outlined rounded-lg bg-[#EFF4FF] p-2 text-[#004E47]"
-          aria-hidden="true"
-          >library_books</span
-        >2. اختيار درس محفوظ
-      </h2>
-      <label for="curriculum-lesson" class="mb-2 block text-sm font-semibold"
-        >الدرس من المكتبة</label
-      >
-      <select
-        id="curriculum-lesson"
-        name="lesson"
-        [ngModel]="selectedLessonVersionId()"
-        (ngModelChange)="selectLesson($event)"
-        [disabled]="loadingLessons() || publishing()"
-        class="min-h-11 w-full rounded-xl bg-[#EFF4FF] px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[#00685F]"
-      >
-        <option value="">اختر درسًا محفوظًا</option>
-        @for (lesson of lessons(); track lesson.versionId) {
-        <option [value]="lesson.versionId">{{ lesson.title }}</option>
-        }
-      </select>
-      @if (loadingLessons()) {
-      <p role="status" class="mt-3 text-sm text-[#6E7977]">جارٍ تحميل الدروس المحفوظة...</p>
-      } @if (lessonsError()) {
-      <p role="alert" class="mt-3 text-sm text-[#93000A]">{{ lessonsError() }}</p>
-      <button
-        type="button"
-        (click)="loadLessons()"
-        [disabled]="loadingLessons() || publishing()"
-        class="min-h-11 rounded-xl bg-[#EFF4FF] px-4 text-sm font-semibold text-[#004E47] disabled:opacity-50"
-      >
-        إعادة تحميل الدروس
-      </button>
-      } @else if (!loadingLessons() && lessons().length === 0) {
-      <p class="mt-3 text-sm text-[#6E7977]">
-        لا توجد دروس محفوظة بعد.
-        <a routerLink="/admin/lessons" class="font-semibold text-[#00685F]"
-          >انتقل إلى مكتبة الدروس</a
-        >.
-      </p>
-      } @if (moreLessons()) {
-      <button
-        type="button"
-        (click)="loadLessons(lessonsPage() + 1)"
-        [disabled]="loadingLessons() || publishing()"
-        class="mt-3 min-h-11 rounded-xl bg-[#EFF4FF] px-4 text-sm font-semibold text-[#004E47] disabled:opacity-50"
-      >
-        عرض دروس أكثر
-      </button>
-      } @if (selectedLesson(); as lesson) {
-      <article class="mt-4 rounded-xl bg-[#EFF4FF] p-4">
-        <h3 class="m-0 break-words text-base font-bold">{{ lesson.title }}</h3>
-        <p class="curriculum-description mb-3 mt-2 text-sm leading-6 text-[#3E4947]">
-          {{ lesson.description || 'لا يوجد وصف للدرس.' }}
-        </p>
-        <span class="rounded-full bg-[#DAE2FD] px-3 py-1 text-xs font-semibold"
-          >{{ lesson.segmentCount }} مقطع</span
-        >
-      </article>
-      }
-    </section>
-
-    <section class="rounded-xl bg-white p-5 shadow-sm" aria-labelledby="position-section-title">
-      <h2 id="position-section-title" class="mb-4 mt-0 flex items-center gap-2 text-lg font-bold">
-        <span
-          class="material-symbols-outlined rounded-lg bg-[#EFF4FF] p-2 text-[#004E47]"
-          aria-hidden="true"
-          >event_note</span
-        >3. تحديد الموضع
-      </h2>
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div>
-          <label for="curriculum-week" class="mb-2 block text-sm font-semibold">الأسبوع</label>
-          <input
-            id="curriculum-week"
-            name="weekNumber"
-            type="number"
-            min="1"
-            max="52"
-            step="1"
-            required
-            [ngModel]="weekNumber()"
-            (ngModelChange)="setPosition('weekNumber', $event)"
-            [disabled]="publishing()"
-            aria-describedby="position-hint"
-            class="min-h-11 w-full rounded-xl bg-[#EFF4FF] px-3 outline-none focus-visible:ring-2 focus-visible:ring-[#00685F]"
-          />
-        </div>
-        <div>
-          <label for="curriculum-day" class="mb-2 block text-sm font-semibold">اليوم</label>
-          <input
-            id="curriculum-day"
-            name="dayNumber"
-            type="number"
-            min="1"
-            max="7"
-            step="1"
-            required
-            [ngModel]="dayNumber()"
-            (ngModelChange)="setPosition('dayNumber', $event)"
-            [disabled]="publishing()"
-            aria-describedby="position-hint"
-            class="min-h-11 w-full rounded-xl bg-[#EFF4FF] px-3 outline-none focus-visible:ring-2 focus-visible:ring-[#00685F]"
-          />
-        </div>
-        <div>
-          <label for="curriculum-order" class="mb-2 block text-sm font-semibold"
-            >الترتيب في اليوم</label
-          >
-          <input
-            id="curriculum-order"
-            name="sortOrder"
-            type="number"
-            min="1"
-            max="100"
-            step="1"
-            required
-            [ngModel]="sortOrder()"
-            (ngModelChange)="setPosition('sortOrder', $event)"
-            [disabled]="publishing()"
-            aria-describedby="position-hint"
-            class="min-h-11 w-full rounded-xl bg-[#EFF4FF] px-3 outline-none focus-visible:ring-2 focus-visible:ring-[#00685F]"
-          />
-        </div>
-      </div>
-      <p id="position-hint" class="mb-0 mt-3 text-xs leading-6 text-[#6E7977]">
-        الأسبوع من 1 إلى 52، واليوم من 1 إلى 7، والترتيب من 1 إلى 100. استخدم أعدادًا صحيحة.
-      </p>
-      @if (!positionValid()) {
-      <p role="alert" class="mb-0 mt-2 text-sm text-[#93000A]">
-        راجع الأسبوع واليوم والترتيب قبل النشر.
-      </p>
-      }
-    </section>
-
-    <section class="rounded-xl bg-white p-5 shadow-sm" aria-labelledby="publish-section-title">
-      <h2 id="publish-section-title" class="mb-4 mt-0 flex items-center gap-2 text-lg font-bold">
-        <span
-          class="material-symbols-outlined rounded-lg bg-[#EFF4FF] p-2 text-[#004E47]"
-          aria-hidden="true"
-          >publish</span
-        >4. إضافة الدرس والنشر
-      </h2>
-      <p class="mt-0 text-sm leading-6 text-[#3E4947]">
-        حفظ الدرس في المكتبة لا ينشره للطلاب. النشر للمجموعة يحدث فقط عند الضغط على الزر بالأسفل.
-      </p>
-      @if (selectedGroup() && selectedLesson()) {
-      <p class="rounded-xl bg-[#EFF4FF] p-3 text-sm leading-6">
-        {{ selectedLesson()!.title }} ← {{ selectedGroup()!.name }}<br />الأسبوع {{ weekNumber() }}،
-        اليوم {{ dayNumber() }}، الترتيب {{ sortOrder() }}
-      </p>
-      } @if (publishError()) {
-      <p
-        role="alert"
-        class="rounded-xl border border-[#FFDAD6] bg-[#FFDAD6]/40 p-3 text-sm leading-6 text-[#93000A]"
-      >
-        {{ publishError() }}
-      </p>
-      } @if (reviewRequired()) {
-      <div class="mb-4 rounded-xl bg-[#EFF4FF] p-3 text-sm leading-6">
-        <p class="mt-0">راجع قائمة منهج المجموعة الحالي بالأسفل. لن نعيد النشر تلقائيًا.</p>
-        <button
-          type="button"
-          (click)="confirmReview()"
-          [disabled]="loadingCurriculum() || !!curriculumError() || publishing()"
-          class="min-h-11 rounded-xl border border-[#00685F] bg-white px-4 font-semibold text-[#00685F] disabled:opacity-50"
-        >
-          راجعت المنهج الحالي
-        </button>
-      </div>
-      } @if (success()) {
-      <p
-        role="status"
-        class="rounded-xl border border-[#A1F1E5] bg-[#EFFBF8] p-3 text-sm leading-6 text-[#005137]"
-      >
-        {{ success() }}
-      </p>
-      }
-      <button
-        type="submit"
-        [disabled]="!canPublish()"
-        class="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#00685F] px-5 py-3 text-sm font-semibold text-white hover:bg-[#004E47] disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">publish</span>{{
-        publishing() ? 'جارٍ إضافة الدرس ونشره...' : 'إضافة الدرس للمجموعة ونشره' }}
-      </button>
-    </section>
-  </form>
-
   <section
-    class="mt-8 rounded-xl bg-white p-5 shadow-sm"
-    aria-labelledby="current-curriculum-title"
-    [attr.aria-busy]="loadingCurriculum()"
+    class="mb-6 flex items-start gap-3 rounded-xl border border-[#A1F1E5] bg-[#EFFBF8] p-4 text-sm leading-6 text-[#004E47]"
+    aria-label="خطوات إعداد المنهج"
   >
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 id="current-curriculum-title" class="m-0 text-lg font-bold">منهج المجموعة الحالي</h2>
-        @if (selectedGroup(); as group) {
-        <p class="mb-0 mt-2 text-sm text-[#6E7977]">{{ group.name }}</p>
-        }
-      </div>
-      @if (selectedGroup()) {
+    <span class="material-symbols-outlined mt-0.5" aria-hidden="true">route</span>
+    <div>
+      <strong class="block">الحفظ والإسناد والنشر ثلاث خطوات منفصلة</strong>
+      <span
+        >درس محفوظ ← مسودة منهج وترتيب الدروس ← حفظ المنهج ← إسناد للمجموعة ← نشر صريح للطلاب.</span
+      >
+    </div>
+  </section>
+  @if (error()) {
+  <p
+    role="alert"
+    class="mb-5 rounded-xl border border-[#FFDAD6] bg-[#FFDAD6]/40 px-4 py-3 text-sm font-semibold text-[#93000A]"
+  >
+    {{ error() }}
+  </p>
+  } @if (success()) {
+  <p
+    role="status"
+    class="mb-5 rounded-xl border border-[#A1F1E5] bg-[#EFFBF8] px-4 py-3 text-sm font-semibold text-[#005137]"
+  >
+    {{ success() }}
+  </p>
+  } @if (uncertain() || reviewRequired()) {
+  <section
+    class="mb-5 rounded-xl bg-[#FFF7EA] p-4 text-sm leading-6 text-[#825100]"
+    aria-label="مراجعة العملية"
+  >
+    <p class="m-0">
+      {{ uncertain() ? 'لم نتأكد من نتيجة العملية. أعد نفس المحاولة؛ لن نرسل طلبًا جديدًا بمحتوى
+      مختلف.' : 'تغيّرت حالة محفوظة. حمّلها وراجعها قبل متابعة العمل.' }}
+    </p>
+    <div class="mt-3 flex flex-wrap gap-2">
+      @if (uncertain()) {
       <button
         type="button"
-        (click)="loadCurriculum()"
-        [disabled]="loadingCurriculum() || publishing()"
-        class="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#EFF4FF] px-4 text-sm font-semibold text-[#004E47] disabled:opacity-50"
+        class="btn btn-secondary"
+        (click)="retryFailedOperation()"
+        [disabled]="!!busy()"
       >
-        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">refresh</span>تحديث
-        المنهج
+        إعادة نفس المحاولة
+      </button>
+      } @if (draft()) {
+      <button
+        type="button"
+        class="btn btn-secondary"
+        (click)="reloadSaved()"
+        [disabled]="!!busy() || loadingDraft() || loadingGroup()"
+      >
+        تحميل المحفوظ للمراجعة
       </button>
       }
     </div>
-    @if (!selectedGroup()) {
-    <p class="m-0 py-6 text-center text-sm text-[#6E7977]">اختر مجموعة لعرض دروس منهجها المنشور.</p>
-    } @else { @if (loadingCurriculum()) {
-    <p role="status" class="text-sm text-[#6E7977]">جارٍ تحميل منهج المجموعة...</p>
-    } @if (curriculumError()) {
-    <p role="alert" class="text-sm text-[#93000A]">{{ curriculumError() }}</p>
-    } @if (curriculum(); as current) { @if (current.lessons.length === 0) {
-    <p
-      class="rounded-xl border border-dashed border-[#BEC9C6] bg-[#EFF4FF] p-6 text-center text-sm text-[#6E7977]"
-    >
-      لا توجد دروس منشورة في منهج هذه المجموعة بعد.
-    </p>
-    } @else {
-    <p class="text-sm text-[#3E4947]">{{ current.lessons.length }} درس منشور، بالترتيب الدراسي</p>
-    <ol class="m-0 grid list-none gap-3 p-0 md:grid-cols-2">
-      @for (lesson of current.lessons; track lesson.lessonVersionId) {
-      <li class="min-w-0 rounded-xl bg-[#EFF4FF] p-4">
-        <h3 class="m-0 break-words text-base font-bold">{{ lesson.title }}</h3>
-        <p class="mb-0 mt-3 flex flex-wrap gap-2 text-xs text-[#3E4947]">
-          <span class="rounded-full bg-white px-3 py-1">الأسبوع {{ lesson.weekNumber }}</span>
-          <span class="rounded-full bg-white px-3 py-1">اليوم {{ lesson.dayNumber }}</span>
-          <span class="rounded-full bg-white px-3 py-1">الترتيب {{ lesson.sortOrder }}</span>
-        </p>
-      </li>
-      }
-    </ol>
-    } } }
   </section>
+  } @if (loading() || loadingDraft()) {
+  <p
+    role="status"
+    class="mb-6 rounded-xl bg-white p-8 text-center text-sm text-[#6E7977] shadow-sm"
+  >
+    جارٍ تحميل المنهج والقوائم...
+  </p>
+  } @if (!draft()) {
+  <section
+    class="mb-6 flex flex-col gap-4 rounded-xl bg-white p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between"
+    aria-label="البحث والترتيب"
+  >
+    <div class="relative w-full lg:max-w-sm">
+      <label for="curriculum-search" class="sr-only">البحث في المناهج المحمّلة</label>
+      <input
+        id="curriculum-search"
+        type="search"
+        class="field pr-10"
+        [ngModel]="search()"
+        (ngModelChange)="search.set($event)"
+        placeholder="ابحث عن منهج..."
+      />
+      <span
+        class="material-symbols-outlined pointer-events-none absolute right-3 top-3 text-[20px] text-[#6E7977]"
+        aria-hidden="true"
+        >search</span
+      >
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs text-[#6E7977]">البحث والترتيب ضمن المناهج المحمّلة</span>
+      <label for="curriculum-sort" class="sr-only">ترتيب المناهج</label>
+      <select
+        id="curriculum-sort"
+        class="field w-auto"
+        [ngModel]="sort()"
+        (ngModelChange)="sort.set($event)"
+      >
+        <option value="newest">الأحدث</option>
+        <option value="oldest">الأقدم</option>
+        <option value="name">الاسم</option>
+      </select>
+      <button
+        type="button"
+        class="btn btn-secondary"
+        (click)="loadCurriculums()"
+        [disabled]="loading()"
+      >
+        تحديث
+      </button>
+    </div>
+  </section>
+  @if (!loading() && curriculumsLoaded() && visibleCurriculums().length === 0) {
+  <div class="rounded-2xl border border-dashed border-[#BEC9C6] bg-white px-5 py-14 text-center">
+    <span class="material-symbols-outlined text-[36px] text-[#6E7977]" aria-hidden="true"
+      >menu_book</span
+    >
+    <h2 class="mb-1 mt-3 text-lg font-bold">لا توجد مناهج مطابقة</h2>
+    <p class="m-0 text-sm text-[#6E7977]">غيّر البحث أو أنشئ منهجًا جديدًا.</p>
+  </div>
+  }
+  <section class="grid grid-cols-1 gap-6 md:grid-cols-2" aria-label="مكتبة المناهج">
+    @for (item of visibleCurriculums(); track item.id) {
+    <article
+      class="flex min-h-[270px] flex-col justify-between rounded-xl bg-white p-6 shadow-sm transition hover:shadow-md"
+    >
+      <div>
+        <div class="mb-4"><span class="badge bg-[#DCE9FF] text-[#565E74]">مسودة منهج</span></div>
+        <h2 class="m-0 text-lg font-semibold">{{ item.name }}</h2>
+        <p class="mt-2 line-clamp-2 min-h-12 text-sm leading-6 text-[#3E4947]">
+          {{ item.description || 'لا يوجد وصف للمنهج بعد.' }}
+        </p>
+        <div
+          class="mt-5 flex items-center justify-between rounded-lg bg-[#EFF4FF] px-4 py-3 text-xs font-semibold text-[#3E4947]"
+        >
+          <span class="flex items-center gap-1.5"
+            ><span class="material-symbols-outlined text-[17px] text-[#00685F]" aria-hidden="true"
+              >calendar_view_week</span
+            >{{ item.weekCount }} أسابيع</span
+          >
+          <span class="flex items-center gap-1.5"
+            ><span class="material-symbols-outlined text-[17px] text-[#00685F]" aria-hidden="true"
+              >play_lesson</span
+            >{{ item.lessonCount }} درسًا</span
+          >
+        </div>
+      </div>
+      <div class="mt-5 flex flex-wrap items-center justify-between gap-3">
+        <span class="text-xs text-[#6E7977]"
+          >{{ item.updatedAtUtc ? 'آخر حفظ ' + (item.updatedAtUtc | date:'shortDate') : 'لم تُحفظ
+          مسودة دروس بعد' }}</span
+        >
+        <button
+          type="button"
+          class="btn btn-secondary"
+          (click)="selectCurriculum(item.id)"
+          [disabled]="loading() || loadingDraft()"
+        >
+          فتح المنهج<span class="material-symbols-outlined text-[18px]" aria-hidden="true"
+            >chevron_left</span
+          >
+        </button>
+      </div>
+    </article>
+    }
+  </section>
+  <footer
+    class="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white px-5 py-4 text-sm text-[#3E4947] shadow-sm"
+  >
+    <span
+      >عرض <strong>{{ visibleCurriculums().length }}</strong> من
+      <strong>{{ curriculums().length }}</strong> منهج محمّل</span
+    >
+    @if (moreCurriculums()) {
+    <button type="button" class="btn btn-secondary" (click)="loadCurriculums(curriculumPage + 1)">
+      عرض مناهج أكثر
+    </button>
+    }
+  </footer>
+  } @else if (draft(); as item) {
+  <section class="mb-6 rounded-xl bg-white p-6 shadow-sm" aria-labelledby="draft-title">
+    <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+      <div>
+        <button
+          type="button"
+          class="mb-2 flex items-center gap-1 text-xs text-[#6E7977] hover:text-[#004E47]"
+          (click)="backToLibrary()"
+          [disabled]="locked() || dirty()"
+        >
+          المناهج التعليمية<span class="material-symbols-outlined text-[14px]" aria-hidden="true"
+            >chevron_left</span
+          >تفاصيل المنهج
+        </button>
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 id="draft-title" class="m-0 text-2xl font-bold">{{ item.name }}</h2>
+          <span
+            class="badge"
+            [class]="dirty() ? 'badge bg-[#FFF0D8] text-[#825100]' : 'badge bg-[#E5EEFF] text-[#004E47]'"
+            >{{ dirty() ? 'تعديلات لم تُحفظ' : 'مسودة محفوظة' }}</span
+          >
+        </div>
+        <p class="mb-0 mt-2 text-xs text-[#6E7977]">
+          {{ weeks().length }} أسابيع · {{ slots().length }} درسًا
+        </p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="btn btn-secondary"
+          (click)="backToLibrary()"
+          [disabled]="locked() || dirty()"
+        >
+          الرجوع للمناهج
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary"
+          (click)="saveCurriculum()"
+          [disabled]="locked() || !dirty()"
+        >
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">save</span>{{
+          busy() === 'Update' ? 'جارٍ الحفظ...' : 'حفظ التغييرات' }}
+        </button>
+      </div>
+    </div>
+    <div class="mt-5 grid gap-4 md:grid-cols-2">
+      <label class="text-sm font-semibold" for="draft-name"
+        >اسم المنهج<input
+          id="draft-name"
+          class="field mt-2"
+          maxlength="160"
+          [ngModel]="name()"
+          (ngModelChange)="name.set($event)"
+          [disabled]="locked()"
+      /></label>
+      <label class="text-sm font-semibold" for="draft-description"
+        >الوصف<textarea
+          id="draft-description"
+          class="field mt-2"
+          rows="2"
+          maxlength="1000"
+          [ngModel]="description()"
+          (ngModelChange)="description.set($event)"
+          [disabled]="locked()"
+        ></textarea>
+      </label>
+    </div>
+    @if (dirty()) {
+    <p class="mb-0 mt-4 text-xs leading-5 text-[#825100]">
+      الدروس والمواضع الظاهرة تعديلات محلية حتى تضغط «حفظ التغييرات». تحميل المحفوظ يستبدلها بالحالة
+      الموجودة في قاعدة البيانات.
+    </p>
+    }
+    <button
+      type="button"
+      class="mt-3 text-xs font-semibold text-[#004E47] underline"
+      (click)="reloadSaved()"
+      [disabled]="!!busy() || loadingDraft()"
+    >
+      تحميل المحفوظ من قاعدة البيانات
+    </button>
+  </section>
+
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <h2 class="m-0 text-lg font-bold">دروس المنهج وترتيبها</h2>
+    <button type="button" class="btn btn-secondary" (click)="openPicker()" [disabled]="locked()">
+      <span class="material-symbols-outlined text-[18px]" aria-hidden="true">add_circle</span>إضافة
+      درس محفوظ
+    </button>
+  </div>
+  @if (slots().length === 0) {
+  <div
+    class="mb-5 rounded-xl border border-dashed border-[#BEC9C6] bg-white p-12 text-center text-sm text-[#6E7977]"
+  >
+    المنهج فارغ. اختر درسًا محفوظًا وحدد الأسبوع واليوم والترتيب.
+  </div>
+  }
+  <div class="space-y-5">
+    @for (week of weeks(); track week.number) {
+    <article class="overflow-hidden rounded-xl bg-white shadow-sm">
+      <header class="flex items-center justify-between gap-3 p-5">
+        <button
+          type="button"
+          class="flex items-center gap-3 text-right"
+          (click)="toggleWeek(week.number)"
+          [attr.aria-expanded]="!closedWeeks().includes(week.number)"
+        >
+          <span
+            class="material-symbols-outlined rounded-lg bg-[#EFF4FF] p-1 text-[#004E47]"
+            aria-hidden="true"
+            >{{ closedWeeks().includes(week.number) ? 'expand_more' : 'expand_less' }}</span
+          >
+          <span
+            ><span class="rounded-md bg-[#00685F] px-2.5 py-1 text-xs font-bold text-white"
+              >الأسبوع {{ week.number }}</span
+            ><span class="mt-2 block text-xs text-[#6E7977]"
+              >{{ week.days.length }} أيام مجدولة</span
+            ></span
+          >
+        </button>
+        <button
+          type="button"
+          class="btn btn-secondary text-xs"
+          (click)="openPicker(undefined, week.number, 1)"
+          [disabled]="locked()"
+        >
+          إضافة درس
+        </button>
+      </header>
+      @if (!closedWeeks().includes(week.number)) {
+      <div class="space-y-4 px-5 pb-5">
+        @for (day of week.days; track day.number) {
+        <section class="rounded-xl bg-[#EFF4FF] p-4">
+          <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <h3 class="m-0 text-sm font-bold">اليوم {{ day.number }}</h3>
+              <span class="text-xs text-[#6E7977]">{{ day.lessons.length }} درس</span>
+            </div>
+            <button
+              type="button"
+              class="btn bg-white text-xs text-[#004E47]"
+              (click)="openPicker(undefined, week.number, day.number)"
+              [disabled]="locked()"
+            >
+              إضافة درس
+            </button>
+          </div>
+          <div class="space-y-2">
+            @for (slot of day.lessons; track slot.lessonVersionId; let index = $index) {
+            <article
+              class="flex flex-col gap-3 rounded-lg bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between"
+            >
+              <div class="flex min-w-0 items-center gap-3">
+                <span
+                  class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#E5EEFF] text-xs font-bold text-[#004E47]"
+                  >{{ slot.sortOrder }}</span
+                >
+                <div class="min-w-0">
+                  <strong class="block break-words text-sm">{{ slot.title }}</strong
+                  ><span class="mt-1 block text-xs text-[#6E7977]"
+                    >{{ slot.segmentCount }} مقطع · الترتيب {{ slot.sortOrder }}</span
+                  >
+                </div>
+              </div>
+              <div class="flex flex-wrap items-center justify-end gap-1">
+                <button
+                  type="button"
+                  class="btn text-xs text-[#004E47]"
+                  (click)="openPicker(slot)"
+                  [disabled]="locked()"
+                >
+                  تعديل الموضع
+                </button>
+                <button
+                  type="button"
+                  class="btn text-xs text-[#BA1A1A]"
+                  (click)="removeLesson(slot)"
+                  [disabled]="locked()"
+                >
+                  إزالة
+                </button>
+                <button
+                  type="button"
+                  class="icon-btn"
+                  (click)="moveLesson(slot, -1)"
+                  [disabled]="locked() || index === 0"
+                  [attr.aria-label]="'نقل ' + slot.title + ' للأعلى'"
+                >
+                  <span class="material-symbols-outlined text-[18px]" aria-hidden="true"
+                    >arrow_upward</span
+                  >
+                </button>
+                <button
+                  type="button"
+                  class="icon-btn"
+                  (click)="moveLesson(slot, 1)"
+                  [disabled]="locked() || index === day.lessons.length - 1"
+                  [attr.aria-label]="'نقل ' + slot.title + ' للأسفل'"
+                >
+                  <span class="material-symbols-outlined text-[18px]" aria-hidden="true"
+                    >arrow_downward</span
+                  >
+                </button>
+              </div>
+            </article>
+            }
+          </div>
+        </section>
+        }
+      </div>
+      }
+    </article>
+    }
+  </div>
+
+  <section class="mt-6 rounded-xl bg-white p-5 shadow-sm" aria-labelledby="assignment-title">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div class="max-w-2xl">
+        <h2 id="assignment-title" class="m-0 text-lg font-bold">إسناد المنهج للمجموعة</h2>
+        <p class="mb-0 mt-1 text-xs leading-5 text-[#6E7977]">
+          احفظ المنهج ثم اختر مجموعة. الإسناد وحده لا يغير النسخة التي يراها الطالب.
+        </p>
+      </div>
+      <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+        <label for="curriculum-group" class="sr-only">المجموعة</label>
+        <select
+          id="curriculum-group"
+          class="field lg:min-w-[240px]"
+          [ngModel]="selectedGroupId()"
+          (ngModelChange)="selectGroup($event)"
+          [disabled]="locked() || loadingGroup()"
+        >
+          <option value="">اختر المجموعة</option>
+          @for (group of groups(); track group.id) {
+          <option [value]="group.id">{{ group.name }}</option>
+          }
+        </select>
+        <button
+          type="button"
+          class="btn btn-primary whitespace-nowrap"
+          (click)="assignCurriculum()"
+          [disabled]="locked() || dirty() || !groupState() || loadingGroup() || groupState()?.assignedCurriculumTemplateId === item.id"
+        >
+          {{ busy() === 'Assign' ? 'جارٍ الإسناد...' : 'إسناد المنهج' }}
+        </button>
+      </div>
+    </div>
+    @if (moreGroups()) {
+    <button
+      type="button"
+      class="mt-3 text-xs font-semibold text-[#004E47] underline"
+      (click)="loadGroups(groupPage + 1)"
+    >
+      عرض مجموعات أكثر
+    </button>
+    } @if (loadingGroup()) {
+    <p role="status" class="mt-3 text-sm text-[#6E7977]">جارٍ تحميل حالة المجموعة...</p>
+    } @if (selectedGroupId()) {
+    <button
+      type="button"
+      class="mt-3 text-xs font-semibold text-[#004E47] underline"
+      (click)="refreshGroup()"
+      [disabled]="loadingGroup() || !!busy()"
+    >
+      تحديث حالة المجموعة
+    </button>
+    } @if (groupState(); as state) {
+    <div class="mt-4 grid gap-3 sm:grid-cols-2">
+      <div class="rounded-xl bg-[#EFFBF8] p-4">
+        <span class="text-[11px] font-semibold text-[#6E7977]"
+          >المنهج المسند إلى {{ state.groupName }}</span
+        ><strong class="mt-1 block text-sm text-[#004E47]"
+          >{{ state.assignedCurriculumName || 'لم يُسند منهج بعد' }}</strong
+        ><span class="badge mt-2 bg-[#FFF0D8] text-[#825100]"
+          >{{ state.hasUnpublishedChanges ? 'توجد تعديلات غير منشورة' : 'الإسناد منفصل عن الحفظ'
+          }}</span
+        >
+      </div>
+      <div class="rounded-xl bg-[#FFF8E8] p-4">
+        <span class="text-[11px] font-semibold text-[#6E7977]">النسخة التي يراها الطالب</span
+        ><strong class="mt-1 block text-sm text-[#825100]"
+          >{{ state.publishedTitle || 'لا توجد نسخة منشورة' }} @if (state.versionNumber) {
+          <span>· الإصدار {{ state.versionNumber }}</span> }</strong
+        ><span class="mt-1 block text-xs text-[#6E7977]"
+          >{{ state.lessons.length }} درسًا منشورًا</span
+        >
+      </div>
+    </div>
+    }
+  </section>
+  <section class="mt-6 rounded-xl bg-white p-5 shadow-sm" aria-labelledby="publish-title">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div>
+        <h2 id="publish-title" class="m-0 text-lg font-bold">مراجعة ونشر المنهج</h2>
+        <p class="mb-0 mt-1 text-xs leading-5 text-[#6E7977]">
+          النشر ينشئ نسخة كاملة وثابتة. النسخ السابقة وتقدم الطلاب محفوظان.
+        </p>
+      </div>
+      <button
+        type="button"
+        class="btn btn-primary"
+        (click)="publishCurriculum()"
+        [disabled]="!canPublish()"
+      >
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">publish</span>{{
+        busy() === 'Publish' ? 'جارٍ النشر...' : 'نشر المنهج للمجموعة' }}
+      </button>
+    </div>
+    @if (dirty()) {
+    <p class="mt-3 text-xs text-[#825100]">احفظ التغييرات قبل الإسناد والنشر.</p>
+    } @if (groupState(); as state) { @if (state.lessons.length > 0) {
+    <div class="mt-5 border-t border-[#EFF4FF] pt-4">
+      <h3 class="m-0 text-sm font-bold">دروس النسخة المنشورة حاليًا</h3>
+      <ol class="mt-3 space-y-2">
+        @for (lesson of state.lessons; track lesson.lessonVersionId) {
+        <li
+          class="flex flex-col gap-1 rounded-lg bg-[#EFF4FF] px-4 py-3 text-sm sm:flex-row sm:justify-between"
+        >
+          <strong>{{ lesson.title }}</strong
+          ><span class="text-xs text-[#6E7977]"
+            >الأسبوع {{ lesson.weekNumber }} · اليوم {{ lesson.dayNumber }} · الترتيب {{
+            lesson.sortOrder }}</span
+          >
+        </li>
+        }
+      </ol>
+    </div>
+    } }
+  </section>
+  } @if (createOpen()) {
+  <div class="modal-backdrop" (keydown.escape)="closeCreate()" tabindex="-1">
+    <form
+      class="modal-dialog max-w-xl p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-curriculum-title"
+      cdkTrapFocus
+      [cdkTrapFocusAutoCapture]="true"
+      (ngSubmit)="createCurriculum()"
+    >
+      <header class="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <h2 id="create-curriculum-title" class="m-0 text-xl font-bold">إنشاء منهج جديد</h2>
+          <p class="mt-1 text-sm text-[#6E7977]">
+            مسودة مستقلة؛ يمكنك بعدها إضافة الدروس وترتيبها.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="icon-btn"
+          aria-label="إغلاق"
+          (click)="closeCreate()"
+          [disabled]="!!busy() || uncertain()"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">close</span>
+        </button>
+      </header>
+      @if (error()) {
+      <p role="alert" class="mb-4 rounded-xl bg-[#FFF0EE] p-3 text-sm text-[#93000A]">
+        {{ error() }}
+      </p>
+      } <label for="new-curriculum-name" class="block text-sm font-semibold">اسم المنهج</label
+      ><input
+        id="new-curriculum-name"
+        name="name"
+        class="field mt-2"
+        required
+        minlength="2"
+        maxlength="160"
+        [(ngModel)]="newName"
+        [disabled]="!!busy() || uncertain()"
+        placeholder="مثال: English A1 Foundation"
+      />
+      <label for="new-curriculum-description" class="mt-4 block text-sm font-semibold"
+        >وصف مختصر</label
+      ><textarea
+        id="new-curriculum-description"
+        name="description"
+        class="field mt-2"
+        rows="4"
+        maxlength="1000"
+        [(ngModel)]="newDescription"
+        [disabled]="!!busy() || uncertain()"
+        placeholder="وصف الهدف من المنهج..."
+      ></textarea>
+      <footer class="mt-6 flex justify-end gap-2">
+        <button
+          type="button"
+          class="btn btn-secondary"
+          (click)="closeCreate()"
+          [disabled]="!!busy() || uncertain()"
+        >
+          إلغاء</button
+        ><button type="submit" class="btn btn-primary" [disabled]="!!busy()">
+          {{ busy() === 'Create' ? 'جارٍ الإنشاء...' : uncertain() ? 'إعادة نفس محاولة الإنشاء' :
+          'إنشاء المنهج' }}
+        </button>
+      </footer>
+    </form>
+  </div>
+  } @if (pickerOpen()) {
+  <div class="modal-backdrop" (keydown.escape)="closePicker()" tabindex="-1">
+    <section
+      class="modal-dialog flex max-w-4xl flex-col overflow-hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="lesson-picker-title"
+      cdkTrapFocus
+      [cdkTrapFocusAutoCapture]="true"
+    >
+      <header class="flex items-start justify-between gap-3 p-5">
+        <div>
+          <h2 id="lesson-picker-title" class="m-0 text-xl font-bold">مستودع الدروس التعليمية</h2>
+          <p class="mt-1 text-sm text-[#6E7977]">
+            اختر درسًا محفوظًا وحدد موضعه داخل مسودة المنهج.
+          </p>
+        </div>
+        <button type="button" class="icon-btn" aria-label="إغلاق" (click)="closePicker()">
+          <span class="material-symbols-outlined" aria-hidden="true">close</span>
+        </button>
+      </header>
+      <div class="bg-[#EFF4FF] p-4">
+        <label for="lesson-search" class="sr-only">البحث في الدروس المحمّلة</label>
+        <div class="relative">
+          <input
+            id="lesson-search"
+            class="field bg-white pr-10"
+            type="search"
+            [ngModel]="lessonSearch()"
+            (ngModelChange)="lessonSearch.set($event)"
+            placeholder="بحث باسم الدرس..."
+          /><span
+            class="material-symbols-outlined absolute right-3 top-3 text-[20px] text-[#6E7977]"
+            aria-hidden="true"
+            >search</span
+          >
+        </div>
+        <p class="mb-0 mt-2 text-xs text-[#6E7977]">
+          البحث ضمن الدروس المحمّلة. الدروس الموجودة في المنهج لا يمكن إضافتها مرة أخرى.
+        </p>
+      </div>
+      <div class="min-h-0 flex-1 space-y-2 overflow-y-auto p-5">
+        @if (error()) {
+        <p role="alert" class="rounded-xl bg-[#FFF0EE] p-3 text-sm text-[#93000A]">{{ error() }}</p>
+        } @if (loadingLessons()) {
+        <p role="status" class="py-4 text-center text-sm text-[#6E7977]">جارٍ تحميل الدروس...</p>
+        } @for (lesson of visibleLessons(); track lesson.versionId) {
+        <button
+          type="button"
+          (click)="selectedLessonVersionId = lesson.versionId"
+          [attr.aria-pressed]="selectedLessonVersionId === lesson.versionId"
+          class="lesson-choice"
+          [class.selected]="selectedLessonVersionId === lesson.versionId"
+        >
+          <span class="flex min-w-0 items-center gap-3"
+            ><span
+              class="material-symbols-outlined grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white text-[#00685F]"
+              aria-hidden="true"
+              >record_voice_over</span
+            ><span class="min-w-0"
+              ><strong class="block break-words text-sm">{{ lesson.title }}</strong
+              ><span class="mt-1 block line-clamp-1 text-xs text-[#6E7977]"
+                >{{ lesson.description || 'بدون وصف' }}</span
+              ></span
+            ></span
+          ><span class="shrink-0 text-xs font-semibold text-[#004E47]"
+            >{{ lesson.segmentCount }} مقطع</span
+          >
+        </button>
+        } @if (!loadingLessons() && lessonsLoaded() && visibleLessons().length === 0) {
+        <p class="py-8 text-center text-sm text-[#6E7977]">
+          لا توجد دروس متاحة مطابقة. غيّر البحث أو حمّل دروسًا أكثر.
+        </p>
+        }
+        <div class="flex flex-wrap justify-center gap-2">
+          @if (moreLessons()) {
+          <button
+            type="button"
+            class="btn btn-secondary"
+            [disabled]="loadingLessons()"
+            (click)="loadLessons(lessonPage + 1)"
+          >
+            عرض دروس أكثر
+          </button>
+          }<button
+            type="button"
+            class="btn btn-secondary"
+            (click)="loadLessons()"
+            [disabled]="loadingLessons()"
+          >
+            تحديث المكتبة
+          </button>
+        </div>
+      </div>
+      <form class="border-t border-[#E5EEFF] p-5" (ngSubmit)="applyPlacement()">
+        @if (selectedLesson(); as lesson) {
+        <p class="mb-3 mt-0 text-sm font-semibold text-[#004E47]">
+          الدرس المختار: {{ lesson.title }}
+        </p>
+        }
+        <div class="grid grid-cols-3 gap-3">
+          <label for="placement-week" class="text-xs font-semibold"
+            >الأسبوع<input
+              id="placement-week"
+              name="week"
+              class="field mt-1"
+              type="number"
+              min="1"
+              max="52"
+              required
+              [(ngModel)]="weekNumber"
+          /></label>
+          <label for="placement-day" class="text-xs font-semibold"
+            >اليوم<input
+              id="placement-day"
+              name="day"
+              class="field mt-1"
+              type="number"
+              min="1"
+              max="7"
+              required
+              [(ngModel)]="dayNumber"
+          /></label>
+          <label for="placement-order" class="text-xs font-semibold"
+            >الترتيب<input
+              id="placement-order"
+              name="order"
+              class="field mt-1"
+              type="number"
+              min="1"
+              max="100"
+              required
+              [(ngModel)]="sortOrder"
+          /></label>
+        </div>
+        <p class="mb-0 mt-2 text-xs text-[#6E7977]">
+          أسبوع 1–52 · يوم 1–7 · ترتيب 1–100. الإدراج لا يُحفظ حتى تضغط حفظ التغييرات.
+        </p>
+        <div class="mt-4 flex justify-end gap-2">
+          <button type="button" class="btn btn-secondary" (click)="closePicker()">إلغاء</button
+          ><button type="submit" class="btn btn-primary" [disabled]="!selectedLesson() || locked()">
+            {{ editingLessonVersionId() ? 'تحديث الموضع' : 'إدراج الدرس' }}
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
+  }
 </main>

@@ -9,4 +9,7 @@ public sealed class PublishedCurriculumVersion
     public string Title { get; set; } = "";
     public DateTimeOffset PublishedAtUtc { get; set; }
     public DateTimeOffset AvailableAtUtc { get; set; }
+    // Nullable for pre-existing lesson-level publications. Never inferred from a later draft.
+    public Guid? SourceDraftRevision { get; set; }
+    public string? PublishRequestHash { get; set; }
 }

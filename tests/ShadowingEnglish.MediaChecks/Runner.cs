@@ -51,8 +51,10 @@ internal static class Runner
         }
     }
 
-    public static async Task<int> Main()
+    public static async Task<int> Main(string[] args)
     {
+        if (args.SequenceEqual(new[] { "--curriculum-migrations" }))
+            return await CurriculumMigrationChecks.RunAsync(Check, () => failures);
         var api = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
         Assert(File.Exists(Path.Combine(api, "ShadowingEnglish.Api.csproj")), "Run from the V2 root.");
         var wave = await File.ReadAllBytesAsync(Path.Combine(api, "DevelopmentMedia/day2-hello.wav"));
@@ -152,6 +154,9 @@ internal static class Runner
             using var anonymousApp = app.Client();
             var saveId = Guid.NewGuid(); var versionId = Guid.Empty; var slotId = Guid.Empty;
             var publishId = Guid.NewGuid();
+            var curriculumId = Guid.NewGuid();
+            var draftRevision = Guid.Empty;
+            var assignmentRevision = Guid.Empty;
             await Check("Real Identity roles and CSRF protect authoring", async () =>
             {
                 using var anonymous = await anonymousApp.PostAsync("/api/admin/shadowing/lessons", Upload(Guid.NewGuid(), wave));
@@ -227,17 +232,34 @@ internal static class Runner
             });
             await Check("Explicit Publish makes a lesson visible and retry is idempotent", async () =>
             {
+                using var created = await admin.PostAsJsonAsync("/api/admin/shadowing/curriculums", new
+                    { requestId = curriculumId, name = "Prepared curriculum", description = "" });
+                Assert(created.StatusCode == HttpStatusCode.Created, "curriculum_setup_failed");
+                draftRevision = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("draftRevision").GetGuid();
+                using var saved = await admin.PutAsJsonAsync($"/api/admin/shadowing/curriculums/{curriculumId}", new
+                {
+                    requestId = Guid.NewGuid(), expectedDraftRevision = draftRevision, name = "Prepared curriculum", description = "",
+                    lessons = new[] { new { lessonVersionId = versionId, weekNumber = 1, dayNumber = 1, sortOrder = 1 } }
+                });
+                Assert(saved.StatusCode == HttpStatusCode.OK, "curriculum_save_setup_failed");
+                draftRevision = (await saved.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("draftRevision").GetGuid();
+                using var assigned = await admin.PutAsJsonAsync($"/api/admin/shadowing/groups/{app.GroupId}/curriculum-assignment", new
+                    { requestId = Guid.NewGuid(), curriculumTemplateId = curriculumId, expectedAssignmentRevision = Guid.Empty });
+                Assert(assigned.StatusCode == HttpStatusCode.OK, "curriculum_assignment_setup_failed");
+                assignmentRevision = (await assigned.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("assignmentRevision").GetGuid();
                 var request = new { requestId = publishId, groupId = app.GroupId,
-                    lessonVersionId = versionId, expectedVersionId = (Guid?)null, weekNumber = 1, dayNumber = 1, sortOrder = 1 };
-                using var publish = await admin.PostAsJsonAsync("/api/admin/shadowing/publish", request);
+                    curriculumTemplateId = curriculumId, expectedDraftRevision = draftRevision,
+                    expectedAssignmentRevision = assignmentRevision, expectedVersionId = (Guid?)null };
+                using var publish = await admin.PostAsJsonAsync("/api/admin/shadowing/curriculums/publish", request);
                 Assert(publish.StatusCode == HttpStatusCode.Created, "publish_status_" + publish.StatusCode);
-                slotId = (await publish.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("slotId").GetGuid();
                 var before = await app.FingerprintAsync();
-                using var retry = await admin.PostAsJsonAsync("/api/admin/shadowing/publish", request);
+                using var retry = await admin.PostAsJsonAsync("/api/admin/shadowing/curriculums/publish", request);
                 Assert(retry.StatusCode == HttpStatusCode.OK && before == await app.FingerprintAsync(), "publish_retry_mutated_state");
                 using var curriculum = await student.GetAsync("/api/student/learning/curriculum");
-                Assert((await curriculum.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items").GetArrayLength() == 1,
+                var cards = (await curriculum.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items");
+                Assert(cards.GetArrayLength() == 1,
                     "published_lesson_invisible");
+                slotId = cards[0].GetProperty("slotId").GetGuid();
                 using var segment = await student.GetAsync($"/api/student/learning/slots/{slotId}/segments/1");
                 Assert(segment.StatusCode == HttpStatusCode.OK, "published_segment_invisible");
                 using var adminCurriculum = await admin.GetAsync($"/api/admin/shadowing/groups/{app.GroupId}/curriculum");
@@ -297,9 +319,9 @@ internal static class Runner
                 Assert(retry.StatusCode == HttpStatusCode.OK && before == await app.FingerprintAsync(), "progress_retry_mutated_state");
                 using var overview = await student.GetAsync($"/api/student/learning/slots/{slotId}");
                 Assert((await overview.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("isComplete").GetBoolean(), "progress_not_restored");
-                using var publish = await admin.PostAsJsonAsync("/api/admin/shadowing/publish", new {
-                    requestId = Guid.NewGuid(), groupId = app.GroupId, lessonVersionId = versionId,
-                    expectedVersionId = publishId, weekNumber = 1, dayNumber = 2, sortOrder = 1 });
+                using var publish = await admin.PostAsJsonAsync("/api/admin/shadowing/curriculums/publish", new {
+                    requestId = Guid.NewGuid(), groupId = app.GroupId, curriculumTemplateId = curriculumId,
+                    expectedDraftRevision = draftRevision, expectedAssignmentRevision = assignmentRevision, expectedVersionId = publishId });
                 Assert(publish.StatusCode == HttpStatusCode.Conflict && before == await app.FingerprintAsync(),
                     "republish_changed_active_progress");
             });
@@ -402,6 +424,7 @@ internal static class Runner
                 Assert(logs.Messages.Any(x => x.Contains("Media.Write.Start")) && logs.Messages.Any(x => x.Contains("Media.Write.Success")),
                     "media_diagnostics_missing");
             });
+            await CurriculumChecks.RunAsync(api, store, logs, wave, Check);
         }
         finally
         {

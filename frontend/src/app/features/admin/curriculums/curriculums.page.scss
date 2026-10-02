@@ -1,9 +1,129 @@
 :host {
   display: block;
-  min-width: 0;
 }
-
-.curriculum-description {
-  white-space: pre-line;
-  overflow-wrap: anywhere;
+.field {
+  min-height: 44px;
+  width: 100%;
+  min-width: 0;
+  border-radius: 12px;
+  background: #eff4ff;
+  padding: 10px 16px;
+  font-size: 14px;
+  color: #0b1c30;
+}
+.field:focus-visible,
+button:focus-visible {
+  outline: 2px solid #00685f;
+  outline-offset: 2px;
+}
+.field:disabled {
+  opacity: 0.65;
+}
+.field.w-auto {
+  width: auto;
+}
+.field.bg-white {
+  background: white;
+}
+.field.pr-10 {
+  padding-right: 40px;
+}
+.btn {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary {
+  background: #00685f;
+  color: white;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+}
+.btn-primary:hover {
+  background: #004e47;
+}
+.btn-secondary {
+  background: #eff4ff;
+  color: #004e47;
+}
+.btn-secondary:hover {
+  background: #e5eeff;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.badge {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.icon-btn {
+  display: grid;
+  min-height: 44px;
+  min-width: 44px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 8px;
+  color: #6e7977;
+}
+.icon-btn:hover {
+  background: #eff4ff;
+}
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(33 49 69 / 40%);
+}
+.modal-dialog {
+  width: 100%;
+  max-height: 88dvh;
+  overflow-y: auto;
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 25%);
+}
+.lesson-choice {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 12px;
+  border-radius: 12px;
+  background: #f8f9ff;
+  padding: 16px;
+  text-align: right;
+}
+.lesson-choice:hover {
+  background: #eff4ff;
+}
+.lesson-choice.selected {
+  background: #e5eeff;
+  box-shadow: inset 0 0 0 2px rgb(0 104 95 / 20%);
+}
+@media (min-width: 640px) {
+  .lesson-choice {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+@media (max-width: 639px) {
+  .modal-dialog > form {
+    padding: 16px;
+  }
+  .modal-backdrop {
+    padding: 12px;
+  }
 }

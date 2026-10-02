@@ -1,4 +1,3 @@
-using System.Data;
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.AspNetCore.Antiforgery;
@@ -11,6 +10,7 @@ using ShadowingEnglish.Core.Learning;
 using ShadowingEnglish.Infrastructure.Database;
 using ShadowingEnglish.Infrastructure.Identity;
 using ShadowingEnglish.Api.Modules.Media;
+using ShadowingEnglish.Api.Modules.Curriculums;
 
 namespace ShadowingEnglish.Api.Modules.Lessons;
 
@@ -258,126 +258,43 @@ public static class AdminShadowingEndpoints
             }
         }).RequireRateLimiting("admin-lesson-write");
 
+        // Retired write contract: historical successful requests may be confirmed without mutation.
+        // All new publications must explicitly save and assign an independent curriculum first.
         group.MapPost("/publish", async (PublishRequest request, HttpContext http,
             IAntiforgery antiforgery, ApplicationDbContext db, UserManager<ApplicationUser> users,
-            IShadowingMediaStore media, ILoggerFactory loggers) =>
+            ILoggerFactory loggers) =>
         {
             var started = Stopwatch.GetTimestamp();
             var log = loggers.CreateLogger("Admin.Shadowing");
-            log.LogInformation("Admin.Shadowing.Publish.Start GroupId={GroupId} LessonVersionId={LessonVersionId} RequestId={RequestId} TraceId={TraceId}",
-                request.GroupId, request.LessonVersionId, request.RequestId, http.TraceIdentifier);
+            http.Response.Headers.CacheControl = "no-store";
+            log.LogInformation("Admin.Shadowing.Publish.Start GroupId={GroupId} RequestId={RequestId}",
+                request.GroupId, request.RequestId);
             if (!await ValidCsrfAsync(http, antiforgery)) return Error(log, started, 400, "invalid_csrf");
             var actor = await AdminAsync(http, users);
             if (actor is null) return Denied(log, started);
-            if (!media.IsConfigured) return Error(log, started, 503, "media_storage_not_configured");
-            if (request.RequestId == Guid.Empty || request.GroupId == Guid.Empty ||
-                request.LessonVersionId == Guid.Empty || request.ExpectedVersionId == Guid.Empty ||
-                request.WeekNumber is < 1 or > 52 || request.DayNumber is < 1 or > 7 ||
-                request.SortOrder is < 1 or > 100)
-                return Error(log, started, 400, "invalid_publication");
             try
             {
-                LessonVersion? lesson = null;
-                // Blob I/O happens before SQL's serializable transaction; don't hold group locks over the network.
-                if (!await db.PublishedCurriculumVersions.AsNoTracking().AnyAsync(x => x.Id == request.RequestId))
-                {
-                    lesson = await db.LessonVersions.AsNoTracking()
-                        .SingleOrDefaultAsync(x => x.Id == request.LessonVersionId);
-                    if (lesson is null) return Error(log, started, 404, "lesson_not_found");
-                    var keys = await db.LessonSegments.AsNoTracking()
-                        .Where(x => x.LessonVersionId == lesson.Id).Select(x => x.AudioStorageKey).ToArrayAsync();
-                    if (keys.Length == 0 || keys.Any(key => !SafeKey(key)))
-                        return Error(log, started, 409, "lesson_audio_missing");
-                    foreach (var key in keys)
-                        if (!await media.ExistsAsync(key, http.RequestAborted))
-                            return Error(log, started, 409, "lesson_audio_missing");
-                }
-                await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
-                var groupName = await db.StudyGroups.AsNoTracking().Where(x => x.Id == request.GroupId)
-                    .Select(x => x.Name).SingleOrDefaultAsync();
-                if (groupName is null) return Error(log, started, 404, "group_not_found");
-                var assignment = await db.GroupCurriculumAssignments
-                    .SingleOrDefaultAsync(x => x.GroupId == request.GroupId);
-                var previousRequest = await db.PublishedCurriculumVersions.AsNoTracking()
-                    .SingleOrDefaultAsync(x => x.Id == request.RequestId);
-                if (previousRequest is not null)
-                {
-                    var publishedSlot = await db.PublishedLessonSlots.AsNoTracking()
-                        .SingleOrDefaultAsync(x => x.PublishedCurriculumVersionId == previousRequest.Id &&
-                            x.LessonVersionId == request.LessonVersionId && x.WeekNumber == request.WeekNumber &&
-                            x.DayNumber == request.DayNumber && x.SortOrder == request.SortOrder);
-                    if (previousRequest.GroupId != request.GroupId ||
-                        assignment?.PublishedCurriculumVersionId != previousRequest.Id || publishedSlot is null)
-                        return Error(log, started, 409, "publish_request_conflict");
-                    http.Response.Headers.CacheControl = "no-store";
-                    log.LogInformation("Admin.Shadowing.Publish.NoChange ActorId={ActorId} GroupId={GroupId} VersionId={VersionId} DurationMs={DurationMs}",
-                        actor.Id, request.GroupId, previousRequest.Id, Ms(started));
-                    return Results.Ok(new PublicationDto(request.GroupId, previousRequest.Id, publishedSlot.Id));
-                }
-                if (assignment?.PublishedCurriculumVersionId != request.ExpectedVersionId)
-                    return Error(log, started, 409, "publication_changed");
-                if (lesson is null) return Error(log, started, 409, "publication_changed");
-
-                PublishedCurriculumVersion? current = null;
-                var previousSlots = new List<PublishedLessonSlot>();
-                if (assignment is not null)
-                {
-                    current = await db.PublishedCurriculumVersions.AsNoTracking()
-                        .SingleAsync(x => x.Id == assignment.PublishedCurriculumVersionId);
-                    // The old snapshot and progress stay intact. Do not silently reset an active student's progress.
-                    if (await db.StudentStageProgress.AsNoTracking()
-                        .AnyAsync(x => x.PublishedCurriculumVersionId == current.Id))
-                        return Error(log, started, 409, "active_progress_prevents_republish");
-                    previousSlots = await db.PublishedLessonSlots.AsNoTracking()
-                        .Where(x => x.PublishedCurriculumVersionId == current.Id).ToListAsync();
-                    if (previousSlots.Any(x => x.LessonVersionId == lesson.Id ||
-                        (x.WeekNumber == request.WeekNumber && x.DayNumber == request.DayNumber &&
-                         x.SortOrder == request.SortOrder)))
-                        return Error(log, started, 409, "slot_conflict");
-                }
-                var now = DateTimeOffset.UtcNow;
-                var templateId = current?.CurriculumTemplateId ?? Guid.NewGuid();
-                if (current is null)
-                    db.CurriculumTemplates.Add(new CurriculumTemplate { Id = templateId, Name = groupName });
-                var nextNumber = current is null ? 1 :
-                    1 + await db.PublishedCurriculumVersions.AsNoTracking()
-                        .Where(x => x.GroupId == request.GroupId && x.CurriculumTemplateId == templateId)
-                        .MaxAsync(x => x.VersionNumber);
-                var version = new PublishedCurriculumVersion { Id = request.RequestId,
-                    CurriculumTemplateId = templateId, GroupId = request.GroupId,
-                    VersionNumber = nextNumber,
-                    Title = current?.Title ?? groupName, PublishedAtUtc = now, AvailableAtUtc = now };
-                db.PublishedCurriculumVersions.Add(version);
-                foreach (var old in previousSlots)
-                    db.PublishedLessonSlots.Add(new PublishedLessonSlot { Id = Guid.NewGuid(),
-                        PublishedCurriculumVersionId = version.Id, LessonVersionId = old.LessonVersionId,
-                        WeekNumber = old.WeekNumber, DayNumber = old.DayNumber,
-                        SortOrder = old.SortOrder, AvailableAtUtc = old.AvailableAtUtc });
-                var slot = new PublishedLessonSlot { Id = Guid.NewGuid(),
-                    PublishedCurriculumVersionId = version.Id, LessonVersionId = lesson.Id,
-                    WeekNumber = request.WeekNumber, DayNumber = request.DayNumber,
-                    SortOrder = request.SortOrder, AvailableAtUtc = now };
-                db.PublishedLessonSlots.Add(slot);
-                if (assignment is null)
-                    db.GroupCurriculumAssignments.Add(new GroupCurriculumAssignment { GroupId = request.GroupId,
-                        PublishedCurriculumVersionId = version.Id });
-                else assignment.PublishedCurriculumVersionId = version.Id;
-                await db.SaveChangesAsync();
-                await tx.CommitAsync();
-                http.Response.Headers.CacheControl = "no-store";
-                log.LogInformation("Admin.Shadowing.Publish.Success ActorId={ActorId} GroupId={GroupId} VersionId={VersionId} SlotId={SlotId} Count={Count} DurationMs={DurationMs}",
-                    actor.Id, request.GroupId, version.Id, slot.Id, previousSlots.Count + 1, Ms(started));
-                return Results.Json(new PublicationDto(request.GroupId, version.Id, slot.Id), statusCode: 201);
+                var previous = await db.PublishedCurriculumVersions.AsNoTracking()
+                    .SingleOrDefaultAsync(x => x.Id == request.RequestId, http.RequestAborted);
+                if (previous is null) return Error(log, started, 409, "curriculum_publish_required");
+                var slot = await db.PublishedLessonSlots.AsNoTracking().SingleOrDefaultAsync(x =>
+                    x.PublishedCurriculumVersionId == previous.Id && x.LessonVersionId == request.LessonVersionId &&
+                    x.WeekNumber == request.WeekNumber && x.DayNumber == request.DayNumber && x.SortOrder == request.SortOrder,
+                    http.RequestAborted);
+                if (previous.GroupId != request.GroupId || previous.SourceDraftRevision is not null || slot is null)
+                    return Error(log, started, 409, "publish_request_conflict");
+                log.LogInformation("Admin.Shadowing.Publish.NoChange GroupId={GroupId} VersionId={VersionId} DurationMs={DurationMs}",
+                    previous.GroupId, previous.Id, Ms(started));
+                return Results.Ok(new PublicationDto(previous.GroupId, previous.Id, slot.Id));
             }
-            catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 or 1205 })
-            { return Conflict(log, ex, actor.Id, started); }
-            catch (SqlException ex) when (ex.Number == 1205)
-            { return Conflict(log, ex, actor.Id, started); }
-            catch (MediaStorageUnavailableException) { return Error(log, started, 503, "media_storage_unavailable"); }
-            catch (Exception ex) { return Failed(log, ex, "Publish", actor.Id, started); }
+            catch (Exception ex)
+            {
+                log.LogWarning("Admin.Shadowing.Publish.Failed ErrorType={ErrorType} DurationMs={DurationMs}", ex.GetType().Name, Ms(started));
+                return Error(log, started, 500, "shadowing_operation_failed");
+            }
         }).RequireRateLimiting("admin-lesson-write");
 
-        return app;
+        return app.MapAdminCurriculumsEndpoints();
     }
 
     private static bool SafeKey(string key) => ShadowingMediaKeys.IsValid(key);
@@ -418,9 +335,6 @@ public static class AdminShadowingEndpoints
     private static IResult Failed(ILogger log, Exception ex, string action, Guid actorId, long started)
     { log.LogError(ex, "Admin.Shadowing.Failed Action={Action} ActorId={ActorId} DurationMs={DurationMs}",
         action, actorId, Ms(started)); return Results.Problem(statusCode: 500, title: "shadowing_operation_failed"); }
-    private static IResult Conflict(ILogger log, Exception ex, Guid actorId, long started)
-    { log.LogWarning(ex, "Admin.Shadowing.Publish.Conflict ActorId={ActorId} DurationMs={DurationMs}",
-        actorId, Ms(started)); return Results.Conflict(new { error = "publication_changed" }); }
 
     private sealed record LessonDto(Guid Id, Guid VersionId, string Title, string Description, int SegmentCount);
     private sealed record GroupDto(Guid Id, string Name, Guid? CurrentVersionId);

@@ -35,7 +35,16 @@ public static class AdminGroupsEndpoints
                 var groups = await db.StudyGroups.AsNoTracking()
                     .OrderBy(item => item.Name).ThenBy(item => item.Id)
                     .Skip(((page ?? 1) - 1) * size).Take(size + 1)
-                    .Select(item => new GroupDto(item.Id, item.Name)).ToListAsync();
+                    .Select(item => new GroupDto(item.Id, item.Name, item.AssignedCurriculumTemplateId,
+                        db.CurriculumTemplates.Where(x => x.Id == item.AssignedCurriculumTemplateId).Select(x => x.Name).SingleOrDefault(),
+                        db.CurriculumTemplates.Where(x => x.Id == item.AssignedCurriculumTemplateId).Select(x => (Guid?)x.DraftRevision).SingleOrDefault(),
+                        db.GroupCurriculumAssignments.Where(x => x.GroupId == item.Id).Select(x => (Guid?)x.PublishedCurriculumVersionId).SingleOrDefault(),
+                        (from assignment in db.GroupCurriculumAssignments join version in db.PublishedCurriculumVersions
+                            on assignment.PublishedCurriculumVersionId equals version.Id where assignment.GroupId == item.Id
+                            select (Guid?)version.CurriculumTemplateId).SingleOrDefault(),
+                        (from assignment in db.GroupCurriculumAssignments join version in db.PublishedCurriculumVersions
+                            on assignment.PublishedCurriculumVersionId equals version.Id where assignment.GroupId == item.Id
+                            select version.SourceDraftRevision).SingleOrDefault())).ToListAsync();
                 context.Response.Headers.CacheControl = "no-store";
                 logger.LogInformation("Admin.Groups.List.Success ActorId={ActorId} Count={Count} DurationMs={DurationMs}",
                     actor.Id, Math.Min(groups.Count, size), Elapsed(started));
@@ -334,7 +343,9 @@ public static class AdminGroupsEndpoints
 
     public sealed record CreateGroupRequest(string? Name, Guid? RequestId);
     public sealed record MoveStudentRequest(Guid? GroupId, Guid? ExpectedMembershipId);
-    private sealed record GroupDto(Guid Id, string Name);
+    private sealed record GroupDto(Guid Id, string Name, Guid? AssignedCurriculumTemplateId = null,
+        string? AssignedCurriculumName = null, Guid? DraftRevision = null, Guid? CurrentVersionId = null,
+        Guid? PublishedCurriculumTemplateId = null, Guid? PublishedDraftRevision = null);
     private sealed record ActiveMembershipDto(Guid MembershipId, Guid GroupId, string GroupName,
         DateTimeOffset StartedAtUtc);
     private sealed record StudentDto(Guid Id, string Email, ActiveMembershipDto? ActiveGroup);

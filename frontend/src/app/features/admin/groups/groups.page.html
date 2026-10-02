@@ -104,16 +104,30 @@
             >group_work</span
           >
         </div>
+        <div class="mt-4 rounded-lg bg-[#EFF4FF] p-3 text-xs leading-5">
+          <span class="block font-semibold text-[#004E47]"
+            >{{ group.assignedCurriculumName || 'لا يوجد منهج مسند' }}</span
+          >
+          <span class="text-[#6E7977]"
+            >{{ group.currentVersionId ? 'للمجموعة نسخة منشورة' : 'لم يُنشر منهج للطلاب بعد'
+            }}</span
+          >
+          @if (group.assignedCurriculumTemplateId && (group.publishedCurriculumTemplateId !==
+          group.assignedCurriculumTemplateId || group.publishedDraftRevision !==
+          group.draftRevision)) {
+          <span class="mt-2 block font-semibold text-[#825100]">توجد مسودة غير منشورة</span>
+          }
+        </div>
         <div
           class="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-[#E5EEFF] pt-4"
         >
           <a
             routerLink="/admin/curriculums"
-            [queryParams]="{ groupId: group.id }"
-            class="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#EFF4FF] px-4 text-sm font-semibold text-[#004E47] no-underline transition hover:bg-[#00685F] hover:text-white"
+            [queryParams]="{ groupId: group.id, curriculumId: group.assignedCurriculumTemplateId }"
+            class="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#00685F] px-4 text-sm font-semibold text-white no-underline hover:bg-[#004E47]"
           >
+            إدارة المنهج والنشر
             <span class="material-symbols-outlined text-[18px]" aria-hidden="true">menu_book</span>
-            إدارة المنهج
           </a>
           <a
             href="#group-students"

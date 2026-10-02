@@ -27,29 +27,87 @@ export interface Publication {
   slotId: string;
 }
 
-export interface CurriculumLesson {
-  lessonId: string;
+export interface CurriculumPosition {
   lessonVersionId: string;
-  title: string;
   weekNumber: number;
   dayNumber: number;
   sortOrder: number;
 }
 
-export interface GroupCurriculum {
-  versionId: string | null;
-  groupId: string;
+export interface CurriculumLesson extends CurriculumPosition {
+  lessonId: string;
+  title: string;
+  description: string;
+  segmentCount: number;
+}
+
+export interface CurriculumSummary {
+  id: string;
+  name: string;
+  description: string;
+  draftRevision: string;
+  updatedAtUtc: string | null;
+  lessonCount: number;
+  weekCount: number;
+}
+
+export interface CurriculumDraft {
+  id: string;
+  name: string;
+  description: string;
+  draftRevision: string;
+  updatedAtUtc: string | null;
   lessons: CurriculumLesson[];
 }
 
-export interface PublishRequest {
+export interface CurriculumSaveRequest {
+  requestId: string;
+  expectedDraftRevision: string;
+  name: string;
+  description: string;
+  lessons: CurriculumPosition[];
+}
+
+export interface CurriculumAssignRequest {
+  requestId: string;
+  curriculumTemplateId: string;
+  expectedAssignmentRevision: string;
+}
+
+export interface CurriculumPublishRequest {
   requestId: string;
   groupId: string;
-  lessonVersionId: string;
+  curriculumTemplateId: string;
+  expectedDraftRevision: string;
+  expectedAssignmentRevision: string;
   expectedVersionId: string | null;
-  weekNumber: number;
-  dayNumber: number;
-  sortOrder: number;
+}
+
+export interface GroupCurriculumState {
+  groupId: string;
+  groupName: string;
+  assignedCurriculumTemplateId: string | null;
+  assignedCurriculumName: string | null;
+  draftRevision: string | null;
+  assignmentRevision: string;
+  versionId: string | null;
+  publishedCurriculumTemplateId: string | null;
+  publishedTitle: string | null;
+  publishedDraftRevision: string | null;
+  versionNumber: number | null;
+  hasUnpublishedChanges: boolean;
+  lessons: Pick<
+    CurriculumLesson,
+    'lessonId' | 'lessonVersionId' | 'title' | 'weekNumber' | 'dayNumber' | 'sortOrder'
+  >[];
+}
+
+export interface CurriculumPublication {
+  versionId: string;
+  groupId: string;
+  curriculumTemplateId: string;
+  sourceDraftRevision: string;
+  versionNumber: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -69,8 +127,46 @@ export class ShadowingAuthoringApi {
     });
   }
 
-  curriculum(groupId: string): Observable<GroupCurriculum> {
-    return this.http.get<GroupCurriculum>(`${this.base}/groups/${groupId}/curriculum`);
+  curriculums(page = 1): Observable<Page<CurriculumSummary>> {
+    return this.http.get<Page<CurriculumSummary>>(`${this.base}/curriculums`, {
+      params: new HttpParams().set('page', page),
+    });
+  }
+
+  curriculum(id: string): Observable<CurriculumDraft> {
+    return this.http.get<CurriculumDraft>(`${this.base}/curriculums/${encodeURIComponent(id)}`);
+  }
+
+  createCurriculum(request: {
+    requestId: string;
+    name: string;
+    description: string;
+  }): Observable<CurriculumDraft> {
+    return this.http.post<CurriculumDraft>(`${this.base}/curriculums`, request);
+  }
+
+  saveCurriculum(id: string, request: CurriculumSaveRequest): Observable<CurriculumDraft> {
+    return this.http.put<CurriculumDraft>(
+      `${this.base}/curriculums/${encodeURIComponent(id)}`,
+      request,
+    );
+  }
+
+  groupCurriculum(id: string): Observable<GroupCurriculumState> {
+    return this.http.get<GroupCurriculumState>(
+      `${this.base}/groups/${encodeURIComponent(id)}/curriculum`,
+    );
+  }
+
+  assignCurriculum(id: string, request: CurriculumAssignRequest): Observable<GroupCurriculumState> {
+    return this.http.put<GroupCurriculumState>(
+      `${this.base}/groups/${encodeURIComponent(id)}/curriculum-assignment`,
+      request,
+    );
+  }
+
+  publishCurriculum(request: CurriculumPublishRequest): Observable<CurriculumPublication> {
+    return this.http.post<CurriculumPublication>(`${this.base}/curriculums/publish`, request);
   }
 
   create(
@@ -88,7 +184,16 @@ export class ShadowingAuthoringApi {
     return this.http.post<AuthoringLesson>(`${this.base}/lessons`, body);
   }
 
-  publish(request: PublishRequest): Observable<Publication> {
+  /** @deprecated New publications use publishCurriculum; this route only confirms historical receipts. */
+  publish(request: {
+    requestId: string;
+    groupId: string;
+    lessonVersionId: string;
+    expectedVersionId: string | null;
+    weekNumber: number;
+    dayNumber: number;
+    sortOrder: number;
+  }): Observable<Publication> {
     return this.http.post<Publication>(`${this.base}/publish`, request);
   }
 }

@@ -16,6 +16,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<LessonVersion> LessonVersions => Set<LessonVersion>();
     public DbSet<LessonSegment> LessonSegments => Set<LessonSegment>();
     public DbSet<CurriculumTemplate> CurriculumTemplates => Set<CurriculumTemplate>();
+    public DbSet<CurriculumDraftLessonSlot> CurriculumDraftLessonSlots => Set<CurriculumDraftLessonSlot>();
     public DbSet<PublishedCurriculumVersion> PublishedCurriculumVersions => Set<PublishedCurriculumVersion>();
     public DbSet<GroupCurriculumAssignment> GroupCurriculumAssignments => Set<GroupCurriculumAssignment>();
     public DbSet<PublishedLessonSlot> PublishedLessonSlots => Set<PublishedLessonSlot>();
@@ -55,6 +56,10 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.HasKey(group => group.Id);
             entity.Property(group => group.Name).IsRequired().HasMaxLength(120);
             entity.HasIndex(group => group.CreateRequestId).IsUnique();
+            entity.Property(group => group.CurriculumAssignmentRevision).IsConcurrencyToken();
+            entity.Property(group => group.LastCurriculumAssignmentRequestHash).HasMaxLength(64);
+            entity.HasOne<CurriculumTemplate>().WithMany()
+                .HasForeignKey(group => group.AssignedCurriculumTemplateId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ApplicationUser>().WithMany()
                 .HasForeignKey(group => group.CreatedByAdminId)
                 .OnDelete(DeleteBehavior.Restrict);
@@ -112,6 +117,21 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         {
             entity.ToTable("CurriculumTemplates"); entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).IsRequired().HasMaxLength(160);
+            entity.Property(x => x.Description).IsRequired().HasMaxLength(1000);
+            entity.Property(x => x.DraftRevision).IsConcurrencyToken();
+            entity.Property(x => x.CreateRequestHash).HasMaxLength(64);
+            entity.Property(x => x.LastUpdateRequestHash).HasMaxLength(64);
+        });
+        builder.Entity<CurriculumDraftLessonSlot>(entity =>
+        {
+            entity.ToTable("CurriculumDraftLessonSlots", table => table.HasCheckConstraint(
+                "CK_CurriculumDraftLessonSlots_Position",
+                "[WeekNumber] BETWEEN 1 AND 52 AND [DayNumber] BETWEEN 1 AND 7 AND [SortOrder] BETWEEN 1 AND 100"));
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.CurriculumTemplateId, x.WeekNumber, x.DayNumber, x.SortOrder }).IsUnique();
+            entity.HasIndex(x => new { x.CurriculumTemplateId, x.LessonVersionId }).IsUnique();
+            entity.HasOne<CurriculumTemplate>().WithMany().HasForeignKey(x => x.CurriculumTemplateId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LessonVersion>().WithMany().HasForeignKey(x => x.LessonVersionId).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<PublishedCurriculumVersion>(entity =>
         {
@@ -120,6 +140,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.HasAlternateKey(x => new { x.Id, x.GroupId });
             entity.Property(x => x.Title).IsRequired().HasMaxLength(160);
             entity.HasIndex(x => new { x.GroupId, x.CurriculumTemplateId, x.VersionNumber }).IsUnique();
+            entity.Property(x => x.PublishRequestHash).HasMaxLength(64);
             entity.HasOne<StudyGroup>().WithMany().HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<CurriculumTemplate>().WithMany().HasForeignKey(x => x.CurriculumTemplateId).OnDelete(DeleteBehavior.Restrict);
         });

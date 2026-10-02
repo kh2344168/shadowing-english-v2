@@ -10,6 +10,12 @@ export interface PagedResult<T> {
 export interface StudyGroup {
   id: string;
   name: string;
+  assignedCurriculumTemplateId?: string | null;
+  assignedCurriculumName?: string | null;
+  draftRevision?: string | null;
+  currentVersionId?: string | null;
+  publishedCurriculumTemplateId?: string | null;
+  publishedDraftRevision?: string | null;
 }
 
 export interface ActiveGroupMembership {

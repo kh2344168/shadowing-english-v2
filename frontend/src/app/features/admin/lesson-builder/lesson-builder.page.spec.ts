@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { AdminLessonBuilderPage } from './lesson-builder.page';
 
 describe('AdminLessonBuilderPage', () => {
@@ -51,7 +51,7 @@ describe('AdminLessonBuilderPage', () => {
     http.verify();
   });
 
-  it('saves audio and text explicitly, then publishes only after a second action', async () => {
+  it('saves audio and text then opens the independent curriculum flow without publishing', async () => {
     await TestBed.configureTestingModule({
       imports: [AdminLessonBuilderPage],
       providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
@@ -95,19 +95,13 @@ describe('AdminLessonBuilderPage', () => {
     await create;
     expect(page.selectedVersionId).toBe('version-1');
 
-    page.selectedGroupId = 'group-1';
-    const publish = page.publish();
-    http.expectOne('/api/auth/csrf').flush(null);
-    await Promise.resolve();
-    const posted = http.expectOne('/api/admin/shadowing/publish');
-    expect(posted.request.body).toMatchObject({
-      groupId: 'group-1',
-      lessonVersionId: 'version-1',
-      expectedVersionId: null,
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    await page.publish();
+    expect(navigate).toHaveBeenCalledWith(['/admin/curriculums'], {
+      queryParams: { lessonVersionId: 'version-1' },
     });
-    posted.flush({ groupId: 'group-1', versionId: 'published-1', slotId: 'slot-1' });
-    await publish;
-    expect(page.groups()[0].currentVersionId).toBe('published-1');
+    expect(http.match('/api/admin/shadowing/publish')).toEqual([]);
+    expect(http.match('/api/admin/shadowing/curriculums/publish')).toEqual([]);
     http.verify();
   });
 });

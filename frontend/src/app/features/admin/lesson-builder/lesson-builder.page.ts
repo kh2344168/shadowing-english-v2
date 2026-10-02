@@ -8,7 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
 import { ImportedLesson, LocalDraftTransfer, importLesson } from '../ai-processing/local-lesson';
@@ -36,7 +36,7 @@ export class AdminLessonBuilderPage implements OnInit, OnDestroy {
   private urls: Record<number, string> = {};
   private nextSegmentId = 2;
   private createAttempt: string | null = null;
-  private publicationAttempt: { signature: string; requestId: string } | null = null;
+  private readonly router = inject(Router);
   lessonsPage = 0;
   groupsPage = 0;
 
@@ -303,76 +303,23 @@ export class AdminLessonBuilderPage implements OnInit, OnDestroy {
   }
 
   async publish(): Promise<void> {
-    if (this.publishing() || !this.selectedVersionId || !this.selectedGroupId) return;
-    const group = this.groups().find((item) => item.id === this.selectedGroupId);
-    if (
-      !group ||
-      !Number.isInteger(this.weekNumber) ||
-      !Number.isInteger(this.dayNumber) ||
-      !Number.isInteger(this.sortOrder) ||
-      this.weekNumber < 1 ||
-      this.weekNumber > 52 ||
-      this.dayNumber < 1 ||
-      this.dayNumber > 7 ||
-      this.sortOrder < 1 ||
-      this.sortOrder > 100
-    ) {
-      this.error.set('راجع المجموعة وترتيب الأسبوع واليوم والدرس.');
-      return;
-    }
-    const signature = [
-      group.id,
-      group.currentVersionId,
-      this.selectedVersionId,
-      this.weekNumber,
-      this.dayNumber,
-      this.sortOrder,
-    ].join(':');
-    if (this.publicationAttempt?.signature !== signature)
-      this.publicationAttempt = { signature, requestId: crypto.randomUUID() };
-    this.publishing.set(true);
-    this.error.set('');
-    this.success.set('');
+    if (!this.selectedVersionId || this.publishing()) return;
     const started = Date.now();
-    console.info('[Admin.Shadowing.UI.Publish.Start]', {
-      groupId: group.id,
-      lessonVersionId: this.selectedVersionId,
-      requestId: this.publicationAttempt.requestId,
-    });
+    this.publishing.set(true);
+    console.info('[Admin.Shadowing.UI.CurriculumNavigation.Start]');
     try {
-      await firstValueFrom(this.auth.csrf());
-      const result = await firstValueFrom(
-        this.api.publish({
-          requestId: this.publicationAttempt.requestId,
-          groupId: group.id,
-          lessonVersionId: this.selectedVersionId,
-          expectedVersionId: group.currentVersionId,
-          weekNumber: this.weekNumber,
-          dayNumber: this.dayNumber,
-          sortOrder: this.sortOrder,
-        }),
-      );
-      this.groups.update((items) =>
-        items.map((item) =>
-          item.id === group.id ? { ...item, currentVersionId: result.versionId } : item,
-        ),
-      );
-      this.publicationAttempt = null;
-      this.success.set('تم نشر الدرس للمجموعة. الطالب المسند لها يراه الآن في منهجه.');
-      console.info('[Admin.Shadowing.UI.Publish.Success]', {
-        groupId: group.id,
-        versionId: result.versionId,
-        slotId: result.slotId,
+      const navigated = await this.router.navigate(['/admin/curriculums'], {
+        queryParams: { lessonVersionId: this.selectedVersionId },
+      });
+      if (!navigated) throw new Error('navigation_failed');
+      console.info('[Admin.Shadowing.UI.CurriculumNavigation.Success]', {
         durationMs: Date.now() - started,
       });
-    } catch (error) {
-      this.error.set(this.describe(error));
-      console.warn('[Admin.Shadowing.UI.Publish.Failed]', {
-        groupId: group.id,
-        status: this.status(error),
+    } catch {
+      this.error.set('تعذر فتح إدارة المناهج. أعد المحاولة.');
+      console.warn('[Admin.Shadowing.UI.CurriculumNavigation.Failed]', {
         durationMs: Date.now() - started,
       });
-      if (this.status(error) === 409) await this.loadGroups(1);
     } finally {
       this.publishing.set(false);
     }
