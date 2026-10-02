@@ -104,7 +104,17 @@
             >group_work</span
           >
         </div>
-        <div class="mt-5 flex items-center justify-end border-t border-[#E5EEFF] pt-4">
+        <div
+          class="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-[#E5EEFF] pt-4"
+        >
+          <a
+            routerLink="/admin/curriculums"
+            [queryParams]="{ groupId: group.id }"
+            class="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#EFF4FF] px-4 text-sm font-semibold text-[#004E47] no-underline transition hover:bg-[#00685F] hover:text-white"
+          >
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">menu_book</span>
+            إدارة المنهج
+          </a>
           <a
             href="#group-students"
             class="inline-flex min-h-10 items-center gap-1 rounded-xl bg-[#EFF4FF] px-4 text-sm font-semibold text-[#004E47] no-underline transition hover:bg-[#00685F] hover:text-white"

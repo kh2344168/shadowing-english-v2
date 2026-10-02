@@ -164,6 +164,28 @@ internal static class Runner
                 admin.DefaultRequestHeaders.Add("X-XSRF-TOKEN", csrf);
                 Assert(noToken.StatusCode == HttpStatusCode.BadRequest, "csrf_missing_allowed");
             });
+            await Check("Admin curriculum reads enforce roles, distinguish missing groups and leave empty groups unchanged", async () =>
+            {
+                var path = $"/api/admin/shadowing/groups/{app.GroupId}/curriculum";
+                var before = await app.FingerprintAsync(); var assets = await BlobFingerprint(container);
+                using var anonymous = await anonymousApp.GetAsync(path);
+                using var forbidden = await student.GetAsync(path);
+                Assert(anonymous.StatusCode == HttpStatusCode.Unauthorized && forbidden.StatusCode == HttpStatusCode.Forbidden,
+                    "curriculum_read_roles_not_enforced");
+                using var missing = await admin.GetAsync($"/api/admin/shadowing/groups/{Guid.NewGuid()}/curriculum");
+                Assert(missing.StatusCode == HttpStatusCode.NotFound &&
+                    (await missing.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString() == "group_not_found",
+                    "missing_curriculum_group_not_distinguished");
+                using var empty = await admin.GetAsync(path);
+                Assert(empty.StatusCode == HttpStatusCode.OK && empty.Headers.CacheControl?.NoStore == true,
+                    "empty_curriculum_read_or_cache_invalid");
+                var result = await empty.Content.ReadFromJsonAsync<JsonElement>();
+                Assert(result.GetProperty("groupId").GetGuid() == app.GroupId &&
+                    result.GetProperty("versionId").ValueKind == JsonValueKind.Null &&
+                    result.GetProperty("lessons").GetArrayLength() == 0, "empty_curriculum_fabricated_publication");
+                Assert(before == await app.FingerprintAsync() && assets == await BlobFingerprint(container),
+                    "curriculum_get_mutated_empty_group");
+            });
             await Check("GETs leave database rows and blob versions unchanged", async () =>
             {
                 var before = await app.FingerprintAsync(); var assets = await BlobFingerprint(container);
@@ -218,6 +240,12 @@ internal static class Runner
                     "published_lesson_invisible");
                 using var segment = await student.GetAsync($"/api/student/learning/slots/{slotId}/segments/1");
                 Assert(segment.StatusCode == HttpStatusCode.OK, "published_segment_invisible");
+                using var adminCurriculum = await admin.GetAsync($"/api/admin/shadowing/groups/{app.GroupId}/curriculum");
+                Assert(adminCurriculum.StatusCode == HttpStatusCode.OK, "published_admin_curriculum_read_failed");
+                var current = await adminCurriculum.Content.ReadFromJsonAsync<JsonElement>();
+                Assert(current.GetProperty("versionId").GetGuid() == publishId &&
+                    current.GetProperty("lessons")[0].GetProperty("lessonVersionId").GetGuid() == versionId,
+                    "admin_curriculum_not_current_publication");
             });
             await Check("Authorized audio returns exact Range, private ETag and 304 without body download", async () =>
             {
@@ -274,6 +302,69 @@ internal static class Runner
                     expectedVersionId = publishId, weekNumber = 1, dayNumber = 2, sortOrder = 1 });
                 Assert(publish.StatusCode == HttpStatusCode.Conflict && before == await app.FingerprintAsync(),
                     "republish_changed_active_progress");
+            });
+            await Check("Admin curriculum refresh returns ordered metadata, preserves versions and stays scoped to its group", async () =>
+            {
+                using var orderedApp = new MediaApp(api, store, logs);
+                await orderedApp.SetupAsync(); using var writer = await orderedApp.LoginAsync("admin");
+                using var reader = await orderedApp.LoginAsync("student");
+                Guid? currentVersion = null;
+                var expected = new List<(Guid LessonId, Guid VersionId, int Week, int Day, int Order)>();
+                foreach (var (week, day, order) in new[] { (2, 1, 1), (1, 2, 2), (1, 1, 3), (1, 1, 1) })
+                {
+                    using var save = await writer.PostAsync("/api/admin/shadowing/lessons", Upload(Guid.NewGuid(), wave));
+                    Assert(save.StatusCode == HttpStatusCode.Created, "ordered_curriculum_save_failed");
+                    var lesson = await save.Content.ReadFromJsonAsync<JsonElement>();
+                    var lessonVersion = lesson.GetProperty("versionId").GetGuid();
+                    expected.Add((lesson.GetProperty("id").GetGuid(), lessonVersion, week, day, order));
+                    var requestId = Guid.NewGuid();
+                    using var publish = await writer.PostAsJsonAsync("/api/admin/shadowing/publish", new {
+                        requestId, groupId = orderedApp.GroupId, lessonVersionId = lessonVersion,
+                        expectedVersionId = currentVersion, weekNumber = week, dayNumber = day, sortOrder = order });
+                    Assert(publish.StatusCode == HttpStatusCode.Created, "ordered_curriculum_publish_failed");
+                    currentVersion = requestId;
+                }
+                expected = expected.OrderBy(x => x.Week).ThenBy(x => x.Day).ThenBy(x => x.Order).ToList();
+                var before = await orderedApp.FingerprintAsync(); var assets = await BlobFingerprint(container);
+                reads.Reads.Clear();
+                for (var refresh = 0; refresh < 2; refresh++)
+                {
+                    using var response = await writer.GetAsync($"/api/admin/shadowing/groups/{orderedApp.GroupId}/curriculum");
+                    Assert(response.StatusCode == HttpStatusCode.OK && response.Headers.CacheControl?.NoStore == true,
+                        "ordered_curriculum_read_failed");
+                    var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+                    Assert(result.EnumerateObject().Count() == 3 && result.GetProperty("versionId").GetGuid() == currentVersion &&
+                        result.GetProperty("groupId").GetGuid() == orderedApp.GroupId, "ordered_curriculum_contract_invalid");
+                    var lessons = result.GetProperty("lessons").EnumerateArray().ToArray();
+                    Assert(lessons.Length == expected.Count, "curriculum_slots_lost_when_publishing");
+                    for (var index = 0; index < lessons.Length; index++)
+                        Assert(lessons[index].EnumerateObject().Count() == 6 &&
+                            lessons[index].GetProperty("lessonId").GetGuid() == expected[index].LessonId &&
+                            lessons[index].GetProperty("lessonVersionId").GetGuid() == expected[index].VersionId &&
+                            lessons[index].GetProperty("title").GetString() == "Local prepared lesson" &&
+                            lessons[index].GetProperty("weekNumber").GetInt32() == expected[index].Week &&
+                            lessons[index].GetProperty("dayNumber").GetInt32() == expected[index].Day &&
+                            lessons[index].GetProperty("sortOrder").GetInt32() == expected[index].Order,
+                            "curriculum_order_or_metadata_invalid");
+                }
+                Assert(reads.Reads.Count == 0, "curriculum_list_read_audio");
+                using var groups = await writer.GetAsync("/api/admin/shadowing/groups?page=1");
+                var otherGroupId = (await groups.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items")
+                    .EnumerateArray().Select(x => x.GetProperty("id").GetGuid()).Single(x => x != orderedApp.GroupId);
+                using var otherCurriculum = await writer.GetAsync($"/api/admin/shadowing/groups/{otherGroupId}/curriculum");
+                var otherResult = await otherCurriculum.Content.ReadFromJsonAsync<JsonElement>();
+                Assert(otherResult.GetProperty("versionId").ValueKind == JsonValueKind.Null &&
+                    otherResult.GetProperty("lessons").GetArrayLength() == 0, "curriculum_leaked_another_group_slots");
+                using var studentCurriculum = await reader.GetAsync("/api/student/learning/curriculum");
+                Assert((await studentCurriculum.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items").GetArrayLength() == 4,
+                    "saved_group_curriculum_invisible_to_students");
+                Assert(before == await orderedApp.FingerprintAsync() && assets == await BlobFingerprint(container),
+                    "curriculum_refresh_mutated_database_or_audio");
+                Assert(logs.Messages.Any(x => x.Contains("Admin.Shadowing.Curriculum.Start")) &&
+                    logs.Messages.Any(x => x.Contains("Admin.Shadowing.Curriculum.Success")) &&
+                    logs.Messages.Any(x => x.Contains("Admin.Shadowing.Curriculum.Failed")) &&
+                    !logs.Messages.Any(x => x.Contains("Local prepared lesson") || x.Contains("Hello private transcript") ||
+                        x.Contains(orderedApp.Password)), "curriculum_diagnostics_missing_or_sensitive");
             });
             await Check("A failed second blob upload rolls back only that attempt", async () =>
             {

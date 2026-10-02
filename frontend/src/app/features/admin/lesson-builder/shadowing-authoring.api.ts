@@ -27,6 +27,31 @@ export interface Publication {
   slotId: string;
 }
 
+export interface CurriculumLesson {
+  lessonId: string;
+  lessonVersionId: string;
+  title: string;
+  weekNumber: number;
+  dayNumber: number;
+  sortOrder: number;
+}
+
+export interface GroupCurriculum {
+  versionId: string | null;
+  groupId: string;
+  lessons: CurriculumLesson[];
+}
+
+export interface PublishRequest {
+  requestId: string;
+  groupId: string;
+  lessonVersionId: string;
+  expectedVersionId: string | null;
+  weekNumber: number;
+  dayNumber: number;
+  sortOrder: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ShadowingAuthoringApi {
   private readonly http = inject(HttpClient);
@@ -44,6 +69,10 @@ export class ShadowingAuthoringApi {
     });
   }
 
+  curriculum(groupId: string): Observable<GroupCurriculum> {
+    return this.http.get<GroupCurriculum>(`${this.base}/groups/${groupId}/curriculum`);
+  }
+
   create(
     requestId: string,
     title: string,
@@ -59,15 +88,7 @@ export class ShadowingAuthoringApi {
     return this.http.post<AuthoringLesson>(`${this.base}/lessons`, body);
   }
 
-  publish(request: {
-    requestId: string;
-    groupId: string;
-    lessonVersionId: string;
-    expectedVersionId: string | null;
-    weekNumber: number;
-    dayNumber: number;
-    sortOrder: number;
-  }): Observable<Publication> {
+  publish(request: PublishRequest): Observable<Publication> {
     return this.http.post<Publication>(`${this.base}/publish`, request);
   }
 }

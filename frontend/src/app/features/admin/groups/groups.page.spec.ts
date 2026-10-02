@@ -46,6 +46,16 @@ describe('AdminGroupsPage', () => {
     expect(http.match((request) => request.method !== 'GET')).toEqual([]);
   });
 
+  it('links each group card to curriculum management without changing membership', async () => {
+    await loadInitial();
+    const link = fixture.nativeElement.querySelector(
+      'a[href^="/admin/curriculums"]',
+    ) as HTMLAnchorElement;
+    expect(link.textContent).toContain('إدارة المنهج');
+    expect(link.getAttribute('href')).toBe(`/admin/curriculums?groupId=${group.id}`);
+    expect(http.match((request) => request.method !== 'GET')).toEqual([]);
+  });
+
   it('filters the loaded groups without writing or hiding the student controls', async () => {
     await loadInitial();
     const input = fixture.nativeElement.querySelector('#group-search') as HTMLInputElement;

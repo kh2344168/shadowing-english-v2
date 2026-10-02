@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
 import { AdminGroupsApi, GroupHistoryItem, GroupStudent, StudyGroup } from './groups.api';
@@ -15,7 +16,7 @@ import { AdminGroupsApi, GroupHistoryItem, GroupStudent, StudyGroup } from './gr
 @Component({
   selector: 'app-admin-groups-page',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   templateUrl: './groups.page.html',
   styleUrl: './groups.page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
