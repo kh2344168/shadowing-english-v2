@@ -71,9 +71,20 @@ builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IShadowingMediaStore>(services => ShadowingMediaStoreFactory.Create(
     builder.Environment, builder.Configuration, services.GetRequiredService<ILoggerFactory>()));
 
-// Limit sensitive administrator account creation per authenticated user (no extra runtime package).
+// Bound sensitive authentication and write requests with built-in policies.
 builder.Services.AddRateLimiter(options =>
 {
+    // Identity lockout protects known accounts; also bound anonymous attempts for unknown emails.
+    options.AddPolicy("auth-login", context => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 20,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
+
     options.AddPolicy("admin-create", context => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
         factory: _ => new FixedWindowRateLimiterOptions

@@ -53,6 +53,30 @@ internal static class Runner
 
     public static async Task<int> Main(string[] args)
     {
+        if (args.SequenceEqual(new[] { "--auth-rate-check" }))
+        {
+            var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
+            using var authLogs = new SafeLogs();
+            using var app = new MediaApp(apiRoot, new DisabledShadowingMediaStore(), authLogs);
+            await app.SetupAsync();
+            await Check("Unknown-account login attempts are rate limited", async () =>
+            {
+                using var client = app.Client();
+                await app.RefreshCsrfAsync(client);
+                for (var attempt = 0; attempt < 20; attempt++)
+                {
+                    using var response = await client.PostAsJsonAsync("/api/auth/login",
+                        new { email = "absent@v2-test.invalid", password = app.Password });
+                    Assert(response.StatusCode == HttpStatusCode.Unauthorized,
+                        "unexpected_login_result_before_limit");
+                }
+                using var limited = await client.PostAsJsonAsync("/api/auth/login",
+                    new { email = "absent@v2-test.invalid", password = app.Password });
+                Assert(limited.StatusCode == HttpStatusCode.TooManyRequests,
+                    "unknown_account_attempts_not_limited");
+            });
+            return failures == 0 ? 0 : 1;
+        }
         if (args.SequenceEqual(new[] { "--curriculum-migrations" }))
             return await CurriculumMigrationChecks.RunAsync(Check, () => failures);
         var api = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));

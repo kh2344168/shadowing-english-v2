@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using ShadowingEnglish.Infrastructure.Identity;
 
 namespace ShadowingEnglish.Api.Modules.Auth;
@@ -81,7 +82,7 @@ public static class AuthEndpoints
             logger.LogInformation("Auth.Login.Success UserId={UserId} DurationMs={DurationMs}",
                 user.Id, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             return Results.Ok(new { authenticated = true, userId = user.Id, roles });
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("auth-login");
 
         auth.MapGet("/session", async (HttpContext context, UserManager<ApplicationUser> users,
             ILoggerFactory loggerFactory) =>
