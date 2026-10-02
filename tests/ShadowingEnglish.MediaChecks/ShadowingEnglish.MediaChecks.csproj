@@ -12,4 +12,12 @@
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
   </ItemGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryContentRootAttribute">
+      <_Parameter1>ShadowingEnglish.Api, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</_Parameter1>
+      <_Parameter2>$(MSBuildProjectDirectory)\..\..\backend\ShadowingEnglish.Api</_Parameter2>
+      <_Parameter3>appsettings.json</_Parameter3>
+      <_Parameter4>0</_Parameter4>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>

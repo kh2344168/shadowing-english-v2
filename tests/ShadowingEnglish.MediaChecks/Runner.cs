@@ -7,6 +7,7 @@ using Azure.Core.Pipeline;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
@@ -18,6 +19,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using ShadowingEnglish.Api.Common;
 using ShadowingEnglish.Api.Modules.Media;
 using ShadowingEnglish.Core.Groups;
 using ShadowingEnglish.Infrastructure.Database;
@@ -81,6 +83,29 @@ internal static class Runner
             return await CurriculumMigrationChecks.RunAsync(Check, () => failures);
         var api = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
         Assert(File.Exists(Path.Combine(api, "ShadowingEnglish.Api.csproj")), "Run from the V2 root.");
+        await Check("Uncaught exceptions return redacted diagnostics", async () =>
+        {
+            const string marker = "password=synthetic-secret-token=private-cookie=lesson-transcript";
+            using var logs = new SafeLogs();
+            using var logFactory = LoggerFactory.Create(builder => builder.AddProvider(logs));
+            var context = new DefaultHttpContext();
+            context.TraceIdentifier = "safe-trace-id";
+            context.Response.Body = new MemoryStream();
+            var middleware = new SafeExceptionMiddleware(
+                _ => Task.FromException(new InvalidOperationException(marker)),
+                logFactory.CreateLogger<SafeExceptionMiddleware>());
+            await middleware.InvokeAsync(context);
+            context.Response.Body.Position = 0;
+            var response = await new StreamReader(context.Response.Body).ReadToEndAsync();
+            Assert(context.Response.StatusCode == StatusCodes.Status500InternalServerError &&
+                response.Contains("internal_error") && response.Contains("safe-trace-id"),
+                "uncaught_exception_response_contract_invalid");
+            Assert(!response.Contains(marker) && !logs.Messages.Any(message => message.Contains(marker)),
+                "uncaught_exception_details_leaked");
+            Assert(logs.Messages.Any(message => message.Contains("ErrorCode=internal_error") &&
+                message.Contains("ErrorType=InvalidOperationException") && message.Contains("DurationMs=")),
+                "safe_exception_diagnostics_missing");
+        });
         var wave = await File.ReadAllBytesAsync(Path.Combine(api, "DevelopmentMedia/day2-hello.wav"));
         // Microsoft's documented Azurite development key. Never a user/storage-account secret.
         const string emulatorKey = "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==";
@@ -349,68 +374,25 @@ internal static class Runner
                 Assert(publish.StatusCode == HttpStatusCode.Conflict && before == await app.FingerprintAsync(),
                     "republish_changed_active_progress");
             });
-            await Check("Admin curriculum refresh returns ordered metadata, preserves versions and stays scoped to its group", async () =>
+            await Check("Retired legacy publish requires curriculum assignment and leaves state unchanged", async () =>
             {
                 using var orderedApp = new MediaApp(api, store, logs);
                 await orderedApp.SetupAsync(); using var writer = await orderedApp.LoginAsync("admin");
-                using var reader = await orderedApp.LoginAsync("student");
-                Guid? currentVersion = null;
-                var expected = new List<(Guid LessonId, Guid VersionId, int Week, int Day, int Order)>();
-                foreach (var (week, day, order) in new[] { (2, 1, 1), (1, 2, 2), (1, 1, 3), (1, 1, 1) })
-                {
-                    using var save = await writer.PostAsync("/api/admin/shadowing/lessons", Upload(Guid.NewGuid(), wave));
-                    Assert(save.StatusCode == HttpStatusCode.Created, "ordered_curriculum_save_failed");
-                    var lesson = await save.Content.ReadFromJsonAsync<JsonElement>();
-                    var lessonVersion = lesson.GetProperty("versionId").GetGuid();
-                    expected.Add((lesson.GetProperty("id").GetGuid(), lessonVersion, week, day, order));
-                    var requestId = Guid.NewGuid();
-                    using var publish = await writer.PostAsJsonAsync("/api/admin/shadowing/publish", new {
-                        requestId, groupId = orderedApp.GroupId, lessonVersionId = lessonVersion,
-                        expectedVersionId = currentVersion, weekNumber = week, dayNumber = day, sortOrder = order });
-                    Assert(publish.StatusCode == HttpStatusCode.Created, "ordered_curriculum_publish_failed");
-                    currentVersion = requestId;
-                }
-                expected = expected.OrderBy(x => x.Week).ThenBy(x => x.Day).ThenBy(x => x.Order).ToList();
-                var before = await orderedApp.FingerprintAsync(); var assets = await BlobFingerprint(container);
-                reads.Reads.Clear();
-                for (var refresh = 0; refresh < 2; refresh++)
-                {
-                    using var response = await writer.GetAsync($"/api/admin/shadowing/groups/{orderedApp.GroupId}/curriculum");
-                    Assert(response.StatusCode == HttpStatusCode.OK && response.Headers.CacheControl?.NoStore == true,
-                        "ordered_curriculum_read_failed");
-                    var result = await response.Content.ReadFromJsonAsync<JsonElement>();
-                    Assert(result.EnumerateObject().Count() == 3 && result.GetProperty("versionId").GetGuid() == currentVersion &&
-                        result.GetProperty("groupId").GetGuid() == orderedApp.GroupId, "ordered_curriculum_contract_invalid");
-                    var lessons = result.GetProperty("lessons").EnumerateArray().ToArray();
-                    Assert(lessons.Length == expected.Count, "curriculum_slots_lost_when_publishing");
-                    for (var index = 0; index < lessons.Length; index++)
-                        Assert(lessons[index].EnumerateObject().Count() == 6 &&
-                            lessons[index].GetProperty("lessonId").GetGuid() == expected[index].LessonId &&
-                            lessons[index].GetProperty("lessonVersionId").GetGuid() == expected[index].VersionId &&
-                            lessons[index].GetProperty("title").GetString() == "Local prepared lesson" &&
-                            lessons[index].GetProperty("weekNumber").GetInt32() == expected[index].Week &&
-                            lessons[index].GetProperty("dayNumber").GetInt32() == expected[index].Day &&
-                            lessons[index].GetProperty("sortOrder").GetInt32() == expected[index].Order,
-                            "curriculum_order_or_metadata_invalid");
-                }
-                Assert(reads.Reads.Count == 0, "curriculum_list_read_audio");
-                using var groups = await writer.GetAsync("/api/admin/shadowing/groups?page=1");
-                var otherGroupId = (await groups.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items")
-                    .EnumerateArray().Select(x => x.GetProperty("id").GetGuid()).Single(x => x != orderedApp.GroupId);
-                using var otherCurriculum = await writer.GetAsync($"/api/admin/shadowing/groups/{otherGroupId}/curriculum");
-                var otherResult = await otherCurriculum.Content.ReadFromJsonAsync<JsonElement>();
-                Assert(otherResult.GetProperty("versionId").ValueKind == JsonValueKind.Null &&
-                    otherResult.GetProperty("lessons").GetArrayLength() == 0, "curriculum_leaked_another_group_slots");
-                using var studentCurriculum = await reader.GetAsync("/api/student/learning/curriculum");
-                Assert((await studentCurriculum.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items").GetArrayLength() == 4,
-                    "saved_group_curriculum_invisible_to_students");
+                using var save = await writer.PostAsync("/api/admin/shadowing/lessons", Upload(Guid.NewGuid(), wave));
+                Assert(save.StatusCode == HttpStatusCode.Created, "legacy_publish_setup_save_failed");
+                var lesson = await save.Content.ReadFromJsonAsync<JsonElement>();
+                var before = await orderedApp.FingerprintAsync();
+                var assets = await BlobFingerprint(container);
+                using var publish = await writer.PostAsJsonAsync("/api/admin/shadowing/publish", new {
+                    requestId = Guid.NewGuid(), groupId = orderedApp.GroupId,
+                    lessonVersionId = lesson.GetProperty("versionId").GetGuid(), expectedVersionId = (Guid?)null,
+                    weekNumber = 1, dayNumber = 1, sortOrder = 1 });
+                var result = await publish.Content.ReadFromJsonAsync<JsonElement>();
+                Assert(publish.StatusCode == HttpStatusCode.Conflict &&
+                    result.GetProperty("error").GetString() == "curriculum_publish_required",
+                    "legacy_publish_bypassed_curriculum_assignment");
                 Assert(before == await orderedApp.FingerprintAsync() && assets == await BlobFingerprint(container),
-                    "curriculum_refresh_mutated_database_or_audio");
-                Assert(logs.Messages.Any(x => x.Contains("Admin.Shadowing.Curriculum.Start")) &&
-                    logs.Messages.Any(x => x.Contains("Admin.Shadowing.Curriculum.Success")) &&
-                    logs.Messages.Any(x => x.Contains("Admin.Shadowing.Curriculum.Failed")) &&
-                    !logs.Messages.Any(x => x.Contains("Local prepared lesson") || x.Contains("Hello private transcript") ||
-                        x.Contains(orderedApp.Password)), "curriculum_diagnostics_missing_or_sensitive");
+                    "legacy_publish_mutated_database_or_audio");
             });
             await Check("A failed second blob upload rolls back only that attempt", async () =>
             {
@@ -430,6 +412,13 @@ internal static class Runner
                 var id = Guid.NewGuid();
                 using var lost = await writer.PostAsync("/api/admin/shadowing/lessons", Upload(id, wave));
                 Assert(lost.StatusCode == HttpStatusCode.InternalServerError, "simulated_commit_response_not_lost");
+                var lostBody = await lost.Content.ReadAsStringAsync();
+                Assert(!lostBody.Contains(CommitThenDisconnect.SensitiveMarker), "caught_exception_response_leaked");
+                var leakingCategories = logs.Messages
+                    .Where(message => message.Contains(CommitThenDisconnect.SensitiveMarker))
+                    .Select(message => message.Split(':', 2)[0]).Distinct().ToArray();
+                Assert(leakingCategories.Length == 0,
+                    "caught_exception_log_leaked:" + string.Join(",", leakingCategories));
                 var committedRows = await uncertain.FingerprintAsync(); var committedAssets = await BlobFingerprint(container);
                 using var retry = await writer.PostAsync("/api/admin/shadowing/lessons", Upload(id, wave));
                 Assert(retry.StatusCode == HttpStatusCode.OK && committedRows == await uncertain.FingerprintAsync() &&
@@ -630,12 +619,13 @@ internal sealed class FailSecondWrite(IShadowingMediaStore underlying) : IShadow
 
 internal sealed class CommitThenDisconnect : SaveChangesInterceptor
 {
+    public const string SensitiveMarker = "password=synthetic-secret-token=private-cookie=lesson-transcript";
     private bool dropped;
     public override ValueTask<int> SavedChangesAsync(SaveChangesCompletedEventData data, int result,
         CancellationToken cancellationToken = default)
     {
         if (!dropped && data.Context!.ChangeTracker.Entries<ShadowingEnglish.Core.Learning.LessonDefinition>().Any())
-        { dropped = true; throw new IOException("simulated_commit_disconnect"); }
+        { dropped = true; throw new IOException(SensitiveMarker); }
         return ValueTask.FromResult(result);
     }
 }
@@ -643,13 +633,13 @@ internal sealed class CommitThenDisconnect : SaveChangesInterceptor
 internal sealed class SafeLogs : ILoggerProvider
 {
     public readonly ConcurrentBag<string> Messages = [];
-    public ILogger CreateLogger(string categoryName) => new Capture(this);
+    public ILogger CreateLogger(string categoryName) => new Capture(this, categoryName);
     public void Dispose() { }
-    private sealed class Capture(SafeLogs owner) : ILogger
+    private sealed class Capture(SafeLogs owner, string categoryName) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel level) => true;
         public void Log<TState>(LogLevel level, EventId eventId, TState state, Exception? error, Func<TState, Exception?, string> formatter) =>
-            owner.Messages.Add(formatter(state, error));
+            owner.Messages.Add(categoryName + ":" + formatter(state, error));
     }
 }

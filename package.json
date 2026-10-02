@@ -2,7 +2,22 @@
   "name": "shadowing-english-v2",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["frontend"],
+  "workspaces": [
+    "frontend"
+  ],
+  "overrides": {
+    "@angular/build": {
+      "piscina": "5.3.2"
+    },
+    "@angular/cdk": {
+      "@angular/common": "21.2.25",
+      "@angular/core": "21.2.25",
+      "@angular/platform-browser": "21.2.25"
+    }
+  },
+  "devDependencies": {
+    "@angular/compiler": "21.2.25"
+  },
   "scripts": {
     "dev": "npm run start --workspace frontend",
     "dev:frontend": "npm run start --workspace frontend",
@@ -17,5 +32,7 @@
     "test:e2e": "npm run e2e --workspace frontend",
     "test:e2e:local-processor": "npm run e2e:local-processor --workspace frontend"
   },
-  "engines": { "node": ">=20.19.0 <25" }
+  "engines": {
+    "node": ">=20.19.0 <25"
+  }
 }

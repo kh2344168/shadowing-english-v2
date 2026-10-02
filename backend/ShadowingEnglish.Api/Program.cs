@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Http.Features;
+using ShadowingEnglish.Api.Common;
 using ShadowingEnglish.Api.Modules.Admin;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,8 @@ using ShadowingEnglish.Infrastructure.Database;
 using ShadowingEnglish.Infrastructure.Identity;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Update", LogLevel.None);
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Missing ConnectionStrings:DefaultConnection. Configure it for this environment.");
@@ -157,6 +160,7 @@ if (args.Contains("--provision-day2-fixture", StringComparer.Ordinal))
     return;
 }
 
+app.UseMiddleware<SafeExceptionMiddleware>();
 app.UseRouting(); // Required before endpoint-specific rate-limiting policies.
 app.UseAuthentication();
 app.UseRateLimiter();

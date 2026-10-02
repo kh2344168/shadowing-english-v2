@@ -267,14 +267,14 @@ public static class AdminGroupsEndpoints
             }
             catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 or 1205 })
             {
-                logger.LogWarning(ex, "Admin.Groups.Move.Conflict ActorId={ActorId} StudentId={StudentId} DurationMs={DurationMs}",
-                    actor.Id, studentId, Elapsed(started));
+                logger.LogWarning("Admin.Groups.Move.Conflict ErrorCode=membership_changed ErrorType={ErrorType} ActorId={ActorId} StudentId={StudentId} DurationMs={DurationMs}",
+                    ex.GetType().Name, actor.Id, studentId, Elapsed(started));
                 return Results.Conflict(new { error = "membership_changed" });
             }
             catch (SqlException ex) when (ex.Number == 1205)
             {
-                logger.LogWarning(ex, "Admin.Groups.Move.Conflict ActorId={ActorId} StudentId={StudentId} DurationMs={DurationMs}",
-                    actor.Id, studentId, Elapsed(started));
+                logger.LogWarning("Admin.Groups.Move.Conflict ErrorCode=membership_changed ErrorType={ErrorType} ActorId={ActorId} StudentId={StudentId} DurationMs={DurationMs}",
+                    ex.GetType().Name, actor.Id, studentId, Elapsed(started));
                 return Results.Conflict(new { error = "membership_changed" });
             }
             catch (Exception ex)
@@ -336,8 +336,8 @@ public static class AdminGroupsEndpoints
 
     private static IResult Failed(ILogger logger, Exception ex, string action, Guid actorId, long started)
     {
-        logger.LogError(ex, "Admin.Groups.Failed Action={Action} ActorId={ActorId} DurationMs={DurationMs}",
-            action, actorId, Elapsed(started));
+        logger.LogError("Admin.Groups.Failed ErrorCode=group_operation_failed ErrorType={ErrorType} Action={Action} ActorId={ActorId} DurationMs={DurationMs}",
+            ex.GetType().Name, action, actorId, Elapsed(started));
         return Results.Problem(statusCode: 500, title: "group_operation_failed");
     }
 

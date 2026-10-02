@@ -72,9 +72,9 @@ public static class LocalAccountProvisioner
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
-            logger.LogError(ex, "Auth.Provision.Failed DurationMs={DurationMs}",
-                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-            throw;
+            logger.LogError("Auth.Provision.Failed ErrorCode=provision_failed ErrorType={ErrorType} DurationMs={DurationMs}",
+                ex.GetType().Name, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            throw new InvalidOperationException("local_account_provisioning_failed");
         }
     }
 

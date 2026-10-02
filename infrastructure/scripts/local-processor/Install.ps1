@@ -80,7 +80,7 @@ function Start-ProcessorHiddenAndVerify {
 
     $durationMs = [int]((Get-Date) - $startedAt).TotalMilliseconds
     Write-Warning "[Installer.BackgroundStart.Failed] Port=43127 DurationMs=$durationMs"
-    throw 'The Local Processor did not start on 127.0.0.1:43127. Review logs\local-processor-background.log and logs\local-processor-stderr.log, then run Install.cmd again.'
+    throw 'The Local Processor did not start on 127.0.0.1:43127. Review logs\local-processor-background.log, then run Install.cmd again.'
 }
 
 $reuseRunningInstall = $false

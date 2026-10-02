@@ -283,11 +283,11 @@ public static class AdminShadowingEndpoints
     { log.LogWarning("Admin.Shadowing.Rejected Reason={Reason} DurationMs={DurationMs}", reason, Ms(started));
         return Results.Json(new { error = reason }, statusCode: status); }
     private static IResult Failed(ILogger log, Exception ex, string action, Guid actorId, long started)
-    { log.LogError(ex, "Admin.Shadowing.Failed Action={Action} ActorId={ActorId} DurationMs={DurationMs}",
-        action, actorId, Ms(started)); return Results.Problem(statusCode: 500, title: "shadowing_operation_failed"); }
+    { log.LogError("Admin.Shadowing.Failed ErrorCode=shadowing_operation_failed ErrorType={ErrorType} Action={Action} ActorId={ActorId} DurationMs={DurationMs}",
+        ex.GetType().Name, action, actorId, Ms(started)); return Results.Problem(statusCode: 500, title: "shadowing_operation_failed"); }
     private static IResult Conflict(ILogger log, Exception ex, Guid actorId, long started)
-    { log.LogWarning(ex, "Admin.Shadowing.Publish.Conflict ActorId={ActorId} DurationMs={DurationMs}",
-        actorId, Ms(started)); return Results.Conflict(new { error = "publication_changed" }); }
+    { log.LogWarning("Admin.Shadowing.Publish.Conflict ErrorCode=publication_changed ErrorType={ErrorType} ActorId={ActorId} DurationMs={DurationMs}",
+        ex.GetType().Name, actorId, Ms(started)); return Results.Conflict(new { error = "publication_changed" }); }
 
     private sealed record LessonDto(Guid Id, Guid VersionId, string Title, string Description, int SegmentCount);
     private sealed record GroupDto(Guid Id, string Name, Guid? CurrentVersionId);

@@ -7,7 +7,6 @@ $server = Join-Path $processorRoot 'server.py'
 $logs = Join-Path $processorRoot 'logs'
 $watchdogLog = Join-Path $logs 'local-processor-background.log'
 $stdoutLog = Join-Path $logs 'local-processor-stdout.log'
-$stderrLog = Join-Path $logs 'local-processor-stderr.log'
 $port = 43127
 $mutexName = 'Local\ShadowingEnglishV2.LocalProcessor.Watchdog'
 
@@ -75,7 +74,7 @@ try {
         $processStartedAt = Get-Date
         try {
             Write-BackgroundEvent 'Process.Start' "Port=$port"
-            & $python $server --root $processorRoot 1>> $stdoutLog 2>> $stderrLog
+            & $python $server --root $processorRoot 1>> $stdoutLog 2>$null
             $exitCode = $LASTEXITCODE
             $durationMs = [int]((Get-Date) - $processStartedAt).TotalMilliseconds
             Write-BackgroundEvent 'Process.Exit' "ExitCode=$exitCode DurationMs=$durationMs"

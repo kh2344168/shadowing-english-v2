@@ -175,6 +175,9 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def handle_error(self, request, client_address):
+        log("Request.TransportFailed", error="transport_failed")
+
     def gate(self, auth=True):
         expected = f"127.0.0.1:{self.server.server_port}"
         if self.headers.get("Host") != expected:
@@ -368,14 +371,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
     args = parser.parse_args()
-    config = json.loads((args.root / "shadowing-link.json").read_text(encoding="utf-8-sig"))
-    http = create_server(args.root, config)
-    log("Start.Success", protocolVersion=1, port=43127)
+    http = None
     try:
+        config = json.loads((args.root / "shadowing-link.json").read_text(encoding="utf-8-sig"))
+        http = create_server(args.root, config)
+        log("Start.Success", protocolVersion=1, port=43127)
         http.serve_forever()
     except KeyboardInterrupt:
         pass
+    except Exception as error:
+        log("Start.Failed", error=type(error).__name__)
+        sys.exit(1)
     finally:
-        if http.processor.running:
+        if http and http.processor.running:
             http.processor.stop_worker()
-        http.server_close()
+        if http:
+            http.server_close()

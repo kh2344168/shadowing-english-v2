@@ -256,9 +256,9 @@ public static class StudentLearningEndpoints
     private static IResult Missing(ILogger log, long start, Guid studentId, Guid slotId)
     { log.LogWarning("Student.Learning.NotFound StudentId={StudentId} SlotId={SlotId} DurationMs={DurationMs}", studentId, slotId, Ms(start)); return Results.NotFound(new { error = "slot_not_found" }); }
     private static IResult ProgressConflict(ILogger log, Exception ex, Guid studentId, Guid slotId, long start)
-    { log.LogWarning(ex, "Student.Progress.Save.Conflict StudentId={StudentId} SlotId={SlotId} DurationMs={DurationMs}", studentId, slotId, Ms(start)); return Results.Conflict(new { error = "progress_changed" }); }
+    { log.LogWarning("Student.Progress.Save.Conflict ErrorCode=progress_changed ErrorType={ErrorType} StudentId={StudentId} SlotId={SlotId} DurationMs={DurationMs}", ex.GetType().Name, studentId, slotId, Ms(start)); return Results.Conflict(new { error = "progress_changed" }); }
     private static IResult Fail(ILogger log, Exception ex, string operation, Guid studentId, long start)
-    { log.LogError(ex, "Student.{Operation}.Failed StudentId={StudentId} DurationMs={DurationMs}", operation, studentId, Ms(start)); return Results.Problem(statusCode: 500); }
+    { log.LogError("Student.{Operation}.Failed ErrorCode=learning_operation_failed ErrorType={ErrorType} StudentId={StudentId} DurationMs={DurationMs}", ex.GetType().Name, operation, studentId, Ms(start)); return Results.Problem(statusCode: 500); }
 
     private sealed record ScopedLesson(Guid VersionId, Guid LessonVersionId, string Title, string Description,
         int WeekNumber, int DayNumber, int SortOrder);

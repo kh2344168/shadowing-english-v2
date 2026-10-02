@@ -105,15 +105,15 @@ public static class AdminAccountsEndpoints
             catch (DbUpdateException ex)
             {
                 await tx.RollbackAsync();
-                logger.LogWarning(ex, "Admin.Accounts.Create.Conflict ActorId={ActorId} DurationMs={DurationMs}",
-                    actor.Id, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                logger.LogWarning("Admin.Accounts.Create.Conflict ErrorCode=admin_email_exists ErrorType={ErrorType} ActorId={ActorId} DurationMs={DurationMs}",
+                    ex.GetType().Name, actor.Id, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
                 return Results.Conflict(new { error = "admin_email_exists" });
             }
             catch (Exception ex)
             {
                 await tx.RollbackAsync();
-                logger.LogError(ex, "Admin.Accounts.Create.Failed ActorId={ActorId} DurationMs={DurationMs}",
-                    actor.Id, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                logger.LogError("Admin.Accounts.Create.Failed ErrorCode=admin_creation_failed ErrorType={ErrorType} ActorId={ActorId} DurationMs={DurationMs}",
+                    ex.GetType().Name, actor.Id, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
                 return Results.Problem(statusCode: 500, title: "admin_creation_failed");
             }
         }).RequireRateLimiting("admin-create");
@@ -159,8 +159,8 @@ public static class AdminAccountsEndpoints
             catch (Exception ex)
             {
                 await tx.RollbackAsync();
-                logger.LogError(ex, "Admin.Accounts.Remove.Failed ActorId={ActorId} TargetId={TargetId} DurationMs={DurationMs}",
-                    actor.Id, id, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                logger.LogError("Admin.Accounts.Remove.Failed ErrorCode=admin_removal_failed ErrorType={ErrorType} ActorId={ActorId} TargetId={TargetId} DurationMs={DurationMs}",
+                    ex.GetType().Name, actor.Id, id, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
                 return Results.Problem(statusCode: 500, title: "admin_removal_failed");
             }
         });

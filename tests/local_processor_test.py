@@ -146,6 +146,12 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn('shadowing-link.json', [file['name'] for file in package['files']])
         self.assertLess((REPO / 'frontend/public/downloads/local-processor-package.json').stat().st_size, 256000)
 
+    def test_background_runner_keeps_structured_stdout_but_discards_raw_stderr(self):
+        runner = (SCRIPTS / 'StartHidden.ps1').read_text(encoding='utf-8')
+        self.assertIn('1>> $stdoutLog 2>$null', runner)
+        self.assertNotIn('local-processor-stderr.log', runner)
+        self.assertNotIn('stderrLog', runner)
+
 
 class HttpTests(unittest.TestCase):
     def setUp(self):
@@ -305,6 +311,28 @@ class HttpTests(unittest.TestCase):
             self.assertNotIn(forbidden, output)
         self.assertIn(job_id, output)
         self.assertIn('Process.Success', output)
+
+    def test_runner_exception_details_are_not_logged_or_returned(self):
+        marker = 'password=synthetic-secret-token=private-cookie=lesson-transcript'
+        def fail_with_sensitive_error(root):
+            raise RuntimeError(marker)
+        self.server.processor.runner = fail_with_sensitive_error
+        status, _, job = self.http('POST', '/v1/jobs', self.value())
+        self.assertEqual(status, 201)
+        job_id = job['jobId']
+        self.http('PUT', f'/v1/jobs/{job_id}/source', wav_bytes(), binary=True)
+        deadline = time.monotonic() + 2
+        state = {}
+        while time.monotonic() < deadline:
+            _, _, state = self.http('GET', f'/v1/jobs/{job_id}')
+            if state['state'] == 'failed':
+                break
+            time.sleep(.005)
+        self.assertEqual(state['error'], 'engine_failed')
+        self.assertNotIn(marker, self.output.getvalue())
+        self.assertNotIn(marker, json.dumps(state))
+        self.assertIn('Process.Failed', self.output.getvalue())
+        self.assertIn('durationMs', self.output.getvalue())
 
     def test_native_zip_fallback_streams_only_to_loopback_and_exports_valid_package(self):
         root = Path(self.folder.name)
