@@ -1,278 +1,56 @@
-<main class="library" dir="rtl" aria-labelledby="library-title">
-  <header class="library-header">
-    <div class="library-heading">
-      <div class="library-breadcrumb">
-        <span>ADMIN DASHBOARD</span>
-        <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
-        <span>إدارة المحتوى الصوتي والتمارين</span>
-      </div>
-      <h1 id="library-title">مكتبة الدروس والتمارين</h1>
-      <p>
-        أنشئ الدرس مرة واحدة، ثم احفظه في المكتبة. توزيعه على الأيام والأسابيع يتم لاحقًا عبر
-        <a routerLink="/admin/curriculums">المناهج والمجموعات</a>.
-      </p>
+<section class="library" dir="rtl" aria-labelledby="library-title">
+  <header class="page-header">
+    <div>
+      <div class="title-row"><h1 id="library-title">مكتبة الدروس</h1><span class="count">{{ lessons().length }} درس محمّل</span></div>
+      <p>أنشئ الدروس وجهزها قبل إضافتها إلى منهج ونشره للطلاب.</p>
     </div>
-    <a class="button button--primary library-create" routerLink="/admin/ai-processing">
-      <span class="material-symbols-outlined" aria-hidden="true">add</span>
-      إنشاء درس جديد
-    </a>
+    <a class="create" routerLink="/admin/ai-processing"><span class="material-symbols-outlined" aria-hidden="true">add</span>إضافة درس</a>
   </header>
 
-  <section class="workflow-guide" aria-labelledby="workflow-title">
-    <div class="workflow-intro">
-      <span class="workflow-icon material-symbols-outlined" aria-hidden="true">route</span>
-      <div>
-        <div class="workflow-heading">
-          <h2 id="workflow-title">مسار نشر وتجهيز الدروس للطلاب</h2>
-          <span class="guide-badge">دليل الاستخدام</span>
-        </div>
-        <p>
-          حفظ الدرس لا يعني نشره للطلاب. بعد الحفظ أضفه إلى المنهج الدراسي، ثم اختر المجموعة وانشره
-          بإجراء صريح ليصبح متاحًا للطلاب.
-        </p>
-      </div>
-    </div>
-    <ol class="workflow-steps" tabindex="0" aria-label="إنشاء وحفظ الدرس ثم إضافته ونشره">
-      <li>
-        <span class="workflow-step">
-          <span class="step-number">1</span>
-          <span class="step-label">إنشاء ومعالجة وحفظ الدرس</span>
-        </span>
-        <span class="step-arrow material-symbols-outlined" aria-hidden="true">arrow_back</span>
-      </li>
-      <li>
-        <span class="workflow-step">
-          <span class="step-number">2</span>
-          <span class="step-label">أضف للمنهج</span>
-        </span>
-        <span class="step-arrow material-symbols-outlined" aria-hidden="true">arrow_back</span>
-      </li>
-      <li>
-        <span class="workflow-step">
-          <span class="step-number">3</span>
-          <span class="step-label">اختر المجموعة ثم انشر للطلاب</span>
-        </span>
-      </li>
-    </ol>
-  </section>
+  <aside class="workflow" aria-label="مسار إعداد الدروس">
+    <div><span class="eyebrow">خطوات النشر</span><h2>احفظ الدرس، ثم رتّبه في المنهج</h2>
+      <p>وجود الدرس في المكتبة لا يجعله ظاهرًا للطلاب. يظهر بعد إسناد المنهج إلى مجموعة ونشره.</p></div>
+    <div class="steps"><span class="active">١ · درس محفوظ</span><span>٢ · منهج</span><span>٣ · مجموعة ونشر</span></div>
+  </aside>
 
-  <section class="library-toolbar" aria-label="البحث وترتيب الدروس وطريقة العرض">
-    <div class="toolbar-search-row">
-      <div class="library-search">
-        <label class="visually-hidden" for="lesson-search">البحث في الدروس المحمّلة</label>
-        <div class="search-field">
-          <span class="material-symbols-outlined" aria-hidden="true">search</span>
-          <input
-            id="lesson-search"
-            type="search"
-            maxlength="160"
-            autocomplete="off"
-            aria-describedby="library-search-help"
-            placeholder="ابحث بعنوان الدرس أو الوصف..."
-            [value]="searchTerm()"
-            (input)="searchLessons($any($event.target).value)"
-          />
-          @if (searchTerm()) {
-          <button
-            type="button"
-            class="search-clear"
-            aria-label="مسح البحث"
-            (click)="searchLessons('')"
-          >
-            <span class="material-symbols-outlined" aria-hidden="true">close</span>
-          </button>
-          }
-        </div>
-      </div>
-      <span class="loaded-badge">{{ lessons().length }} درس محمّل</span>
-    </div>
-    <div class="toolbar-controls">
-      <p class="toolbar-hint" id="library-search-help">
-        البحث والترتيب يشملان الدروس المحمّلة فقط. «الأحدث» يحافظ على ترتيب المكتبة من الخادم. @if
-        (more()) { استخدم «تحميل المزيد» للوصول إلى بقية الدروس. }
-      </p>
-      <div class="toolbar-display-controls">
-        <div class="sort-control">
-          <label for="lesson-sort">الترتيب:</label>
-          <select
-            id="lesson-sort"
-            [value]="sortMode()"
-            (change)="changeSort($any($event.target).value)"
-          >
-            <option value="latest">الأحدث</option>
-            <option value="alphabetical">الأبجدي (A–Z)</option>
-            <option value="segments">الأكثر جملًا</option>
-          </select>
-        </div>
-        <div class="view-toggle" role="group" aria-label="طريقة عرض الدروس">
-          <button
-            type="button"
-            aria-label="عرض شبكي"
-            [attr.aria-pressed]="viewMode() === 'grid'"
-            [class.active]="viewMode() === 'grid'"
-            (click)="changeView('grid')"
-          >
-            <span class="material-symbols-outlined" aria-hidden="true">grid_view</span>
-          </button>
-          <button
-            type="button"
-            aria-label="عرض كقائمة"
-            [attr.aria-pressed]="viewMode() === 'list'"
-            [class.active]="viewMode() === 'list'"
-            (click)="changeView('list')"
-          >
-            <span class="material-symbols-outlined" aria-hidden="true">view_list</span>
-          </button>
-        </div>
+  <div class="toolbar">
+    <label class="search"><span class="material-symbols-outlined" aria-hidden="true">search</span><span class="sr-only">ابحث عن درس</span>
+      <input type="search" placeholder="ابحث باسم الدرس..." [value]="search()" (input)="search.set($any($event.target).value)" />
+    </label>
+    <div class="toolbar-actions">
+      <label class="sort-label">الترتيب <select aria-label="ترتيب الدروس" [value]="sort()" (change)="sort.set($any($event.target).value)">
+        <option value="newest">الأحدث</option><option value="oldest">الأقدم</option><option value="name">الاسم</option>
+      </select></label>
+      <div class="view-toggle" aria-label="طريقة عرض الدروس">
+        <button type="button" aria-label="عرض كبطاقات" [class.selected]="view() === 'grid'" [attr.aria-pressed]="view() === 'grid'" (click)="view.set('grid')"><span class="material-symbols-outlined" aria-hidden="true">grid_view</span></button>
+        <button type="button" aria-label="عرض كقائمة" [class.selected]="view() === 'list'" [attr.aria-pressed]="view() === 'list'" (click)="view.set('list')"><span class="material-symbols-outlined" aria-hidden="true">view_list</span></button>
       </div>
     </div>
-  </section>
-
-  @if (error()) {
-  <div class="library-error" role="alert">
-    <p>
-      @if (lessons().length) { تعذر تحميل المزيد من الدروس. الدروس المحمّلة ما زالت متاحة. } @else {
-      تعذر تحميل مكتبة الدروس. تحقق من اتصالك ثم حاول مجددًا. }
-    </p>
-    <button type="button" class="button button--secondary" (click)="retry()" [disabled]="loading()">
-      <span class="material-symbols-outlined" aria-hidden="true">refresh</span> إعادة المحاولة
-    </button>
   </div>
+  @if (loading() && lessons().length === 0) { <div class="state" role="status">جارٍ تحميل الدروس...</div> }
+  @if (error()) { <div class="state error" role="alert">تعذر تحميل المكتبة. <button type="button" (click)="load(failedPage() || 1)">إعادة المحاولة</button></div> }
+  @if (!loading() && !error() && lessons().length === 0) {
+    <div class="state"><span class="material-symbols-outlined" aria-hidden="true">play_lesson</span><h2>المكتبة فارغة</h2><p>ابدأ بإنشاء أول درس.</p><a routerLink="/admin/ai-processing">إضافة درس</a></div>
   }
-
-  <section class="library-results" aria-label="الدروس المحفوظة" [attr.aria-busy]="loading()">
-    @if (loading() && lessons().length === 0) {
-    <div class="library-state" role="status">
-      <span class="material-symbols-outlined" aria-hidden="true">library_books</span>
-      <p>جارٍ تحميل الدروس...</p>
-    </div>
-    } @else if (!error() && lessons().length === 0) {
-    <div class="library-state">
-      <h2>لا توجد دروس محفوظة حتى الآن.</h2>
-      <p>ابدأ بإنشاء درس، ثم راجعه واعتمده ليظهر في المكتبة.</p>
-      <a class="button button--primary" routerLink="/admin/ai-processing">إنشاء أول درس</a>
-    </div>
-    } @else if (lessons().length && matchingLessons().length === 0) {
-    <div class="library-state" role="status">
-      <h2>لا توجد دروس مطابقة للعنوان أو الوصف.</h2>
-      <p>جرّب كلمة أخرى أو امسح البحث لعرض الدروس المحمّلة.</p>
-      <button type="button" class="button button--secondary" (click)="searchLessons('')">
-        مسح البحث
-      </button>
-    </div>
-    } @if (!(loading() && lessons().length === 0) && (!error() || lessons().length > 0)) {
-    <div
-      class="lesson-collection"
-      [class.lesson-collection--list]="viewMode() === 'list'"
-      [attr.data-view-mode]="viewMode()"
-    >
-      @for (lesson of visibleLessons(); track lesson.versionId) {
-      <article class="lesson-card">
-        <div class="lesson-card-body">
-          <div class="lesson-details">
-            <div class="lesson-card-top">
-              <span class="saved-badge"
-                ><span class="status-dot" aria-hidden="true"></span> محفوظ في المكتبة</span
-              >
-              <span class="lesson-icon material-symbols-outlined" aria-hidden="true"
-                >menu_book</span
-              >
-            </div>
-            <h2 class="lesson-title" dir="auto">{{ lesson.title }}</h2>
-            <div class="lesson-description">
-              <span class="description-label">وصف الدرس</span>
-              <p dir="auto">{{ lesson.description || 'بدون وصف.' }}</p>
-            </div>
+  @if (lessons().length > 0 && visibleLessons().length === 0) {
+    <div class="state"><span class="material-symbols-outlined" aria-hidden="true">search_off</span><h2>لا توجد نتائج مطابقة</h2><p>غيّر كلمات البحث لعرض دروس أخرى.</p></div>
+  }
+  <div class="lessons" [class.list]="view() === 'list'">
+    @for (lesson of visibleLessons(); track lesson.versionId) {
+      <article class="lesson">
+        <div class="card-top"><span class="badge">Shadowing</span><span class="saved"><span class="dot"></span> محفوظ</span></div>
+        <div class="card-body"><h2>{{ lesson.title }}</h2><p>{{ lesson.description || 'درس صوتي جاهز للتنظيم في المنهج.' }}</p></div>
+        <div class="card-bottom"><div class="meta"><span class="material-symbols-outlined" aria-hidden="true">graphic_eq</span>{{ lesson.segmentCount }} مقطع صوتي</div>
+          <div class="card-actions">
+            <a class="add-curriculum" routerLink="/admin/curriculums" [queryParams]="{ lessonVersionId: lesson.versionId }" [attr.aria-label]="'إضافة ' + lesson.title + ' إلى المنهج'"><span class="material-symbols-outlined" aria-hidden="true">playlist_add</span>إضافة للمنهج</a>
           </div>
-          <div class="lesson-metrics">
-            <div class="lesson-metric">
-              <div>
-                <span>المقاطع</span>
-                <strong>{{ lesson.segmentCount }} <small>مقطع</small></strong>
-              </div>
-              <span class="metric-icon material-symbols-outlined" aria-hidden="true">layers</span>
-            </div>
-            <div class="lesson-metric lesson-metric--saved">
-              <div>
-                <span>حالة الحفظ</span>
-                <strong>محفوظ</strong>
-              </div>
-              <span class="metric-icon material-symbols-outlined" aria-hidden="true">task_alt</span>
-            </div>
-          </div>
-        </div>
-        <div class="lesson-card-actions">
-          <a
-            class="button button--primary"
-            routerLink="/admin/curriculums"
-            [queryParams]="{ lessonVersionId: lesson.versionId }"
-            (click)="assignLesson(lesson)"
-            [attr.aria-label]="'إضافة ' + lesson.title + ' إلى المنهج'"
-          >
-            <span class="material-symbols-outlined" aria-hidden="true">playlist_add</span> إضافة إلى
-            المنهج
-          </a>
         </div>
       </article>
-      }
-      <a class="quick-add-card" routerLink="/admin/ai-processing" aria-label="إنشاء درس صوتي جديد">
-        <span class="quick-add-icon material-symbols-outlined" aria-hidden="true"
-          >cloud_upload</span
-        >
-        <h2>إضافة درس صوتي جديد</h2>
-        <p>ارفع ملف الصوت أو الفيديو في صفحة إنشاء الدرس، ثم عالجه وراجعه واحفظه في المكتبة.</p>
-        <span class="button button--secondary"
-          >إنشاء درس جديد
-          <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
-        </span>
-      </a>
-    </div>
     }
-  </section>
-
+  </div>
   @if (lessons().length > 0) {
-  <footer class="pagination-footer">
-    <div class="pagination-summary">
-      <span
-        >عرض <strong>{{ rangeStart() }}–{{ rangeEnd() }}</strong> من
-        <strong>{{ matchingLessons().length }}</strong> درس {{ searchTerm().trim() ? 'مطابق ضمن
-        الدروس المحمّلة' : 'محمّل' }}</span
-      >
-      <span class="footer-badge">الحفظ منفصل عن النشر</span>
-      @if (loading()) { <span role="status">جارٍ تحميل المزيد من الدروس...</span> }
-    </div>
-    <nav class="pagination-nav" aria-label="صفحات الدروس المحمّلة">
-      <button
-        type="button"
-        class="page-button"
-        (click)="previousPage()"
-        [disabled]="displayPage() <= 1 || loading()"
-      >
-        <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span> السابق
-      </button>
-      @for (pageNumber of paginationPages(); track pageNumber) {
-      <button
-        type="button"
-        class="page-button page-number"
-        (click)="goToPage(pageNumber)"
-        [class.current]="pageNumber === displayPage()"
-        [attr.aria-current]="pageNumber === displayPage() ? 'page' : null"
-        [attr.aria-label]="'الصفحة ' + pageNumber"
-        [disabled]="loading()"
-      >
-        {{ pageNumber }}
-      </button>
-      }
-      <button
-        type="button"
-        class="page-button"
-        (click)="nextPage()"
-        [disabled]="!canNext() || loading() || error()"
-      >
-        {{ displayPage() < pageCount() || !more() ? 'التالي' : 'تحميل المزيد' }}
-        <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
-      </button>
-    </nav>
-  </footer>
+    <footer class="pagination"><span>عرض <strong>{{ visibleLessons().length }}</strong> من الدروس المحمّلة ({{ lessons().length }})</span>
+      @if (more()) { <button type="button" [disabled]="loading()" (click)="load(page() + 1)">{{ loading() ? 'جارٍ التحميل...' : 'عرض المزيد' }}</button> }
+    </footer>
   }
-</main>
+</section>

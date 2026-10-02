@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using ShadowingEnglish.Api.Modules.Auth;
 using ShadowingEnglish.Api.Modules.Groups;
+using ShadowingEnglish.Api.Modules.Curriculums;
 using ShadowingEnglish.Api.Modules.Lessons;
 using ShadowingEnglish.Api.Modules.Media;
 using ShadowingEnglish.Api.Modules.Student;
@@ -69,6 +70,7 @@ builder.Services.ConfigureApplicationCookie(options =>
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IShadowingMediaStore>(services => ShadowingMediaStoreFactory.Create(
     builder.Environment, builder.Configuration, services.GetRequiredService<ILoggerFactory>()));
+
 // Limit sensitive administrator account creation per authenticated user (no extra runtime package).
 builder.Services.AddRateLimiter(options =>
 {
@@ -76,28 +78,45 @@ builder.Services.AddRateLimiter(options =>
         partitionKey: context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
         factory: _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 5, Window = TimeSpan.FromMinutes(15), QueueLimit = 0, AutoReplenishment = true
+            PermitLimit = 5,
+            Window = TimeSpan.FromMinutes(15),
+            QueueLimit = 0,
+            AutoReplenishment = true
         }));
+
     options.AddPolicy("admin-group-write", context => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
         factory: _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
+            PermitLimit = 30,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
         }));
+
     options.AddPolicy("admin-lesson-write", context => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
         factory: _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
         }));
+
     options.AddPolicy("student-progress-write", context => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
         factory: _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
+            PermitLimit = 60,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
         }));
+
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
+
 // CSRF protection for cookie-authenticated state-changing requests.
 builder.Services.AddAntiforgery(options =>
 {
@@ -107,7 +126,9 @@ builder.Services.AddAntiforgery(options =>
         ? CookieSecurePolicy.SameAsRequest
         : CookieSecurePolicy.Always;
 });
-builder.Services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = 45_000_000);
+
+builder.Services.Configure<FormOptions>(options =>
+    options.MultipartBodyLengthLimit = 45_000_000);
 
 // Foundation only: no database migrations, users, roles, or demo seeds are created at startup.
 var app = builder.Build();
@@ -118,6 +139,7 @@ if (args.Contains("--provision-local-accounts", StringComparer.Ordinal))
     await LocalAccountProvisioner.RunAsync(app);
     return;
 }
+
 if (args.Contains("--provision-day2-fixture", StringComparer.Ordinal))
 {
     await LocalDay2Fixture.RunAsync(app);
@@ -132,16 +154,26 @@ app.UseAuthorization();
 app.MapAuthEndpoints();
 app.MapAdminAccountsEndpoints();
 app.MapAdminGroupsEndpoints();
+app.MapAdminCurriculumsEndpoints();
 app.MapAdminShadowingEndpoints();
 app.MapStudentLearningEndpoints();
 
 app.MapGet("/health", (ILogger<Program> logger) =>
 {
     var started = System.Diagnostics.Stopwatch.GetTimestamp();
+
     logger.LogInformation("Foundation.Health.Start");
-    var result = Results.Ok(new { status = "ok", application = "ShadowingEnglish.V2" });
-    logger.LogInformation("Foundation.Health.Success DurationMs={DurationMs}",
+
+    var result = Results.Ok(new
+    {
+        status = "ok",
+        application = "ShadowingEnglish.V2"
+    });
+
+    logger.LogInformation(
+        "Foundation.Health.Success DurationMs={DurationMs}",
         System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+
     return result;
 });
 

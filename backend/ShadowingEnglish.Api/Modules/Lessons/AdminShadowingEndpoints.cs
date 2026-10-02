@@ -10,7 +10,6 @@ using ShadowingEnglish.Core.Learning;
 using ShadowingEnglish.Infrastructure.Database;
 using ShadowingEnglish.Infrastructure.Identity;
 using ShadowingEnglish.Api.Modules.Media;
-using ShadowingEnglish.Api.Modules.Curriculums;
 
 namespace ShadowingEnglish.Api.Modules.Lessons;
 
@@ -77,56 +76,6 @@ public static class AdminShadowingEndpoints
                 return Results.Ok(new { items = rows.Take(size), hasMore = rows.Count > size });
             }
             catch (Exception ex) { return Failed(log, ex, "Groups", actor.Id, started); }
-        });
-
-        group.MapGet("/groups/{groupId:guid}/curriculum", async (Guid groupId,
-            ApplicationDbContext db, HttpContext http, UserManager<ApplicationUser> users,
-            ILoggerFactory loggers) =>
-        {
-            var started = Stopwatch.GetTimestamp();
-            var log = loggers.CreateLogger("Admin.Shadowing");
-            log.LogInformation("Admin.Shadowing.Curriculum.Start GroupId={GroupId}", groupId);
-            http.Response.Headers.CacheControl = "no-store";
-            try
-            {
-                var actor = await AdminAsync(http, users);
-                if (actor is null)
-                {
-                    log.LogWarning("Admin.Shadowing.Curriculum.Failed GroupId={GroupId} Status={Status} DurationMs={DurationMs}",
-                        groupId, 403, Ms(started));
-                    return Results.Forbid();
-                }
-                if (!await db.StudyGroups.AsNoTracking().AnyAsync(x => x.Id == groupId, http.RequestAborted))
-                {
-                    log.LogWarning("Admin.Shadowing.Curriculum.Failed GroupId={GroupId} Status={Status} DurationMs={DurationMs}",
-                        groupId, 404, Ms(started));
-                    return Results.NotFound(new { error = "group_not_found" });
-                }
-
-                // Read the current pointer once; immutable slots keep this snapshot coherent during a later publish.
-                var versionId = await (from assignment in db.GroupCurriculumAssignments.AsNoTracking()
-                    join version in db.PublishedCurriculumVersions.AsNoTracking()
-                        on assignment.PublishedCurriculumVersionId equals version.Id
-                    where assignment.GroupId == groupId && version.GroupId == groupId
-                    select (Guid?)version.Id).SingleOrDefaultAsync(http.RequestAborted);
-                var lessons = versionId is null ? Array.Empty<CurriculumLessonDto>() : await (
-                    from slot in db.PublishedLessonSlots.AsNoTracking()
-                    join lesson in db.LessonVersions.AsNoTracking() on slot.LessonVersionId equals lesson.Id
-                    where slot.PublishedCurriculumVersionId == versionId.Value
-                    orderby slot.WeekNumber, slot.DayNumber, slot.SortOrder, slot.Id
-                    select new CurriculumLessonDto(lesson.LessonDefinitionId, lesson.Id, lesson.Title,
-                        slot.WeekNumber, slot.DayNumber, slot.SortOrder)).ToArrayAsync(http.RequestAborted);
-                log.LogInformation("Admin.Shadowing.Curriculum.Success ActorId={ActorId} GroupId={GroupId} VersionId={VersionId} Count={Count} Status={Status} DurationMs={DurationMs}",
-                    actor.Id, groupId, versionId, lessons.Length, 200, Ms(started));
-                return Results.Ok(new { versionId, groupId, lessons });
-            }
-            catch (Exception)
-            {
-                // Do not log database exception messages, lesson text, audio, or credentials.
-                log.LogError("Admin.Shadowing.Curriculum.Failed GroupId={GroupId} Status={Status} DurationMs={DurationMs}",
-                    groupId, 500, Ms(started));
-                return Results.Problem(statusCode: 500, title: "curriculum_read_failed");
-            }
         });
 
         group.MapPost("/lessons", async (HttpContext http, IAntiforgery antiforgery,
@@ -258,8 +207,8 @@ public static class AdminShadowingEndpoints
             }
         }).RequireRateLimiting("admin-lesson-write");
 
-        // Retired write contract: historical successful requests may be confirmed without mutation.
-        // All new publications must explicitly save and assign an independent curriculum first.
+        // Retired write contract: successful historical requests may be confirmed without mutation.
+        // New publications must save and assign an independent curriculum first.
         group.MapPost("/publish", async (PublishRequest request, HttpContext http,
             IAntiforgery antiforgery, ApplicationDbContext db, UserManager<ApplicationUser> users,
             ILoggerFactory loggers) =>
@@ -279,8 +228,8 @@ public static class AdminShadowingEndpoints
                 if (previous is null) return Error(log, started, 409, "curriculum_publish_required");
                 var slot = await db.PublishedLessonSlots.AsNoTracking().SingleOrDefaultAsync(x =>
                     x.PublishedCurriculumVersionId == previous.Id && x.LessonVersionId == request.LessonVersionId &&
-                    x.WeekNumber == request.WeekNumber && x.DayNumber == request.DayNumber && x.SortOrder == request.SortOrder,
-                    http.RequestAborted);
+                    x.WeekNumber == request.WeekNumber && x.DayNumber == request.DayNumber &&
+                    x.SortOrder == request.SortOrder, http.RequestAborted);
                 if (previous.GroupId != request.GroupId || previous.SourceDraftRevision is not null || slot is null)
                     return Error(log, started, 409, "publish_request_conflict");
                 log.LogInformation("Admin.Shadowing.Publish.NoChange GroupId={GroupId} VersionId={VersionId} DurationMs={DurationMs}",
@@ -289,12 +238,13 @@ public static class AdminShadowingEndpoints
             }
             catch (Exception ex)
             {
-                log.LogWarning("Admin.Shadowing.Publish.Failed ErrorType={ErrorType} DurationMs={DurationMs}", ex.GetType().Name, Ms(started));
+                log.LogWarning("Admin.Shadowing.Publish.Failed ErrorType={ErrorType} DurationMs={DurationMs}",
+                    ex.GetType().Name, Ms(started));
                 return Error(log, started, 500, "shadowing_operation_failed");
             }
         }).RequireRateLimiting("admin-lesson-write");
 
-        return app.MapAdminCurriculumsEndpoints();
+        return app;
     }
 
     private static bool SafeKey(string key) => ShadowingMediaKeys.IsValid(key);
@@ -335,11 +285,12 @@ public static class AdminShadowingEndpoints
     private static IResult Failed(ILogger log, Exception ex, string action, Guid actorId, long started)
     { log.LogError(ex, "Admin.Shadowing.Failed Action={Action} ActorId={ActorId} DurationMs={DurationMs}",
         action, actorId, Ms(started)); return Results.Problem(statusCode: 500, title: "shadowing_operation_failed"); }
+    private static IResult Conflict(ILogger log, Exception ex, Guid actorId, long started)
+    { log.LogWarning(ex, "Admin.Shadowing.Publish.Conflict ActorId={ActorId} DurationMs={DurationMs}",
+        actorId, Ms(started)); return Results.Conflict(new { error = "publication_changed" }); }
 
     private sealed record LessonDto(Guid Id, Guid VersionId, string Title, string Description, int SegmentCount);
     private sealed record GroupDto(Guid Id, string Name, Guid? CurrentVersionId);
-    private sealed record CurriculumLessonDto(Guid LessonId, Guid LessonVersionId, string Title,
-        int WeekNumber, int DayNumber, int SortOrder);
     public sealed record PublishRequest(Guid RequestId, Guid GroupId, Guid LessonVersionId,
         Guid? ExpectedVersionId, int WeekNumber, int DayNumber, int SortOrder);
     private sealed record PublicationDto(Guid GroupId, Guid VersionId, Guid SlotId);

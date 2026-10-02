@@ -121,12 +121,6 @@ export class ShadowingAuthoringApi {
     });
   }
 
-  groups(page = 1): Observable<Page<AuthoringGroup>> {
-    return this.http.get<Page<AuthoringGroup>>(`${this.base}/groups`, {
-      params: new HttpParams().set('page', page),
-    });
-  }
-
   curriculums(page = 1): Observable<Page<CurriculumSummary>> {
     return this.http.get<Page<CurriculumSummary>>(`${this.base}/curriculums`, {
       params: new HttpParams().set('page', page),
@@ -167,6 +161,12 @@ export class ShadowingAuthoringApi {
 
   publishCurriculum(request: CurriculumPublishRequest): Observable<CurriculumPublication> {
     return this.http.post<CurriculumPublication>(`${this.base}/curriculums/publish`, request);
+  }
+
+  groups(page = 1): Observable<Page<AuthoringGroup>> {
+    return this.http.get<Page<AuthoringGroup>>(`${this.base}/groups`, {
+      params: new HttpParams().set('page', page),
+    });
   }
 
   create(
