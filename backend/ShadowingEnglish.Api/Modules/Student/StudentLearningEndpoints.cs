@@ -23,7 +23,7 @@ public static class StudentLearningEndpoints
         var group = app.MapGroup("/api/student/learning")
             .RequireAuthorization(new AuthorizeAttribute { Roles = "Student" });
 
-        group.MapGet("/curriculum", async (int? page, int? pageSize, HttpContext http,
+        group.MapGet("/curriculum", async (int? page, int? pageSize, Guid? expectedPublishedVersionId, HttpContext http,
             ApplicationDbContext db, UserManager<ApplicationUser> users, ILoggerFactory loggers) =>
         {
             var clock = Stopwatch.GetTimestamp();
@@ -33,6 +33,8 @@ public static class StudentLearningEndpoints
             if (student is null) return Denied(log, clock);
             if (page is < 1 or > 10000 || pageSize is < 1 or > 50)
                 return Reject(log, clock, "invalid_page");
+            if (expectedPublishedVersionId == Guid.Empty)
+                return Reject(log, clock, "invalid_published_version");
             try
             {
                 var now = DateTimeOffset.UtcNow;
@@ -46,11 +48,19 @@ public static class StudentLearningEndpoints
                     where assignment.GroupId == groupInfo.Id && version.GroupId == groupInfo.Id &&
                         version.PublishedAtUtc <= now && version.AvailableAtUtc <= now
                     select new { version.Id, version.Title }).SingleOrDefaultAsync();
+                if (expectedPublishedVersionId is Guid expectedVersionId &&
+                    (assigned is null || assigned.Id != expectedVersionId))
+                {
+                    http.Response.Headers.CacheControl = "no-store";
+                    log.LogWarning("Student.Curriculum.VersionChanged StudentId={StudentId} ExpectedVersionId={ExpectedVersionId} CurrentVersionId={CurrentVersionId} DurationMs={DurationMs}",
+                        student, expectedVersionId, assigned?.Id, Ms(clock));
+                    return Results.Conflict(new { error = "curriculum_version_changed" });
+                }
                 if (assigned is null)
                 {
                     http.Response.Headers.CacheControl = "no-store";
                     log.LogInformation("Student.Curriculum.Empty StudentId={StudentId} DurationMs={DurationMs}", student, Ms(clock));
-                    return Results.Ok(new CurriculumDto(groupInfo?.Name, null, Array.Empty<LessonCard>(), false));
+                    return Results.Ok(new CurriculumDto(groupInfo?.Name, null, null, Array.Empty<LessonCard>(), false));
                 }
                 var limit = pageSize ?? 20;
                 var visible = await (from slot in db.PublishedLessonSlots.AsNoTracking()
@@ -71,7 +81,7 @@ public static class StudentLearningEndpoints
                 http.Response.Headers.CacheControl = "no-store";
                 log.LogInformation("Student.Curriculum.Success StudentId={StudentId} VersionId={VersionId} Count={Count} DurationMs={DurationMs}",
                     student, assigned.Id, cards.Length, Ms(clock));
-                return Results.Ok(new CurriculumDto(groupInfo!.Name, assigned.Title, cards, visible.Count > limit));
+                return Results.Ok(new CurriculumDto(groupInfo!.Name, assigned.Id, assigned.Title, cards, visible.Count > limit));
             }
             catch (Exception ex) { return Fail(log, ex, "Curriculum", student.Value, clock); }
         });
@@ -264,7 +274,8 @@ public static class StudentLearningEndpoints
         int WeekNumber, int DayNumber, int SortOrder);
     private sealed record LessonCard(Guid SlotId, string Title, int WeekNumber, int DayNumber, int SortOrder,
         int CompletedSegments, bool IsComplete);
-    private sealed record CurriculumDto(string? GroupName, string? CurriculumTitle, LessonCard[] Items, bool HasMore);
+    private sealed record CurriculumDto(string? GroupName, Guid? PublishedVersionId, string? CurriculumTitle,
+        LessonCard[] Items, bool HasMore);
     private sealed record OverviewDto(Guid SlotId, Guid VersionId, string Title, string Description,
         int WeekNumber, int DayNumber, int SortOrder, int SegmentCount, int CompletedSegments, bool IsComplete);
     private sealed record SegmentDto(int Position, string Text, string AudioUrl);

@@ -1,4 +1,23 @@
-:host {
-  display: block;
-  min-width: 0;
-}
+:host { display:block; min-width:0; }
+.students-page { max-width: 1520px; margin: 0 auto; padding: 1rem; color:#15312e; }
+.page-head { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; margin-bottom:1rem; }
+.eyebrow,.label { color:#58716e; font-size:.78rem; font-weight:700; }
+h1,h2,p { margin-top:0; } h1 { margin-bottom:.35rem; font-size:clamp(1.65rem,3vw,2.2rem); } .intro { max-width:760px; color:#60736f; }
+.primary,.secondary,.text,.pager button,.search-row button,.history-button { min-height:44px; border-radius:12px; padding:.65rem 1rem; font-weight:800; cursor:pointer; }
+.primary,.search-row button { border:0; background:#00685f; color:white; } .secondary,.pager button,.history-button { border:1px solid #cbdad7; background:white; color:#005d55; } .text { border:0; background:transparent; color:#00685f; }
+button:disabled { opacity:.5; cursor:not-allowed; }
+.search-card,.student-card,.history-panel,.state { background:white; border:1px solid #e3ecea; border-radius:18px; box-shadow:0 8px 24px rgba(31,72,66,.06); }
+.search-card { padding:1rem; margin-bottom:1rem; } .search-card label,.assignment label,.modal label { display:block; margin-bottom:.4rem; font-weight:800; }
+.search-row { display:flex; gap:.65rem; } input,select { width:100%; min-height:44px; border:1px solid #cbdad7; border-radius:12px; padding:.7rem .8rem; background:white; color:inherit; }
+.students-list { display:grid; gap:1rem; } .student-card { padding:1rem; } .student-main { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; } .student-main h2 { font-size:1.05rem; overflow-wrap:anywhere; margin:.2rem 0 .45rem; }
+.current-group { color:#4f6965; margin:0; }.publish-state { max-width:420px; border-radius:999px; padding:.45rem .7rem; background:#fff4d9; color:#77550b; font-size:.8rem; font-weight:800; }.publish-state.published { background:#dff5ef; color:#075f51; }
+.assignment { display:grid; grid-template-columns:minmax(180px,1fr) auto; gap:.65rem; align-items:end; margin-top:1rem; }.assignment label { grid-column:1/-1; }.confirm { grid-column:1/-1; background:#f3f8f7; border-radius:14px; padding:.85rem; }.confirm p { margin-bottom:.65rem; }.confirm div { display:flex; gap:.5rem; flex-wrap:wrap; }.history-button { margin-top:.8rem; }
+.pager { display:flex; align-items:center; justify-content:center; gap:1rem; margin:1rem 0; }.alert { border-radius:12px; padding:.8rem 1rem; margin-bottom:1rem; font-weight:700; }.alert.error { background:#fff0f0; color:#8a2424; }.alert.success { background:#e9f8f3; color:#075f51; }.state { padding:2rem; text-align:center; }.spinner { display:inline-block; width:28px; height:28px; border:3px solid #d8e8e5; border-top-color:#00685f; border-radius:50%; animation:spin .8s linear infinite; } @keyframes spin { to { transform:rotate(360deg); } }
+.history-panel { margin-top:1rem; padding:1rem; }.history-head { display:flex; justify-content:space-between; align-items:center; }.history-panel ol { margin:0; padding:0; list-style:none; display:grid; gap:.55rem; }.history-panel li { display:flex; justify-content:space-between; gap:1rem; padding:.75rem; border-radius:12px; background:#f7faf9; }.history-panel li span { color:#60736f; font-size:.86rem; }
+.modal-backdrop { position:fixed; inset:0; background:rgba(10,35,32,.48); display:grid; place-items:center; padding:1rem; z-index:1000; }.modal { width:min(100%,480px); background:white; border-radius:20px; padding:1.25rem; box-shadow:0 24px 70px rgba(0,0,0,.2); }.modal input { margin-bottom:.85rem; }.modal-actions { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.4rem; }
+@media (max-width:720px) { .students-page{padding:.75rem}.page-head,.student-main{flex-direction:column}.page-head .primary{width:100%}.search-row{flex-direction:column}.assignment{grid-template-columns:1fr}.publish-state{max-width:100%;border-radius:12px}.history-panel li{flex-direction:column;gap:.25rem}.pager{justify-content:space-between}.modal{padding:1rem} }
+.card-links { display:flex; flex-wrap:wrap; gap:.6rem; margin-top:.8rem; }
+.details-link { min-height:44px; display:inline-flex; align-items:center; justify-content:center; border-radius:12px; padding:.65rem 1rem; background:#00685f; color:#fff; font-weight:800; text-decoration:none; }
+.details-link:focus-visible { outline:3px solid rgba(0,104,95,.22); outline-offset:2px; }
+.card-links .history-button { margin-top:0; }
+@media (max-width:720px) { .card-links>* { flex:1 1 100%; } }

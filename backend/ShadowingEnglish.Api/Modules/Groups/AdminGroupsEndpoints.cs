@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Diagnostics;
 using Microsoft.Data.SqlClient;
@@ -107,6 +108,66 @@ public static class AdminGroupsEndpoints
             }
         }).RequireRateLimiting("admin-group-write");
 
+        group.MapPost("/students", async (CreateStudentRequest request, HttpContext context,
+            IAntiforgery antiforgery, ApplicationDbContext db, UserManager<ApplicationUser> users,
+            ILoggerFactory loggers) =>
+        {
+            var started = Stopwatch.GetTimestamp();
+            var logger = loggers.CreateLogger("Admin.Groups");
+            logger.LogInformation("Admin.Students.Create.Start TraceId={TraceId}", context.TraceIdentifier);
+            if (!await ValidCsrfAsync(context, antiforgery))
+                return Rejected(logger, started, 400, "invalid_csrf");
+            var actor = await CurrentAdminAsync(context, users);
+            if (actor is null) return Denied(logger, started);
+
+            var email = request.Email?.Trim();
+            if (string.IsNullOrWhiteSpace(email) || email.Length > 256 ||
+                !new EmailAddressAttribute().IsValid(email) ||
+                string.IsNullOrWhiteSpace(request.Password) || request.Password.Length > 256)
+                return Rejected(logger, started, 400, "invalid_student_account");
+            if (await users.FindByEmailAsync(email) is not null)
+                return Rejected(logger, started, 409, "student_email_exists");
+
+            await using var tx = await db.Database.BeginTransactionAsync();
+            try
+            {
+                var student = new ApplicationUser
+                {
+                    Id = Guid.NewGuid(), UserName = email, Email = email, EmailConfirmed = false
+                };
+                var created = await users.CreateAsync(student, request.Password);
+                if (!created.Succeeded)
+                {
+                    logger.LogWarning("Admin.Students.Create.ValidationFailed ActorId={ActorId} Codes={Codes} DurationMs={DurationMs}",
+                        actor.Id, string.Join(",", created.Errors.Select(item => item.Code)), Elapsed(started));
+                    await tx.RollbackAsync();
+                    return Results.BadRequest(new { error = "invalid_student_account", codes = created.Errors.Select(item => item.Code) });
+                }
+                var assigned = await users.AddToRoleAsync(student, "Student");
+                if (!assigned.Succeeded)
+                    throw new InvalidOperationException("student_role_assignment_failed");
+                await tx.CommitAsync();
+                context.Response.Headers.CacheControl = "no-store";
+                logger.LogInformation("Admin.Students.Create.Success ActorId={ActorId} StudentId={StudentId} DurationMs={DurationMs}",
+                    actor.Id, student.Id, Elapsed(started));
+                return Results.Json(new { id = student.Id, email = student.Email }, statusCode: 201);
+            }
+            catch (DbUpdateException ex)
+            {
+                await tx.RollbackAsync();
+                logger.LogWarning("Admin.Students.Create.Conflict ErrorCode=student_email_exists ErrorType={ErrorType} ActorId={ActorId} DurationMs={DurationMs}",
+                    ex.GetType().Name, actor.Id, Elapsed(started));
+                return Results.Conflict(new { error = "student_email_exists" });
+            }
+            catch (Exception ex)
+            {
+                await tx.RollbackAsync();
+                logger.LogError("Admin.Students.Create.Failed ErrorCode=student_creation_failed ErrorType={ErrorType} ActorId={ActorId} DurationMs={DurationMs}",
+                    ex.GetType().Name, actor.Id, Elapsed(started));
+                return Results.Problem(statusCode: 500, title: "student_creation_failed");
+            }
+        }).RequireRateLimiting("admin-create");
+
         group.MapGet("/students", async (string? query, int? page, int? pageSize, HttpContext context,
             ApplicationDbContext db, UserManager<ApplicationUser> users, ILoggerFactory loggers) =>
         {
@@ -161,6 +222,164 @@ public static class AdminGroupsEndpoints
             catch (Exception ex)
             {
                 return Failed(logger, ex, "Students", actor.Id, started);
+            }
+        });
+
+        group.MapGet("/students/{studentId:guid}", async (Guid studentId, int? lessonPage, int? pageSize,
+            HttpContext context, ApplicationDbContext db, UserManager<ApplicationUser> users,
+            ILoggerFactory loggers) =>
+        {
+            var started = Stopwatch.GetTimestamp();
+            var logger = loggers.CreateLogger("Admin.Groups");
+            logger.LogInformation("Admin.Students.Detail.Start StudentId={StudentId} TraceId={TraceId}",
+                studentId, context.TraceIdentifier);
+            var actor = await CurrentAdminAsync(context, users);
+            if (actor is null) return Denied(logger, started);
+            if (!ValidPage(lessonPage, pageSize))
+                return Rejected(logger, started, 400, "invalid_page");
+
+            try
+            {
+                var student = await users.FindByIdAsync(studentId.ToString());
+                if (student is null || !await users.IsInRoleAsync(student, "Student"))
+                    return NotFound(logger, started, actor.Id, studentId, "student_not_found");
+
+                var active = await (from membership in db.StudentGroupMemberships.AsNoTracking()
+                    join studyGroup in db.StudyGroups.AsNoTracking() on membership.GroupId equals studyGroup.Id
+                    where membership.StudentId == studentId && membership.EndedAtUtc == null
+                    select new
+                    {
+                        membership.Id,
+                        membership.GroupId,
+                        GroupName = studyGroup.Name,
+                        membership.StartedAtUtc,
+                        studyGroup.AssignedCurriculumTemplateId
+                    }).SingleOrDefaultAsync();
+
+                AssignedCurriculumDto? assignedCurriculum = null;
+                if (active?.AssignedCurriculumTemplateId is Guid assignedId)
+                {
+                    assignedCurriculum = await db.CurriculumTemplates.AsNoTracking()
+                        .Where(item => item.Id == assignedId)
+                        .Select(item => new AssignedCurriculumDto(item.Id, item.Name, item.DraftRevision))
+                        .SingleOrDefaultAsync();
+                }
+
+                PublishedCurriculumDto? publication = null;
+                LessonProgressDto[] lessons = Array.Empty<LessonProgressDto>();
+                var summary = new StudentProgressSummaryDto(0, 0, 0, 0, 0);
+                var hasMoreLessons = false;
+                var page = lessonPage ?? 1;
+                var size = pageSize ?? 20;
+
+                if (active is not null)
+                {
+                    var published = await (from assignment in db.GroupCurriculumAssignments.AsNoTracking()
+                        join version in db.PublishedCurriculumVersions.AsNoTracking()
+                            on assignment.PublishedCurriculumVersionId equals version.Id
+                        where assignment.GroupId == active.GroupId && version.GroupId == active.GroupId
+                        select version).SingleOrDefaultAsync();
+
+                    if (published is not null)
+                    {
+                        var now = DateTimeOffset.UtcNow;
+                        var availableNow = published.PublishedAtUtc <= now && published.AvailableAtUtc <= now;
+                        publication = new PublishedCurriculumDto(published.Id, published.CurriculumTemplateId,
+                            published.Title, published.VersionNumber, published.PublishedAtUtc,
+                            published.AvailableAtUtc, published.SourceDraftRevision, availableNow);
+
+                        if (availableNow)
+                        {
+                            var visibleSlots = from slot in db.PublishedLessonSlots.AsNoTracking()
+                                join lesson in db.LessonVersions.AsNoTracking()
+                                    on slot.LessonVersionId equals lesson.Id
+                                where slot.PublishedCurriculumVersionId == published.Id &&
+                                    slot.AvailableAtUtc <= now
+                                select new
+                                {
+                                    slot.Id,
+                                    slot.LessonVersionId,
+                                    lesson.Title,
+                                    slot.WeekNumber,
+                                    slot.DayNumber,
+                                    slot.SortOrder
+                                };
+
+                            var visibleLessonCount = await visibleSlots.CountAsync();
+                            var aggregateProgress = await (from progress in db.StudentStageProgress.AsNoTracking()
+                                join slot in db.PublishedLessonSlots.AsNoTracking() on progress.SlotId equals slot.Id
+                                where progress.StudentId == studentId &&
+                                    progress.PublishedCurriculumVersionId == published.Id &&
+                                    progress.StageKey == "shadowing" &&
+                                    slot.PublishedCurriculumVersionId == published.Id && slot.AvailableAtUtc <= now
+                                select progress).ToListAsync();
+                            var totalSegments = await (from slot in db.PublishedLessonSlots.AsNoTracking()
+                                join segment in db.LessonSegments.AsNoTracking()
+                                    on slot.LessonVersionId equals segment.LessonVersionId
+                                where slot.PublishedCurriculumVersionId == published.Id && slot.AvailableAtUtc <= now
+                                select segment.Id).CountAsync();
+                            summary = new StudentProgressSummaryDto(
+                                visibleLessonCount,
+                                aggregateProgress.Count(item => item.CompletedSegments > 0),
+                                aggregateProgress.Count(item => item.IsComplete),
+                                totalSegments,
+                                aggregateProgress.Sum(item => item.CompletedSegments));
+
+                            var visiblePage = await visibleSlots
+                                .OrderBy(item => item.WeekNumber)
+                                .ThenBy(item => item.DayNumber)
+                                .ThenBy(item => item.SortOrder)
+                                .ThenBy(item => item.Id)
+                                .Skip((page - 1) * size)
+                                .Take(size + 1)
+                                .ToListAsync();
+                            hasMoreLessons = visiblePage.Count > size;
+                            var pageRows = visiblePage.Take(size).ToArray();
+                            var pageSlotIds = pageRows.Select(item => item.Id).ToArray();
+                            var lessonVersionIds = pageRows.Select(item => item.LessonVersionId).Distinct().ToArray();
+                            var segmentCounts = await db.LessonSegments.AsNoTracking()
+                                .Where(item => lessonVersionIds.Contains(item.LessonVersionId))
+                                .GroupBy(item => item.LessonVersionId)
+                                .Select(grouping => new { LessonVersionId = grouping.Key, Count = grouping.Count() })
+                                .ToDictionaryAsync(item => item.LessonVersionId, item => item.Count);
+                            var pageProgress = await db.StudentStageProgress.AsNoTracking()
+                                .Where(item => item.StudentId == studentId &&
+                                    item.PublishedCurriculumVersionId == published.Id &&
+                                    item.StageKey == "shadowing" && pageSlotIds.Contains(item.SlotId))
+                                .ToDictionaryAsync(item => item.SlotId);
+
+                            lessons = pageRows.Select(item =>
+                            {
+                                pageProgress.TryGetValue(item.Id, out var progress);
+                                return new LessonProgressDto(item.Id, item.Title, item.WeekNumber,
+                                    item.DayNumber, item.SortOrder,
+                                    segmentCounts.GetValueOrDefault(item.LessonVersionId),
+                                    progress?.CompletedSegments ?? 0,
+                                    progress?.IsComplete ?? false,
+                                    progress?.UpdatedAtUtc);
+                            }).ToArray();
+                        }
+                    }
+                }
+
+                context.Response.Headers.CacheControl = "no-store";
+                logger.LogInformation(
+                    "Admin.Students.Detail.Success ActorId={ActorId} StudentId={StudentId} GroupId={GroupId} PublishedVersionId={PublishedVersionId} VisibleLessons={VisibleLessons} ReturnedLessons={ReturnedLessons} DurationMs={DurationMs}",
+                    actor.Id, studentId, active?.GroupId, publication?.VersionId, summary.VisibleLessons,
+                    lessons.Length, Elapsed(started));
+                return Results.Ok(new AdminStudentDetailDto(
+                    new StudentIdentityDto(student.Id, student.Email ?? ""),
+                    active is null ? null : new ActiveMembershipDto(active.Id, active.GroupId,
+                        active.GroupName, active.StartedAtUtc),
+                    assignedCurriculum,
+                    publication,
+                    summary,
+                    lessons,
+                    hasMoreLessons));
+            }
+            catch (Exception ex)
+            {
+                return Failed(logger, ex, "StudentDetail", actor.Id, started);
             }
         });
 
@@ -342,6 +561,7 @@ public static class AdminGroupsEndpoints
     }
 
     public sealed record CreateGroupRequest(string? Name, Guid? RequestId);
+    public sealed record CreateStudentRequest(string? Email, string? Password);
     public sealed record MoveStudentRequest(Guid? GroupId, Guid? ExpectedMembershipId);
     private sealed record GroupDto(Guid Id, string Name, Guid? AssignedCurriculumTemplateId = null,
         string? AssignedCurriculumName = null, Guid? DraftRevision = null, Guid? CurrentVersionId = null,
@@ -349,6 +569,18 @@ public static class AdminGroupsEndpoints
     private sealed record ActiveMembershipDto(Guid MembershipId, Guid GroupId, string GroupName,
         DateTimeOffset StartedAtUtc);
     private sealed record StudentDto(Guid Id, string Email, ActiveMembershipDto? ActiveGroup);
+    private sealed record StudentIdentityDto(Guid Id, string Email);
+    private sealed record AssignedCurriculumDto(Guid Id, string Name, Guid DraftRevision);
+    private sealed record PublishedCurriculumDto(Guid VersionId, Guid CurriculumTemplateId, string Title,
+        int VersionNumber, DateTimeOffset PublishedAtUtc, DateTimeOffset AvailableAtUtc,
+        Guid? SourceDraftRevision, bool IsAvailableNow);
+    private sealed record StudentProgressSummaryDto(int VisibleLessons, int StartedLessons,
+        int CompletedLessons, int TotalSegments, int CompletedSegments);
+    private sealed record LessonProgressDto(Guid SlotId, string Title, int WeekNumber, int DayNumber,
+        int SortOrder, int TotalSegments, int CompletedSegments, bool IsComplete, DateTimeOffset? UpdatedAtUtc);
+    private sealed record AdminStudentDetailDto(StudentIdentityDto Student, ActiveMembershipDto? ActiveGroup,
+        AssignedCurriculumDto? AssignedCurriculum, PublishedCurriculumDto? Publication,
+        StudentProgressSummaryDto Progress, LessonProgressDto[] Lessons, bool HasMoreLessons);
     private sealed record HistoryDto(Guid MembershipId, Guid GroupId, string GroupName,
         DateTimeOffset StartedAtUtc, DateTimeOffset? EndedAtUtc);
 }

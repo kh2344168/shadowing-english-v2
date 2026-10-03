@@ -1,1 +1,353 @@
 @use '../../learning';
+
+:host {
+  display: block;
+}
+
+.overview-page {
+  --student-primary: #00685f;
+  --student-primary-dark: #005049;
+  --student-muted: #5d6967;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.lesson-context {
+  margin-bottom: 16px;
+}
+
+.lesson-context a {
+  min-height: 34px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 10px;
+  background: #f2f4f6;
+  color: #465451;
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.lesson-context a:hover {
+  color: var(--student-primary);
+}
+
+.overview-loading {
+  display: grid;
+  gap: 18px;
+}
+
+.skeleton {
+  border-radius: 22px;
+  background: linear-gradient(90deg, #eef3f2 25%, #f8faf9 50%, #eef3f2 75%);
+  background-size: 200% 100%;
+  animation: overview-shimmer 1.4s infinite linear;
+}
+
+.skeleton--hero {
+  height: 280px;
+}
+
+.skeleton--practice {
+  height: 230px;
+}
+
+.lesson-overview {
+  width: min(600px, 100%);
+  margin: 0 auto;
+}
+
+.lesson-summary-card {
+  position: relative;
+  overflow: hidden;
+  padding: 27px;
+  border: 1px solid #dce5e3;
+  border-radius: 23px;
+  background: #fff;
+  box-shadow: 0 8px 26px rgba(25, 28, 30, 0.065);
+}
+
+.lesson-summary-card__glow {
+  position: absolute;
+  top: -75px;
+  left: -60px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: rgba(107, 216, 203, 0.3);
+  filter: blur(30px);
+}
+
+.lesson-summary-card > *:not(.lesson-summary-card__glow) {
+  position: relative;
+  z-index: 1;
+}
+
+.lesson-summary-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.lesson-summary-card__badges span,
+.lesson-summary-card__badges small {
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.lesson-summary-card__badges span {
+  background: var(--student-primary);
+  color: #fff;
+}
+
+.lesson-summary-card__badges small {
+  background: #eef2f2;
+  color: #586461;
+}
+
+.lesson-summary-card h1 {
+  margin: 18px 0 8px;
+  font-size: clamp(25px, 5vw, 33px);
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+}
+
+.lesson-summary-card > p {
+  margin: 0;
+  color: var(--student-muted);
+  font-size: 12px;
+  line-height: 1.9;
+}
+
+.lesson-progress {
+  margin-top: 22px;
+  padding: 15px;
+  display: grid;
+  gap: 8px;
+  border-radius: 15px;
+  background: #f3f7f6;
+}
+
+.lesson-progress__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #43504e;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.lesson-progress__heading strong {
+  color: var(--student-primary);
+  font-size: 13px;
+}
+
+.lesson-progress__track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dce5e3;
+}
+
+.lesson-progress__track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--student-primary);
+  transition: width 180ms ease;
+}
+
+.lesson-progress small {
+  color: var(--student-muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.practice-card {
+  margin-top: 22px;
+  padding: 22px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  border: 1px solid #dce5e3;
+  border-radius: 21px;
+  background: #fff;
+  box-shadow: 0 7px 22px rgba(25, 28, 30, 0.05);
+}
+
+.practice-card__icon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background: rgba(137, 245, 231, 0.33);
+  font-size: 21px;
+}
+
+.practice-card__body {
+  min-width: 0;
+  flex: 1;
+}
+
+.practice-card__eyebrow {
+  color: var(--student-primary);
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.practice-card h2 {
+  margin: 4px 0 7px;
+  font-size: 18px;
+}
+
+.practice-card p {
+  margin: 0;
+  color: var(--student-muted);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.practice-card__status,
+.practice-card__unavailable {
+  margin-top: 15px;
+  padding: 12px 13px;
+  border-radius: 13px;
+  background: #f3f7f6;
+}
+
+.practice-card__status {
+  display: grid;
+  gap: 3px;
+}
+
+.practice-card__status strong {
+  color: #263331;
+  font-size: 11px;
+}
+
+.practice-card__status span,
+.practice-card__unavailable {
+  color: var(--student-muted);
+  font-size: 9px;
+  line-height: 1.7;
+}
+
+.practice-card__action {
+  min-height: 46px;
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border-radius: 13px;
+  background: var(--student-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 850;
+  text-decoration: none;
+  box-shadow: 0 4px 0 var(--student-primary-dark);
+  transition: 150ms ease;
+}
+
+.practice-card__action:hover {
+  background: #008378;
+}
+
+.lesson-note {
+  margin-top: 18px;
+  padding: 13px 15px;
+  border-radius: 13px;
+  background: #eceef0;
+  color: var(--student-muted);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.state-card {
+  min-height: 310px;
+  padding: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  border: 1px dashed #bcd6d1;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.8);
+  text-align: center;
+}
+
+.state-card__icon {
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: #edf8f5;
+  color: var(--student-primary);
+  font-size: 25px;
+  font-weight: 900;
+}
+
+.state-card h1 {
+  margin: 0 0 7px;
+  font-size: 21px;
+}
+
+.state-card p {
+  max-width: 420px;
+  margin: 0;
+  color: var(--student-muted);
+  line-height: 1.8;
+}
+
+.state-card--error .state-card__icon {
+  background: #fff0ef;
+  color: #a23b32;
+}
+
+@keyframes overview-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .lesson-summary-card,
+  .practice-card {
+    padding: 18px;
+  }
+
+  .practice-card {
+    flex-direction: column;
+  }
+
+  .practice-card__icon {
+    width: 42px;
+    height: 42px;
+    flex-basis: 42px;
+  }
+
+  .state-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

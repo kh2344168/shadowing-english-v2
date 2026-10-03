@@ -63,6 +63,13 @@ export const routes: Routes = [
           import('./features/admin/groups/groups.page').then((m) => m.AdminGroupsPage),
       },
       {
+        path: 'students/:studentId',
+        loadComponent: () =>
+          import('./features/admin/students/detail/student-details.page').then(
+            (m) => m.AdminStudentDetailsPage,
+          ),
+      },
+      {
         path: 'students',
         loadComponent: () =>
           import('./features/admin/students/students.page').then((m) => m.AdminStudentsPage),

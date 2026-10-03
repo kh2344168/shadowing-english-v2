@@ -2,3 +2,41 @@
   display: block;
   min-width: 0;
 }
+
+.group-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.group-summary article {
+  display: flex;
+  min-height: 84px;
+  flex-direction: column;
+  justify-content: center;
+  border-radius: 12px;
+  background: white;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 6%);
+}
+
+.group-summary span {
+  color: #6e7977;
+  font-size: 12px;
+}
+
+.group-summary strong {
+  margin-top: 4px;
+  color: #004e47;
+  font-size: 22px;
+}
+
+@media (max-width: 639px) {
+  .group-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .group-summary article {
+    min-height: 68px;
+  }
+}

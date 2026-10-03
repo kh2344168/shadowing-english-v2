@@ -40,9 +40,23 @@ export class AdminGroupsPage implements OnInit {
       ? this.groups().filter((group) => group.name.toLocaleLowerCase().includes(query))
       : this.groups();
   });
+  readonly publishedGroupsCount = computed(() =>
+    this.groups().filter((group) => !!group.currentVersionId).length,
+  );
+  readonly assignedDraftOnlyCount = computed(() =>
+    this.groups().filter((group) => !!group.assignedCurriculumTemplateId && !group.currentVersionId)
+      .length,
+  );
+  readonly unpublishedChangesCount = computed(() =>
+    this.groups().filter((group) =>
+      !!group.currentVersionId && !!group.assignedCurriculumTemplateId &&
+      (group.publishedCurriculumTemplateId !== group.assignedCurriculumTemplateId ||
+        group.publishedDraftRevision !== group.draftRevision),
+    ).length,
+  );
   readonly students = signal<GroupStudent[]>([]);
   readonly history = signal<GroupHistoryItem[]>([]);
-  readonly loadingGroups = signal(true);
+  readonly loadingGroups = signal(false);
   readonly loadingStudents = signal(true);
   readonly loadingHistory = signal(false);
   readonly savingGroup = signal(false);
@@ -79,14 +93,16 @@ export class AdminGroupsPage implements OnInit {
   }
 
   async loadGroups(page = 1): Promise<void> {
+    if (this.loadingGroups()) return;
     const started = Date.now();
     this.loadingGroups.set(true);
     console.info('[Admin.Groups.UI.List.Start]', { page });
     try {
       const response = await firstValueFrom(this.api.listGroups(page));
-      this.groups.update((current) =>
-        page === 1 ? response.items : [...current, ...response.items],
-      );
+      this.groups.update((current) => {
+        if (page === 1) return response.items;
+        return [...new Map([...current, ...response.items].map((item) => [item.id, item])).values()];
+      });
       this.groupsPage.set(page);
       this.moreGroups.set(response.hasMore);
       console.info('[Admin.Groups.UI.List.Success]', {
@@ -280,6 +296,24 @@ export class AdminGroupsPage implements OnInit {
     } finally {
       if (requestId === this.historyRequestId) this.loadingHistory.set(false);
     }
+  }
+
+  curriculumStatus(group: StudyGroup): string {
+    if (!group.assignedCurriculumTemplateId && !group.currentVersionId) return 'لا يوجد منهج مسند';
+    if (group.assignedCurriculumTemplateId && !group.currentVersionId) return 'مسند ولم يُنشر بعد';
+    if (
+      group.currentVersionId &&
+      group.assignedCurriculumTemplateId &&
+      (group.publishedCurriculumTemplateId !== group.assignedCurriculumTemplateId ||
+        group.publishedDraftRevision !== group.draftRevision)
+    )
+      return 'منشور مع تعديلات غير منشورة';
+    return 'منشور ومطابق للمسودة الحالية';
+  }
+
+  studentVisibility(group: StudyGroup): string {
+    if (!group.currentVersionId) return 'لا توجد نسخة منشورة يمكن للطالب الوصول إليها من هذه المجموعة.';
+    return 'توجد نسخة منشورة؛ الإتاحة النهائية للدروس يحددها Student API حسب الموعد والصلاحية.';
   }
 
   formatTime(value: string): string {

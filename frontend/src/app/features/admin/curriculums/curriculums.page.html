@@ -247,6 +247,18 @@
         </button>
       </div>
     </div>
+    <ol class="workflow-progress mt-5" aria-label="حالة تجهيز المنهج">
+      <li [class.done]="!dirty()">
+        <span>1</span><div><strong>حفظ المسودة</strong><small>{{ dirty() ? 'توجد تغييرات تحتاج حفظًا' : 'المسودة محفوظة' }}</small></div>
+      </li>
+      <li [class.done]="groupState()?.assignedCurriculumTemplateId === item.id">
+        <span>2</span><div><strong>إسناد للمجموعة</strong><small>{{ groupState()?.assignedCurriculumTemplateId === item.id ? 'المنهج مسند للمجموعة المحددة' : 'اختر مجموعة ثم نفّذ الإسناد صراحة' }}</small></div>
+      </li>
+      <li [class.done]="!!groupState()?.versionId && !groupState()?.hasUnpublishedChanges">
+        <span>3</span><div><strong>النشر الصريح</strong><small>{{ groupState()?.versionId ? (groupState()?.hasUnpublishedChanges ? 'توجد تغييرات بعد آخر نشر' : 'النسخة المنشورة مطابقة للحالة الحالية') : 'لا توجد نسخة منشورة بعد' }}</small></div>
+      </li>
+    </ol>
+
     <div class="mt-5 grid gap-4 md:grid-cols-2">
       <label class="text-sm font-semibold" for="draft-name"
         >اسم المنهج<input
@@ -425,6 +437,11 @@
           احفظ المنهج ثم اختر مجموعة. الإسناد وحده لا يغير النسخة التي يراها الطالب.
         </p>
       </div>
+      @if (groups().length === 0 && !loadingGroupsList()) {
+      <p class="m-0 rounded-xl bg-[#FFF7EA] px-4 py-3 text-xs font-semibold text-[#825100]">
+        لا توجد مجموعات متاحة للإسناد. أنشئ مجموعة من صفحة المجموعات أولًا.
+      </p>
+      }
       <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
         <label for="curriculum-group" class="sr-only">المجموعة</label>
         <select

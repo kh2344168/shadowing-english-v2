@@ -63,6 +63,14 @@
     }
   </section>
 
+  @if (groups().length > 0) {
+  <section class="group-summary mb-6" aria-label="ملخص حالة المناهج للمجموعات">
+    <article><span>منشورة</span><strong>{{ publishedGroupsCount() }}</strong></article>
+    <article><span>مسودة مسندة فقط</span><strong>{{ assignedDraftOnlyCount() }}</strong></article>
+    <article><span>تعديلات غير منشورة</span><strong>{{ unpublishedChangesCount() }}</strong></article>
+  </section>
+  }
+
   <section aria-labelledby="groups-list-title">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
       <h2 id="groups-list-title" class="m-0 text-lg font-bold">المجموعات المسجلة</h2>
@@ -105,18 +113,9 @@
           >
         </div>
         <div class="mt-4 rounded-lg bg-[#EFF4FF] p-3 text-xs leading-5">
-          <span class="block font-semibold text-[#004E47]"
-            >{{ group.assignedCurriculumName || 'لا يوجد منهج مسند' }}</span
-          >
-          <span class="text-[#6E7977]"
-            >{{ group.currentVersionId ? 'للمجموعة نسخة منشورة' : 'لم يُنشر منهج للطلاب بعد'
-            }}</span
-          >
-          @if (group.assignedCurriculumTemplateId && (group.publishedCurriculumTemplateId !==
-          group.assignedCurriculumTemplateId || group.publishedDraftRevision !==
-          group.draftRevision)) {
-          <span class="mt-2 block font-semibold text-[#825100]">توجد مسودة غير منشورة</span>
-          }
+          <span class="block font-semibold text-[#004E47]">{{ curriculumStatus(group) }}</span>
+          <span class="mt-1 block text-[#3E4947]">{{ group.assignedCurriculumName || 'لم يتم اختيار منهج لهذه المجموعة' }}</span>
+          <span class="mt-2 block text-[#6E7977]">{{ studentVisibility(group) }}</span>
         </div>
         <div
           class="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-[#E5EEFF] pt-4"

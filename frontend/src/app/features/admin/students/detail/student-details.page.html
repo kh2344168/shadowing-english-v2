@@ -1,0 +1,238 @@
+<main class="student-details" dir="rtl" aria-labelledby="student-details-title">
+  <a routerLink="/admin/students" class="back-link">
+    <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+    العودة للطلاب
+  </a>
+
+  @if (loading()) {
+    <section class="state-card" role="status" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span>
+      <p>جارٍ تحميل ملف الطالب…</p>
+    </section>
+  } @else if (error()) {
+    <section class="state-card error" role="alert">
+      <span class="material-symbols-outlined" aria-hidden="true">error</span>
+      <div>
+        <h1 id="student-details-title">تعذر فتح ملف الطالب</h1>
+        <p>{{ error() }}</p>
+      </div>
+    </section>
+  } @else if (detail(); as view) {
+    <header class="profile-card">
+      <div class="identity">
+        <span class="avatar" aria-hidden="true">{{ view.student.email.slice(0, 1).toUpperCase() }}</span>
+        <div class="identity-copy">
+          <p class="eyebrow">ملف الطالب</p>
+          <h1 id="student-details-title">{{ view.student.email }}</h1>
+          <div class="chips">
+            <span class="chip">{{ view.activeGroup?.groupName || 'بدون مجموعة' }}</span>
+            @if (view.publication?.isAvailableNow) {
+              <span class="chip success">منهج منشور ومتاح</span>
+            } @else if (view.assignedCurriculum) {
+              <span class="chip warning">مسودة/إسناد غير كافٍ للإتاحة</span>
+            } @else {
+              <span class="chip muted">لا يوجد منهج متاح</span>
+            }
+          </div>
+        </div>
+      </div>
+      <div class="profile-actions">
+        @if (view.activeGroup) {
+          <a routerLink="/admin/groups" class="secondary-link">إدارة المجموعة</a>
+        }
+        <a routerLink="/admin/curriculums" class="secondary-link">إدارة المناهج</a>
+      </div>
+    </header>
+
+    <section class="availability-card" [class.available]="view.publication?.isAvailableNow">
+      <div class="availability-icon">
+        <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+      </div>
+      <div>
+        <p class="eyebrow">ما الذي يستطيع الطالب رؤيته الآن؟</p>
+        <h2>حالة الإتاحة الفعلية</h2>
+        <p>{{ publicationLabel(view) }}</p>
+        @if (hasUnpublishedChanges()) {
+          <p class="draft-warning">توجد مسودة أو مراجعة أحدث من النسخة المنشورة؛ لن تظهر للطالب قبل Publish صريح جديد.</p>
+        }
+      </div>
+    </section>
+
+    <section class="stats" aria-label="ملخص تقدم الطالب">
+      <article>
+        <span>تقدم الشادوينج</span>
+        <strong>{{ progressPercent() }}%</strong>
+      </article>
+      <article>
+        <span>الدروس المتاحة</span>
+        <strong>{{ view.progress.visibleLessons }}</strong>
+      </article>
+      <article>
+        <span>بدأها</span>
+        <strong>{{ view.progress.startedLessons }}</strong>
+      </article>
+      <article>
+        <span>أكملها</span>
+        <strong>{{ view.progress.completedLessons }}</strong>
+      </article>
+      <article>
+        <span>الجمل المكتملة</span>
+        <strong>{{ view.progress.completedSegments }}/{{ view.progress.totalSegments }}</strong>
+      </article>
+    </section>
+
+    <div class="details-grid">
+      <section class="panel curriculum-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">المجموعة والمنهج</p>
+            <h2>المسار الحالي</h2>
+          </div>
+        </div>
+
+        <dl class="facts">
+          <div>
+            <dt>المجموعة الحالية</dt>
+            <dd>{{ view.activeGroup?.groupName || 'بدون مجموعة' }}</dd>
+          </div>
+          <div>
+            <dt>عضو منذ</dt>
+            <dd>{{ formatTime(view.activeGroup?.startedAtUtc) }}</dd>
+          </div>
+          <div>
+            <dt>المنهج المسند</dt>
+            <dd>{{ view.assignedCurriculum?.name || 'غير مسند' }}</dd>
+          </div>
+          <div>
+            <dt>النسخة المنشورة</dt>
+            <dd>
+              @if (view.publication) {
+                {{ view.publication.title }} · v{{ view.publication.versionNumber }}
+              } @else {
+                لا يوجد نشر حالي
+              }
+            </dd>
+          </div>
+          <div>
+            <dt>تاريخ النشر</dt>
+            <dd>{{ formatTime(view.publication?.publishedAtUtc) }}</dd>
+          </div>
+          <div>
+            <dt>موعد الإتاحة</dt>
+            <dd>{{ formatTime(view.publication?.availableAtUtc) }}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="panel history-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Group History</p>
+            <h2>تاريخ المجموعات</h2>
+          </div>
+        </div>
+
+        @if (loadingHistory() && !history().length) {
+          <p class="sub-state" role="status">جارٍ تحميل تاريخ المجموعات…</p>
+        } @else if (historyError()) {
+          <p class="sub-state error-text" role="alert">{{ historyError() }}</p>
+        } @else if (!history().length) {
+          <p class="sub-state">لم يُسند الطالب إلى مجموعة من قبل.</p>
+        } @else {
+          <ol class="history-list">
+            @for (item of history(); track item.membershipId) {
+              <li>
+                <span class="history-dot" [class.active]="!item.endedAtUtc" aria-hidden="true"></span>
+                <div>
+                  <strong>{{ item.groupName }}</strong>
+                  <span>{{ formatTime(item.startedAtUtc) }} → {{ item.endedAtUtc ? formatTime(item.endedAtUtc) : 'حتى الآن' }}</span>
+                </div>
+              </li>
+            }
+          </ol>
+          @if (moreHistory()) {
+            <button type="button" class="load-more" (click)="loadMoreHistory()" [disabled]="loadingMoreHistory()">
+              {{ loadingMoreHistory() ? 'جارٍ التحميل…' : 'تحميل تاريخ أقدم' }}
+            </button>
+          }
+        }
+      </section>
+    </div>
+
+    <section class="panel lessons-panel">
+      <div class="panel-head lesson-heading">
+        <div>
+          <p class="eyebrow">Published learning progress</p>
+          <h2>الدروس المنشورة المتاحة وتقدم الشادوينج</h2>
+        </div>
+        @if (view.publication?.isAvailableNow) {
+          <span class="published-badge">{{ view.progress.visibleLessons }} درس متاح</span>
+        }
+      </div>
+
+      @if (!view.activeGroup) {
+        <div class="empty-section">
+          <span class="material-symbols-outlined" aria-hidden="true">group_off</span>
+          <h3>الطالب غير مسند إلى مجموعة</h3>
+          <p>لن يظهر له منهج حتى يتم إسناده إلى مجموعة لها نسخة منشورة ومتاحة.</p>
+        </div>
+      } @else if (!view.publication) {
+        <div class="empty-section">
+          <span class="material-symbols-outlined" aria-hidden="true">unpublished</span>
+          <h3>لا يوجد منهج منشور</h3>
+          <p>المسودة أو الإسناد وحدهما لا يظهِران الدروس للطالب.</p>
+        </div>
+      } @else if (!view.publication.isAvailableNow) {
+        <div class="empty-section">
+          <span class="material-symbols-outlined" aria-hidden="true">schedule</span>
+          <h3>النسخة المنشورة غير متاحة بعد</h3>
+          <p>ستظل قائمة الطالب فارغة حتى يحين موعد الإتاحة الفعلي.</p>
+        </div>
+      } @else if (!view.lessons.length) {
+        <div class="empty-section">
+          <span class="material-symbols-outlined" aria-hidden="true">menu_book</span>
+          <h3>لا توجد دروس متاحة الآن</h3>
+          <p>لا تعرض الصفحة أي Slot غير متاح حسب قواعد Student API.</p>
+        </div>
+      } @else {
+        <div class="lesson-list">
+          @for (lesson of view.lessons; track lesson.slotId) {
+            <article class="lesson-card" [class.complete]="lesson.isComplete">
+              <div class="lesson-order">
+                <span>الأسبوع {{ lesson.weekNumber }}</span>
+                <span>اليوم {{ lesson.dayNumber }}</span>
+                <span>#{{ lesson.sortOrder }}</span>
+              </div>
+              <div class="lesson-copy">
+                <div class="lesson-title-row">
+                  <h3>{{ lesson.title }}</h3>
+                  <span class="status" [class.complete]="lesson.isComplete" [class.started]="lesson.completedSegments > 0 && !lesson.isComplete">
+                    {{ lessonStatus(lesson) }}
+                  </span>
+                </div>
+                <div class="progress-track" role="progressbar" [attr.aria-valuenow]="lessonPercent(lesson)" aria-valuemin="0" aria-valuemax="100">
+                  <span [style.width.%]="lessonPercent(lesson)"></span>
+                </div>
+                <div class="lesson-meta">
+                  <span>{{ lesson.completedSegments }}/{{ lesson.totalSegments }} جملة</span>
+                  <span>{{ lessonPercent(lesson) }}%</span>
+                  <span>آخر تحديث: {{ formatTime(lesson.updatedAtUtc) }}</span>
+                </div>
+              </div>
+            </article>
+          }
+        </div>
+
+        @if (view.hasMoreLessons) {
+          <button type="button" class="load-more lessons-more" (click)="loadMoreLessons()" [disabled]="loadingMoreLessons()">
+            {{ loadingMoreLessons() ? 'جارٍ تحميل الدروس…' : 'تحميل المزيد من الدروس' }}
+          </button>
+        }
+      }
+    </section>
+
+    <p class="source-note">
+      هذه الصفحة تقرأ حالة Backend الحالية فقط. الإتاحة النهائية للطالب يحددها published version + availability rules، وليس وجود Draft أو Assignment في الإدارة.
+    </p>
+  }
+</main>

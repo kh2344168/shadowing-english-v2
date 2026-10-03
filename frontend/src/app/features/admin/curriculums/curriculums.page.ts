@@ -63,6 +63,8 @@ export class AdminCurriculumsPage implements OnInit {
   readonly loadingDraft = signal(false);
   readonly loadingGroup = signal(false);
   readonly loadingLessons = signal(false);
+  readonly loadingCurriculums = signal(false);
+  readonly loadingGroupsList = signal(false);
   readonly curriculumsLoaded = signal(false);
   readonly lessonsLoaded = signal(false);
   readonly busy = signal('');
@@ -187,39 +189,54 @@ export class AdminCurriculumsPage implements OnInit {
   }
 
   async loadCurriculums(page = 1): Promise<boolean> {
-    return this.read('Load', async () => {
-      const response = await firstValueFrom(this.api.curriculums(page));
-      this.curriculums.update((rows) =>
-        page === 1 ? response.items : this.merge(rows, response.items, (x) => x.id),
-      );
-      this.moreCurriculums.set(response.hasMore);
-      this.curriculumPage = page;
-      this.curriculumsLoaded.set(true);
-    });
+    if (this.loadingCurriculums()) return false;
+    this.loadingCurriculums.set(true);
+    try {
+      return await this.read('LoadCurriculums', async () => {
+        const response = await firstValueFrom(this.api.curriculums(page));
+        this.curriculums.update((rows) =>
+          page === 1 ? response.items : this.merge(rows, response.items, (x) => x.id),
+        );
+        this.moreCurriculums.set(response.hasMore);
+        this.curriculumPage = page;
+        this.curriculumsLoaded.set(true);
+      });
+    } finally {
+      this.loadingCurriculums.set(false);
+    }
   }
   async loadLessons(page = 1): Promise<boolean> {
+    if (this.loadingLessons()) return false;
     this.loadingLessons.set(true);
-    const result = await this.read('Load', async () => {
-      const response = await firstValueFrom(this.api.lessons(page));
-      this.lessons.update((rows) =>
-        page === 1 ? response.items : this.merge(rows, response.items, (x) => x.versionId),
-      );
-      this.moreLessons.set(response.hasMore);
-      this.lessonPage = page;
-      this.lessonsLoaded.set(true);
-    });
-    this.loadingLessons.set(false);
-    return result;
+    try {
+      return await this.read('LoadLessons', async () => {
+        const response = await firstValueFrom(this.api.lessons(page));
+        this.lessons.update((rows) =>
+          page === 1 ? response.items : this.merge(rows, response.items, (x) => x.versionId),
+        );
+        this.moreLessons.set(response.hasMore);
+        this.lessonPage = page;
+        this.lessonsLoaded.set(true);
+      });
+    } finally {
+      this.loadingLessons.set(false);
+    }
   }
   async loadGroups(page = 1): Promise<boolean> {
-    return this.read('Load', async () => {
-      const response = await firstValueFrom(this.api.groups(page));
-      this.groups.update((rows) =>
-        page === 1 ? response.items : this.merge(rows, response.items, (x) => x.id),
-      );
-      this.moreGroups.set(response.hasMore);
-      this.groupPage = page;
-    });
+    if (this.loadingGroupsList()) return false;
+    this.loadingGroupsList.set(true);
+    try {
+      return await this.read('LoadGroups', async () => {
+        const response = await firstValueFrom(this.api.groups(page));
+        this.groups.update((rows) =>
+          page === 1 ? response.items : this.merge(rows, response.items, (x) => x.id),
+        );
+        this.moreGroups.set(response.hasMore);
+        this.groupPage = page;
+      });
+    } finally {
+      this.loadingGroupsList.set(false);
+    }
   }
 
   async selectCurriculum(id: string): Promise<void> {

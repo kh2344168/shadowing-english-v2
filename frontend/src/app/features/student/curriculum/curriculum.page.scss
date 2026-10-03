@@ -1,1 +1,439 @@
 @use '../learning';
+
+:host {
+  display: block;
+}
+
+.curriculum-page {
+  --student-primary: #00685f;
+  --student-primary-dark: #005049;
+  --student-muted: #596562;
+  --student-line: #dce5e3;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.page-nav {
+  margin-bottom: 14px;
+}
+
+.page-nav a {
+  color: var(--student-primary);
+  font-size: 12px;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.curriculum-loading {
+  display: grid;
+  gap: 18px;
+}
+
+.skeleton {
+  border-radius: 22px;
+  background: linear-gradient(90deg, #eef3f2 25%, #f8faf9 50%, #eef3f2 75%);
+  background-size: 200% 100%;
+  animation: curriculum-shimmer 1.4s infinite linear;
+}
+
+.skeleton--summary {
+  height: 160px;
+}
+
+.skeleton--week {
+  height: 210px;
+}
+
+.curriculum-summary {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 24px;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  border: 1px solid var(--student-line);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 8px 26px rgba(0, 80, 72, 0.06);
+}
+
+.curriculum-summary::after {
+  position: absolute;
+  top: -70px;
+  left: -55px;
+  width: 170px;
+  height: 170px;
+  border-radius: 50%;
+  background: rgba(107, 216, 203, 0.28);
+  filter: blur(28px);
+  content: '';
+}
+
+.curriculum-summary > * {
+  position: relative;
+  z-index: 1;
+}
+
+.curriculum-summary__badge,
+.curriculum-summary__group {
+  display: inline-flex;
+  margin-left: 7px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.curriculum-summary__badge {
+  background: var(--student-primary);
+  color: #fff;
+}
+
+.curriculum-summary__group {
+  background: #edf4f3;
+  color: #465653;
+}
+
+.curriculum-summary h1 {
+  margin: 14px 0 5px;
+  font-size: clamp(23px, 5vw, 31px);
+  line-height: 1.35;
+}
+
+.curriculum-summary p {
+  margin: 0;
+  color: var(--student-muted);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.curriculum-summary__stats {
+  min-width: 112px;
+  padding: 14px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  border-radius: 18px;
+  background: #f4f8f7;
+  text-align: center;
+}
+
+.curriculum-summary__stats strong {
+  color: var(--student-primary);
+  font-size: 28px;
+}
+
+.curriculum-summary__stats span,
+.curriculum-summary__stats small {
+  color: var(--student-muted);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.weeks {
+  display: grid;
+  gap: 22px;
+}
+
+.week-card {
+  overflow: hidden;
+  border: 1px solid var(--student-line);
+  border-radius: 23px;
+  background: #fff;
+  box-shadow: 0 7px 22px rgba(25, 28, 30, 0.045);
+}
+
+.week-card__header {
+  min-height: 74px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  border-bottom: 1px solid #e8eeec;
+  background: linear-gradient(135deg, #f6fbfa, #edf8f5);
+}
+
+.week-card__header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.week-card__header span,
+.week-card__header small {
+  color: var(--student-muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.week-card__header h2 {
+  margin: 0;
+  color: var(--student-primary);
+  font-size: 28px;
+}
+
+.week-card__days {
+  padding: 18px;
+  display: grid;
+  gap: 20px;
+}
+
+.day-block {
+  display: grid;
+  gap: 10px;
+}
+
+.day-block + .day-block {
+  padding-top: 18px;
+  border-top: 1px dashed #d8e2e0;
+}
+
+.day-block__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.day-block__marker {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--student-primary);
+  box-shadow: 0 0 0 4px rgba(0, 104, 95, 0.08);
+}
+
+.day-block__header h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.day-block__header > span:last-child {
+  margin-right: auto;
+  color: var(--student-muted);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.day-lessons {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lesson-card {
+  min-height: 76px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  border: 1px solid #e0e8e6;
+  border-radius: 16px;
+  background: #fff;
+  color: #191c1e;
+  text-decoration: none;
+  transition: 150ms ease;
+}
+
+.lesson-card:hover {
+  border-color: rgba(0, 104, 95, 0.45);
+  box-shadow: 0 7px 18px rgba(0, 80, 72, 0.07);
+  transform: translateY(-1px);
+}
+
+.lesson-card__number {
+  width: 43px;
+  height: 43px;
+  flex: 0 0 43px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--student-primary);
+  color: #fff;
+  font-weight: 900;
+  box-shadow: 0 3px 0 var(--student-primary-dark);
+}
+
+.lesson-card.is-complete .lesson-card__number {
+  background: #f2b238;
+  color: #513300;
+  box-shadow: 0 3px 0 #ad7107;
+}
+
+.lesson-card__body {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 5px;
+}
+
+.lesson-card__body strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lesson-card__body small {
+  color: var(--student-muted);
+  font-size: 10px;
+}
+
+.lesson-card__arrow {
+  color: var(--student-primary);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.inline-error,
+.load-more {
+  margin-top: 18px;
+}
+
+.inline-error {
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #efc5c1;
+  border-radius: 15px;
+  background: #fff7f6;
+}
+
+.inline-error div {
+  display: grid;
+  gap: 3px;
+}
+
+.inline-error strong {
+  color: #812f29;
+  font-size: 11px;
+}
+
+.inline-error span {
+  color: #755c59;
+  font-size: 9px;
+}
+
+.inline-error button {
+  border: 0;
+  background: transparent;
+  color: var(--student-primary);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 850;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.load-more {
+  display: flex;
+  justify-content: center;
+}
+
+.state-card {
+  min-height: 300px;
+  padding: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  border: 1px dashed #bcd6d1;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.8);
+  text-align: center;
+}
+
+.state-card__icon {
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: #edf8f5;
+  color: var(--student-primary);
+  font-size: 25px;
+  font-weight: 900;
+}
+
+.state-card h1,
+.state-card h2 {
+  margin: 0 0 7px;
+  font-size: 20px;
+}
+
+.state-card p {
+  max-width: 430px;
+  margin: 0;
+  color: var(--student-muted);
+  line-height: 1.8;
+}
+
+.state-card--error .state-card__icon {
+  background: #fff0ef;
+  color: #a23b32;
+}
+
+@keyframes curriculum-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .curriculum-summary {
+    padding: 19px;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .curriculum-summary__stats {
+    min-width: 0;
+    grid-template-columns: auto 1fr auto;
+    align-items: baseline;
+    justify-items: start;
+    text-align: right;
+  }
+
+  .curriculum-summary__stats strong {
+    font-size: 23px;
+  }
+
+  .week-card__days {
+    padding: 14px;
+  }
+
+  .lesson-card {
+    min-height: 70px;
+    padding: 10px;
+  }
+
+  .lesson-card__number {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+    border-radius: 12px;
+  }
+
+  .inline-error,
+  .state-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

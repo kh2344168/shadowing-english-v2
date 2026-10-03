@@ -13,6 +13,7 @@ export interface LessonCard {
 }
 export interface Curriculum {
   groupName: string | null;
+  publishedVersionId: string | null;
   curriculumTitle: string | null;
   items: LessonCard[];
   hasMore: boolean;
@@ -44,9 +45,13 @@ export class StudentLearningApi {
   private readonly http = inject(HttpClient);
   private readonly base = '/api/student/learning';
 
-  curriculum(page = 1, pageSize = 20): Observable<Curriculum> {
+  curriculum(page = 1, pageSize = 20, expectedPublishedVersionId?: string): Observable<Curriculum> {
+    let params = new HttpParams().set('page', page).set('pageSize', pageSize);
+    if (expectedPublishedVersionId) {
+      params = params.set('expectedPublishedVersionId', expectedPublishedVersionId);
+    }
     return this.http.get<Curriculum>(`${this.base}/curriculum`, {
-      params: new HttpParams().set('page', page).set('pageSize', pageSize),
+      params,
     });
   }
   overview(slotId: string): Observable<LessonOverview> {

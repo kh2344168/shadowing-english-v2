@@ -219,4 +219,47 @@ describe('AdminGroupsPage', () => {
     await retry;
     expect(page.success()).toContain('تم إنشاء');
   });
+
+  it('summarizes publication state without equating assignment with student visibility', async () => {
+    http
+      .expectOne((request) => request.url === '/api/admin/groups' && request.method === 'GET')
+      .flush({
+        items: [
+          { ...group, assignedCurriculumTemplateId: 'draft-only', assignedCurriculumName: 'منهج مسودة' },
+          {
+            id: '55555555-5555-4555-8555-555555555555',
+            name: 'مجموعة منشورة',
+            assignedCurriculumTemplateId: 'published',
+            publishedCurriculumTemplateId: 'published',
+            draftRevision: 'rev-1',
+            publishedDraftRevision: 'rev-1',
+            currentVersionId: '66666666-6666-4666-8666-666666666666',
+          },
+        ],
+        hasMore: false,
+      });
+    http
+      .expectOne((request) => request.url === '/api/admin/groups/students' && request.method === 'GET')
+      .flush({ items: [], hasMore: false });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.assignedDraftOnlyCount()).toBe(1);
+    expect(fixture.componentInstance.publishedGroupsCount()).toBe(1);
+    expect(fixture.nativeElement.textContent).toContain('مسند ولم يُنشر بعد');
+    expect(fixture.nativeElement.textContent).toContain('الإتاحة النهائية للدروس يحددها Student API');
+  });
+
+  it('de-duplicates overlapping group pages', async () => {
+    await loadInitial();
+    const loading = fixture.componentInstance.loadGroups(2);
+    http
+      .expectOne((request) => request.url === '/api/admin/groups' && request.params.get('page') === '2')
+      .flush({ items: [group, { id: '77777777-7777-4777-8777-777777777777', name: 'مجموعة ب' }], hasMore: false });
+    await loading;
+    expect(fixture.componentInstance.groups().map((item) => item.id)).toEqual([
+      group.id,
+      '77777777-7777-4777-8777-777777777777',
+    ]);
+  });
+
 });

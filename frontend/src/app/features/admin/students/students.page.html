@@ -1,1 +1,116 @@
-<app-feature-placeholder title="الطلاب" />
+<main class="students-page" dir="rtl" aria-labelledby="students-title">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">إدارة الطلاب والمجموعات</p>
+      <h1 id="students-title">الطلاب</h1>
+      <p class="intro">أنشئ أو ابحث عن طالب، ثم أسنده إلى مجموعة واحدة. إسناد المجموعة أو المنهج لا يعني أن المحتوى منشور.</p>
+    </div>
+    <button type="button" class="primary" (click)="createOpen.set(true)">إضافة طالب</button>
+  </header>
+
+  @if (error()) { <div class="alert error" role="alert">{{ error() }}</div> }
+  @if (success()) { <div class="alert success" role="status">{{ success() }}</div> }
+
+  <section class="search-card" aria-label="البحث عن الطلاب">
+    <form (submit)="$event.preventDefault(); search()">
+      <label for="student-search">ابحث بالبريد الإلكتروني</label>
+      <div class="search-row">
+        <input id="student-search" type="search" [(ngModel)]="searchQuery" name="search" maxlength="100" autocomplete="off" />
+        <button type="submit" [disabled]="loadingStudents()">بحث</button>
+      </div>
+    </form>
+  </section>
+
+  @if (loadingStudents()) {
+    <section class="state" role="status" aria-live="polite"><span class="spinner"></span><p>جارٍ تحميل الطلاب…</p></section>
+  } @else if (!students().length) {
+    <section class="state empty"><h2>لا يوجد طلاب مطابقون</h2><p>غيّر البحث أو أنشئ حساب طالب جديد.</p></section>
+  } @else {
+    <section class="students-list" aria-label="قائمة الطلاب">
+      @for (student of students(); track student.id) {
+        <article class="student-card">
+          <div class="student-main">
+            <div>
+              <span class="label">البريد</span>
+              <h2>{{ student.email }}</h2>
+              <p class="current-group">المجموعة الحالية: <strong>{{ student.activeGroup?.groupName || 'بدون مجموعة' }}</strong></p>
+            </div>
+            <span class="publish-state" [class.published]="student.activeGroup && curriculumState(student).startsWith('يوجد إصدار منشور')">{{ curriculumState(student) }}</span>
+          </div>
+
+          <div class="assignment">
+            <label [for]="'group-' + student.id">المجموعة الجديدة</label>
+            <select [id]="'group-' + student.id" [value]="targetGroupIds[student.id]" (change)="setTarget(student.id, $any($event.target).value)" [disabled]="movingStudentId() === student.id || loadingGroups()">
+              <option value="">بدون مجموعة</option>
+              @for (group of groups(); track group.id) { <option [value]="group.id">{{ group.name }}</option> }
+            </select>
+            @if (targetChanged(student) && confirmMoveId() !== student.id) {
+              <button type="button" class="secondary" (click)="confirmMoveId.set(student.id)">مراجعة التغيير</button>
+            }
+            @if (confirmMoveId() === student.id) {
+              <div class="confirm" role="alert">
+                <p>تأكيد: نقل/إسناد الطالب إلى <strong>{{ selectedGroupName(student.id) }}</strong>؟ سيُغلق سجل العضوية السابقة ويُحفظ في التاريخ.</p>
+                <div>
+                  <button type="button" class="primary" (click)="applyMove(student)" [disabled]="movingStudentId() === student.id">{{ movingStudentId() === student.id ? 'جارٍ الحفظ…' : 'تأكيد' }}</button>
+                  <button type="button" class="text" (click)="confirmMoveId.set(null)" [disabled]="movingStudentId() === student.id">إلغاء</button>
+                </div>
+              </div>
+            }
+          </div>
+
+          <div class="card-links">
+            <a class="details-link" [routerLink]="['/admin/students', student.id]">فتح ملف الطالب</a>
+            <button type="button" class="history-button" (click)="loadHistory(student.id, 1)">عرض تاريخ المجموعات</button>
+          </div>
+        </article>
+      }
+    </section>
+
+    @if (moreGroups()) {
+      <div class="groups-pager">
+        <button type="button" class="secondary" (click)="loadGroups(groupsPage() + 1)" [disabled]="loadingGroups()">
+          {{ loadingGroups() ? 'جارٍ تحميل المجموعات…' : 'تحميل المزيد من المجموعات' }}
+        </button>
+      </div>
+    }
+
+    <nav class="pager" aria-label="صفحات الطلاب">
+      <button type="button" (click)="loadStudents(page() - 1)" [disabled]="page() <= 1 || loadingStudents()">السابق</button>
+      <span>صفحة {{ page() }}</span>
+      <button type="button" (click)="loadStudents(page() + 1)" [disabled]="!more() || loadingStudents()">التالي</button>
+    </nav>
+  }
+
+  @if (historyStudentId()) {
+    <section class="history-panel" aria-labelledby="history-title">
+      <div class="history-head"><h2 id="history-title">تاريخ المجموعات</h2><button type="button" class="text" (click)="closeHistory()">إغلاق</button></div>
+      @if (loadingHistory() && !history().length) { <p role="status">جارٍ تحميل التاريخ…</p> }
+      @else if (!history().length) { <p>لا يوجد تاريخ عضوية سابق لهذا الطالب.</p> }
+      @else {
+        <ol>
+          @for (item of history(); track item.membershipId) {
+            <li><strong>{{ item.groupName }}</strong><span>{{ formatTime(item.startedAtUtc) }} → {{ formatTime(item.endedAtUtc) }}</span></li>
+          }
+        </ol>
+        @if (moreHistory()) { <button type="button" class="secondary" (click)="loadHistory(historyStudentId()!, historyPage() + 1)" [disabled]="loadingHistory()">تحميل المزيد</button> }
+      }
+    </section>
+  }
+
+  @if (createOpen()) {
+    <div class="modal-backdrop">
+      <form class="modal" role="dialog" aria-modal="true" aria-labelledby="create-title" (submit)="$event.preventDefault(); createStudent()">
+        <h2 id="create-title">إنشاء حساب طالب</h2>
+        <p>لن تُعرض كلمة المرور بعد الإنشاء ولن تُسجل في diagnostics.</p>
+        <label for="student-email">البريد الإلكتروني</label>
+        <input id="student-email" type="email" [(ngModel)]="email" name="email" maxlength="256" autocomplete="off" required />
+        <label for="student-password">كلمة المرور المؤقتة</label>
+        <input id="student-password" type="password" [(ngModel)]="password" name="password" maxlength="256" minlength="10" autocomplete="new-password" required />
+        <div class="modal-actions">
+          <button type="submit" class="primary" [disabled]="creating() || password.length < 10">{{ creating() ? 'جارٍ الإنشاء…' : 'إنشاء الطالب' }}</button>
+          <button type="button" class="text" (click)="password=''; createOpen.set(false)" [disabled]="creating()">إلغاء</button>
+        </div>
+      </form>
+    </div>
+  }
+</main>

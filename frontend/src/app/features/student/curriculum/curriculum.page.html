@@ -1,46 +1,140 @@
-<section class="learning-page" dir="rtl" aria-labelledby="curriculum-title">
-  <a routerLink="/student/dashboard" class="learning-back">← المسار التعليمي</a>
-  <h1 id="curriculum-title" class="page-title">المنهج الدراسي</h1>
+<section class="learning-page curriculum-page" dir="rtl" aria-labelledby="curriculum-title">
+  <nav class="page-nav" aria-label="العودة للمسار">
+    <a routerLink="/student/dashboard">← المسار التعليمي</a>
+  </nav>
+
   @if (loading()) {
-  <p role="status" class="learning-status">جارٍ تحميل المنهج...</p>
-  } @else { @if (course(); as data) { @if (data.curriculumTitle) {
-  <header class="learning-card">
-    <span class="learning-eyebrow">{{ data.groupName }}</span>
-    <h2>{{ data.curriculumTitle }}</h2>
-  </header>
-  <ol class="curriculum-list" aria-label="الدروس المتاحة">
-    @for (lesson of lessons(); track lesson.slotId) {
-    <li>
-      <a
-        class="learning-card lesson-row"
-        [routerLink]="['/student/lessons', lesson.slotId, 'overview']"
-      >
-        <span class="lesson-row__number">{{ lesson.isComplete ? '✓' : lesson.sortOrder }}</span>
-        <span
-          ><small>الأسبوع {{ lesson.weekNumber }} · اليوم {{ lesson.dayNumber }}</small
-          ><strong>{{ lesson.title }}</strong>
-          <small
-            >{{ lesson.isComplete ? 'مكتمل' : lesson.completedSegments ? 'قيد التدريب' : 'جاهز
-            للتدريب' }}</small
-          ></span
-        ><span aria-hidden="true">←</span>
-      </a>
-    </li>
+    <div class="curriculum-loading" role="status" aria-live="polite">
+      <span class="sr-only">جارٍ تحميل المنهج...</span>
+      <div class="skeleton skeleton--summary"></div>
+      <div class="skeleton skeleton--week"></div>
+      <div class="skeleton skeleton--week"></div>
+    </div>
+  } @else if (error() && !course()) {
+    <section class="state-card state-card--error" role="alert">
+      <span class="state-card__icon" aria-hidden="true">!</span>
+      <div>
+        <h1 id="curriculum-title">تعذر تحميل المنهج</h1>
+        @if (versionChanged()) {
+          <p>تغيّرت النسخة المنشورة أثناء التحميل. أُزيلت النتائج السابقة؛ أعد تحميل المنهج لعرض نسخة واحدة متسقة.</p>
+        } @else {
+          <p>لم نتمكن من قراءة المنهج المنشور. أعد المحاولة بدون أن يتغير تقدمك.</p>
+        }
+        <button type="button" class="learning-button" (click)="load()">إعادة المحاولة</button>
+      </div>
+    </section>
+  } @else if (course(); as data) {
+    @if (data.curriculumTitle) {
+      <header class="curriculum-summary">
+        <div>
+          <span class="curriculum-summary__badge">المنهج المنشور</span>
+          <span class="curriculum-summary__group">{{ data.groupName }}</span>
+          <h1 id="curriculum-title">{{ data.curriculumTitle }}</h1>
+          <p>الدروس مرتبة حسب الأسبوع ثم اليوم ثم ترتيبها داخل اليوم.</p>
+        </div>
+        <div class="curriculum-summary__stats" aria-label="ملخص الدروس المحملة">
+          <strong>{{ sortedLessons().length }}</strong>
+          <span>درس محمّل</span>
+          <small>{{ completedCount() }} مكتمل</small>
+        </div>
+      </header>
+
+      @if (weeks().length) {
+        <div class="weeks" aria-label="أسابيع المنهج المنشور">
+          @for (week of weeks(); track week.weekNumber) {
+            <section class="week-card" [attr.aria-labelledby]="'week-' + week.weekNumber">
+              <header class="week-card__header">
+                <div>
+                  <span>الأسبوع</span>
+                  <h2 [id]="'week-' + week.weekNumber">{{ week.weekNumber }}</h2>
+                </div>
+                <small>{{ week.lessonCount }} درس</small>
+              </header>
+
+              <div class="week-card__days">
+                @for (day of week.days; track day.dayNumber) {
+                  <section class="day-block" [attr.aria-labelledby]="'week-' + week.weekNumber + '-day-' + day.dayNumber">
+                    <header class="day-block__header">
+                      <span class="day-block__marker" aria-hidden="true"></span>
+                      <h3 [id]="'week-' + week.weekNumber + '-day-' + day.dayNumber">اليوم {{ day.dayNumber }}</h3>
+                      <span>{{ day.lessons.length }} {{ day.lessons.length === 1 ? 'درس' : 'دروس' }}</span>
+                    </header>
+
+                    <ol class="day-lessons">
+                      @for (lesson of day.lessons; track lesson.slotId) {
+                        <li>
+                          <a
+                            class="lesson-card"
+                            [class.is-complete]="lesson.isComplete"
+                            [routerLink]="['/student/lessons', lesson.slotId, 'overview']"
+                            [attr.aria-label]="'فتح ' + lesson.title"
+                          >
+                            <span class="lesson-card__number">{{ lesson.isComplete ? '✓' : lesson.sortOrder }}</span>
+                            <span class="lesson-card__body">
+                              <strong>{{ lesson.title }}</strong>
+                              <small>
+                                {{
+                                  lesson.isComplete
+                                    ? 'مكتمل'
+                                    : lesson.completedSegments
+                                      ? 'قيد التدريب · تقدم محفوظ'
+                                      : 'جاهز للتدريب'
+                                }}
+                              </small>
+                            </span>
+                            <span class="lesson-card__arrow" aria-hidden="true">←</span>
+                          </a>
+                        </li>
+                      }
+                    </ol>
+                  </section>
+                }
+              </div>
+            </section>
+          }
+        </div>
+      } @else {
+        <section class="state-card" role="status">
+          <span class="state-card__icon" aria-hidden="true">◷</span>
+          <div>
+            <h2>لا توجد دروس متاحة الآن</h2>
+            <p>المنهج منشور لمجموعتك، لكن لا توجد دروس متاحة في الوقت الحالي.</p>
+          </div>
+        </section>
+      }
+
+      @if (error()) {
+        <section class="inline-error" role="alert">
+          <div>
+            <strong>تعذر تحميل الجزء التالي</strong>
+            <span>الدروس التي ظهرت بالفعل ما زالت متاحة.</span>
+          </div>
+          <button type="button" (click)="nextPage()">إعادة المحاولة</button>
+        </section>
+      } @else if (data.hasMore) {
+        <div class="load-more">
+          <button type="button" class="learning-button" [disabled]="loadingMore()" (click)="nextPage()">
+            {{ loadingMore() ? 'جارٍ تحميل المزيد...' : 'عرض المزيد من الدروس' }}
+          </button>
+        </div>
+      }
+    } @else {
+      <section class="state-card state-card--empty" role="status">
+        <span class="state-card__icon" aria-hidden="true">📚</span>
+        <div>
+          <h1 id="curriculum-title">
+            {{ data.groupName ? 'المنهج لم يُنشر بعد' : 'لا توجد مجموعة دراسية' }}
+          </h1>
+          <p>
+            {{
+              data.groupName
+                ? 'أنت ضمن مجموعة دراسية، لكن لا يوجد منهج منشور ومتاح لهذه المجموعة الآن.'
+                : 'بعد إضافتك إلى مجموعة ونشر منهج لها، ستظهر الدروس هنا تلقائيًا.'
+            }}
+          </p>
+          <a class="learning-button subtle" routerLink="/student/dashboard">العودة للمسار</a>
+        </div>
+      </section>
     }
-  </ol>
-  @if (!lessons().length) {
-  <p role="status" class="learning-status">لا توجد دروس متاحة الآن.</p>
-  } @if (data.hasMore) {
-  <button type="button" class="learning-button" [disabled]="loadingMore()" (click)="nextPage()">
-    {{ loadingMore() ? 'جارٍ التحميل...' : 'عرض المزيد' }}
-  </button>
-  } } @else {
-  <p role="status" class="learning-status">
-    {{ data.groupName ? 'لم يُنشر منهج لمجموعتك بعد.' : 'لم تُضف إلى مجموعة دراسية بعد.' }}
-  </p>
-  } } @if (error()) {
-  <p role="alert" class="learning-status">
-    تعذر تحميل الدروس. <button type="button" (click)="nextPage()">إعادة المحاولة</button>
-  </p>
-  } }
+  }
 </section>

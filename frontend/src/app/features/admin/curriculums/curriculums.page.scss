@@ -127,3 +127,58 @@ button:disabled {
     padding: 12px;
   }
 }
+
+.workflow-progress {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.workflow-progress li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-radius: 12px;
+  background: #eff4ff;
+  padding: 14px;
+}
+
+.workflow-progress li > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 999px;
+  background: #dae2fd;
+  color: #565e74;
+  font-weight: 700;
+}
+
+.workflow-progress li.done {
+  background: #effbf8;
+}
+
+.workflow-progress li.done > span {
+  background: #00685f;
+  color: white;
+}
+
+.workflow-progress strong,
+.workflow-progress small {
+  display: block;
+}
+
+.workflow-progress small {
+  margin-top: 3px;
+  color: #6e7977;
+  line-height: 1.5;
+}
+
+@media (max-width: 767px) {
+  .workflow-progress {
+    grid-template-columns: 1fr;
+  }
+}

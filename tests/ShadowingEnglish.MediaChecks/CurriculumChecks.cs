@@ -36,6 +36,7 @@ internal static class CurriculumChecks
         Guid firstLesson = Guid.Empty, secondLesson = Guid.Empty;
         PublishCurriculum firstPublish = null!;
         Publication firstVersion = null!, secondVersion = null!;
+        Guid pinnedStudentVersion = Guid.Empty;
         var create = new CreateCurriculum(id, PrivateName, PrivateDescription);
 
         await check("Curriculum endpoints require Admin and real CSRF", async () =>
@@ -161,6 +162,15 @@ internal static class CurriculumChecks
             Assert(await db.PublishedCurriculumVersions.CountAsync() == 1 && await db.PublishedLessonSlots.CountAsync() == 2,
                 "multiple_or_partial_versions_created");
         });
+        await check("Student curriculum page one returns a stable publication identifier", async () =>
+        {
+            using var response = await student.GetAsync("/api/student/learning/curriculum?page=1&pageSize=1");
+            Assert(response.StatusCode == HttpStatusCode.OK, "curriculum_page_one_status_" + response.StatusCode);
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            pinnedStudentVersion = body.GetProperty("publishedVersionId").GetGuid();
+            Assert(pinnedStudentVersion == firstVersion.VersionId && body.GetProperty("hasMore").GetBoolean(),
+                "curriculum_page_one_version_missing_or_unstable");
+        });
         await check("Publish retries and changed request bodies preserve the committed snapshot", async () =>
         {
             var before = await app.FingerprintAsync();
@@ -215,6 +225,18 @@ internal static class CurriculumChecks
             var blocked = false;
             try { await db.SaveChangesAsync(); } catch (InvalidOperationException) { blocked = true; }
             Assert(blocked, "published_mutation_guard_missing");
+        });
+        await check("Student pagination rejects an old pinned version after republish", async () =>
+        {
+            using var stale = await student.GetAsync($"/api/student/learning/curriculum?page=2&pageSize=1&expectedPublishedVersionId={pinnedStudentVersion}");
+            Assert(await Error(stale, HttpStatusCode.Conflict) == "curriculum_version_changed",
+                "stale_curriculum_page_was_accepted");
+            using var current = await student.GetAsync($"/api/student/learning/curriculum?page=2&pageSize=1&expectedPublishedVersionId={secondVersion.VersionId}");
+            Assert(current.StatusCode == HttpStatusCode.OK, "current_pinned_curriculum_page_failed");
+            var body = await current.Content.ReadFromJsonAsync<JsonElement>();
+            Assert(body.GetProperty("publishedVersionId").GetGuid() == secondVersion.VersionId &&
+                body.GetProperty("items").GetArrayLength() == 0,
+                "current_pinned_page_did_not_use_one_version");
         });
         await check("Active student progress is preserved when republish is blocked", async () =>
         {

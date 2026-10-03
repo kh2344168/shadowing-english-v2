@@ -21,8 +21,9 @@ test('a database constraint permits at most one active membership and keeps clos
 
 test('group writes are admin-only, rate-limited and explicitly validate CSRF', () => {
   assert.match(endpoints, /MapGroup\("\/api\/admin\/groups"\)[\s\S]*?RequireAuthorization\(new AuthorizeAttribute \{ Roles = "Admin" \}\)/);
-  assert.equal((endpoints.match(/ValidCsrfAsync\(context, antiforgery\)/g) ?? []).length, 2);
+  assert.equal((endpoints.match(/ValidCsrfAsync\(context, antiforgery\)/g) ?? []).length, 3);
   assert.equal((endpoints.match(/RequireRateLimiting\("admin-group-write"\)/g) ?? []).length, 2);
+  assert.match(endpoints, /MapPost\("\/students"[\s\S]*?RequireRateLimiting\("admin-create"\)/);
   assert.match(program, /app\.MapAdminGroupsEndpoints\(\)/);
   assert.match(endpoints, /CreateRequestId == request\.RequestId\.Value/);
 });

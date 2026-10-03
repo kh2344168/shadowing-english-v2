@@ -1,40 +1,106 @@
-<section class="learning-page" dir="rtl" aria-labelledby="overview-title">
-  <a routerLink="/student/curriculum" class="learning-back">← المنهج الدراسي</a>
+<section class="learning-page overview-page" dir="rtl" aria-labelledby="overview-title">
+  <nav class="lesson-context" aria-label="العودة للمنهج">
+    <a routerLink="/student/curriculum">← المنهج الدراسي</a>
+  </nav>
+
   @if (loading()) {
-  <p role="status" class="learning-status">جارٍ تحميل الدرس...</p>
+    <div class="overview-loading" role="status" aria-live="polite">
+      <span class="sr-only">جارٍ تحميل الدرس...</span>
+      <div class="skeleton skeleton--hero"></div>
+      <div class="skeleton skeleton--practice"></div>
+    </div>
   } @else if (missing()) {
-  <h1 id="overview-title" class="page-title">الدرس غير متاح</h1>
-  <p role="alert" class="learning-status">
-    قد لا يكون هذا الدرس منشورًا لمجموعتك أو لم يحن موعده بعد.
-  </p>
+    <section class="state-card" role="alert">
+      <span class="state-card__icon" aria-hidden="true">🔎</span>
+      <div>
+        <h1 id="overview-title">الدرس غير متاح</h1>
+        <p>قد لا يكون هذا الدرس منشورًا لمجموعتك، أو لم يحن موعد إتاحته بعد.</p>
+        <a class="learning-button subtle" routerLink="/student/curriculum">العودة للمنهج</a>
+      </div>
+    </section>
   } @else if (error()) {
-  <h1 id="overview-title" class="page-title">نظرة عامة على الدرس</h1>
-  <p role="alert" class="learning-status">
-    تعذر تحميل الدرس. <button type="button" (click)="load()">إعادة المحاولة</button>
-  </p>
+    <section class="state-card state-card--error" role="alert">
+      <span class="state-card__icon" aria-hidden="true">!</span>
+      <div>
+        <h1 id="overview-title">تعذر تحميل الدرس</h1>
+        <p>حدث خطأ أثناء قراءة بيانات الدرس. أعد المحاولة بدون أن يتغير تقدمك.</p>
+        <button type="button" class="learning-button" (click)="load()">إعادة المحاولة</button>
+      </div>
+    </section>
   } @else if (lesson(); as data) {
-  <header class="learning-card lesson-intro">
-    <span class="learning-eyebrow"
-      >الأسبوع {{ data.weekNumber }} · اليوم {{ data.dayNumber }} · الدرس {{ data.sortOrder }}</span
-    >
-    <h1 id="overview-title">{{ data.title }}</h1>
-    <p>{{ data.description }}</p>
-  </header>
-  <div class="learning-card">
-    <h2>تدريب Shadowing</h2>
-    <p>استمع إلى كل جملة، كررها بصوتك ثم انتقل بنفسك إلى التالية.</p>
-    <p role="status">
-      {{ data.isComplete ? 'أنهيت التدريب؛ يمكنك مراجعته.' : 'أكملت ' + data.completedSegments + '
-      من ' + data.segmentCount + ' جملة.' }}
-    </p>
-    @if (data.segmentCount > 0) {
-    <a class="learning-button" [routerLink]="['/student/lessons', data.slotId, 'shadowing']"
-      >{{ data.isComplete ? 'أعد التدريب' : data.completedSegments ? 'أكمل التدريب' : 'ابدأ التدريب'
-      }} ←</a
-    >
-    } @else {
-    <p role="status">لا توجد جمل لهذا الدرس بعد.</p>
-    }
-  </div>
+    <main class="lesson-overview">
+      <header class="lesson-summary-card">
+        <span class="lesson-summary-card__glow" aria-hidden="true"></span>
+        <div class="lesson-summary-card__badges">
+          <span>الأسبوع {{ data.weekNumber }}</span>
+          <small>اليوم {{ data.dayNumber }}</small>
+          <small>الدرس {{ data.sortOrder }}</small>
+        </div>
+        <h1 id="overview-title">{{ data.title }}</h1>
+        @if (data.description) {
+          <p>{{ data.description }}</p>
+        }
+
+        <div class="lesson-progress" aria-label="تقدم تدريب Shadowing">
+          <div class="lesson-progress__heading">
+            <span>{{ data.isComplete ? 'التدريب مكتمل' : 'تقدم Shadowing' }}</span>
+            <strong>{{ progressPercent() }}%</strong>
+          </div>
+          <div
+            class="lesson-progress__track"
+            role="progressbar"
+            aria-label="نسبة إكمال الجمل"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            [attr.aria-valuenow]="progressPercent()"
+          >
+            <i [style.width.%]="progressPercent()"></i>
+          </div>
+          <small>
+            @if (data.segmentCount > 0) {
+              {{ data.completedSegments }} من {{ data.segmentCount }} جملة مكتملة
+            } @else {
+              لا توجد جمل متاحة لهذا الدرس بعد
+            }
+          </small>
+        </div>
+      </header>
+
+      <section class="practice-card" aria-labelledby="shadowing-card-title">
+        <div class="practice-card__icon" aria-hidden="true">🎙</div>
+        <div class="practice-card__body">
+          <span class="practice-card__eyebrow">المرحلة المتاحة</span>
+          <h2 id="shadowing-card-title">تدريب Shadowing</h2>
+          <p>استمع إلى كل جملة، كررها بصوتك، ثم انتقل يدويًا إلى الجملة التالية.</p>
+
+          @if (data.segmentCount > 0) {
+            <div class="practice-card__status">
+              @if (data.isComplete) {
+                <strong>أحسنت، أنهيت التدريب.</strong>
+                <span>يمكنك مراجعته من البداية في أي وقت.</span>
+              } @else if (data.completedSegments > 0) {
+                <strong>باقي {{ remainingSegments() }} جملة</strong>
+                <span>سيبدأ التدريب من تقدمك المحفوظ.</span>
+              } @else {
+                <strong>{{ data.segmentCount }} جملة</strong>
+                <span>ابدأ من أول جملة عندما تكون مستعدًا.</span>
+              }
+            </div>
+            <a class="practice-card__action" [routerLink]="['/student/lessons', data.slotId, 'shadowing']">
+              {{ actionLabel() }}
+              <span aria-hidden="true">←</span>
+            </a>
+          } @else {
+            <div class="practice-card__unavailable" role="status">
+              التدريب غير جاهز بعد لأن هذا الدرس لا يحتوي على جمل متاحة.
+            </div>
+          }
+        </div>
+      </section>
+
+      <footer class="lesson-note">
+        هذه الصفحة تعرض بيانات الدرس المنشور والمتاح لمجموعتك فقط، ولا تقوم بتحميل ملفات الصوت قبل بدء التدريب.
+      </footer>
+    </main>
   }
 </section>

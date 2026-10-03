@@ -1,7 +1,7 @@
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { Curriculum, StudentLearningApi } from '../learning.api';
+import { Curriculum, LessonCard, StudentLearningApi } from '../learning.api';
 
 @Component({
   selector: 'app-student-dashboard-page',
@@ -13,13 +13,24 @@ import { Curriculum, StudentLearningApi } from '../learning.api';
 })
 export class StudentDashboardPage implements OnInit {
   private readonly api = inject(StudentLearningApi);
+
   readonly loading = signal(true);
   readonly error = signal(false);
   readonly curriculum = signal<Curriculum | null>(null);
+  readonly visibleLessons = computed(() =>
+    [...(this.curriculum()?.items ?? [])].sort(StudentDashboardPage.compareLessons),
+  );
+  readonly currentLesson = computed(
+    () => this.visibleLessons().find((lesson) => !lesson.isComplete) ?? null,
+  );
+  readonly completedCount = computed(
+    () => this.visibleLessons().filter((lesson) => lesson.isComplete).length,
+  );
 
   ngOnInit(): void {
     void this.load();
   }
+
   async load(): Promise<void> {
     const started = Date.now();
     console.info('[Student.Dashboard.UI.Load.Start]', { page: 1, pageSize: 5 });
@@ -30,7 +41,9 @@ export class StudentDashboardPage implements OnInit {
       this.curriculum.set(curriculum);
       console.info('[Student.Dashboard.UI.Load.Success]', {
         groupAssigned: curriculum.groupName !== null,
+        curriculumPublished: curriculum.curriculumTitle !== null,
         count: curriculum.items.length,
+        hasMore: curriculum.hasMore,
         durationMs: Date.now() - started,
       });
     } catch (error) {
@@ -42,5 +55,14 @@ export class StudentDashboardPage implements OnInit {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  private static compareLessons(a: LessonCard, b: LessonCard): number {
+    return (
+      a.weekNumber - b.weekNumber ||
+      a.dayNumber - b.dayNumber ||
+      a.sortOrder - b.sortOrder ||
+      a.slotId.localeCompare(b.slotId)
+    );
   }
 }
