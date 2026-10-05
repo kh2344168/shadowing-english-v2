@@ -1,4 +1,27 @@
+@use '../ai-practice';
+
 :host {
   display: block;
   min-width: 0;
+}
+.word-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 48px;
+  margin: 12px 0;
+}
+.word-chip {
+  padding: 8px 12px;
+  border: 1px solid #8dc0aa;
+  border-radius: 8px;
+  background: #edf8f3;
+  color: #134c3f;
+  cursor: pointer;
+}
+.word-chip.selected {
+  background: #d6f2e4;
+}
+.word-chip:disabled {
+  opacity: 0.4;
 }

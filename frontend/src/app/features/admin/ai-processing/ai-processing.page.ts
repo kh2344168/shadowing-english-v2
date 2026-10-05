@@ -4,6 +4,7 @@ import {
   ChangeDetectorRef,
   Component,
   ElementRef,
+  HostListener,
   OnDestroy,
   OnInit,
   ViewChild,
@@ -23,6 +24,27 @@ import {
   ProcessorError,
   ProcessorJob,
 } from './local-processor.client';
+
+interface PersistedSegmentEditDraft {
+  text: string;
+  start: number;
+  end: number;
+  savedAtUtc: string;
+}
+
+interface PersistedSegmentTextSnapshot {
+  texts: string[];
+  savedAtUtc: string;
+}
+
+interface CachedSourceMedia {
+  key: string;
+  name: string;
+  type: string;
+  lastModified: number;
+  bytes: number;
+  blob: Blob;
+}
 
 @Component({
   selector: 'app-admin-ai-processing-page',
@@ -59,6 +81,10 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   private attempt: string | null = null;
   private urls: string[] = [];
   private destroyed = false;
+  private readonly editDraftStoragePrefix = 'shadowing-v2.ai-processing.edit-draft.v1';
+  private readonly textSnapshotStoragePrefix = 'shadowing-v2.ai-processing.text-snapshot.v1';
+  private readonly sourceMediaDatabaseName = 'shadowing-v2-ai-processing';
+  private readonly sourceMediaStoreName = 'source-media';
 
   @ViewChild('mediaInput') private mediaFileInput?: ElementRef<HTMLInputElement>;
   @ViewChild('transcriptInput') private transcriptFileInput?: ElementRef<HTMLInputElement>;
@@ -170,6 +196,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       const savedJobId = status.activeJobId ?? this.client.savedJob();
 
       if (savedJobId && !this.busy() && !this.lessonSaving() && !this.savedLesson()) {
+        await this.restoreSourceMedia(savedJobId);
         await this.resume(savedJobId);
       }
     } catch (error) {
@@ -396,6 +423,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
       this.job.set(createdJob);
       this.sourceMediaJobId = createdJob.jobId;
+      void this.cacheSourceMedia(createdJob.jobId, this.sourceMedia);
 
       await this.waitForResult(
         createdJob.jobId,
@@ -513,6 +541,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       this.job.set(status);
       this.client.forgetJob();
       this.attempt = null;
+      await this.clearLocalJobCache(jobId);
 
       this.notice.set('تم إلغاء المعالجة.');
     } catch (error) {
@@ -528,9 +557,13 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     this.releaseEditPreview();
     this.stopAudio();
     this.editingIndex.set(index);
-    this.editText = clip.text;
-    this.editStart = clip.start;
-    this.editEnd = clip.end;
+    const draft = this.readEditDraft(lesson.manifest.jobId, index, lesson.manifest.duration);
+    this.editText = draft?.text ?? clip.text;
+    this.editStart = draft?.start ?? clip.start;
+    this.editEnd = draft?.end ?? clip.end;
+    if (draft) {
+      this.notice.set(`تم استعادة تعديل غير محفوظ للمقطع ${index + 1}. راجعه ثم اضغط حفظ التعديل.`);
+    }
     this.activeEditRangeHandle = null;
     this.configureEditWaveformWindow(lesson.manifest.duration, false);
     this.editPreviewPositionSelected = false;
@@ -558,6 +591,11 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
   closeEditModal(): void {
     if (this.segmentSaving()) return;
+    const lesson = this.result();
+    const index = this.editingIndex();
+    if (lesson && index !== null) {
+      this.clearEditDraft(lesson.manifest.jobId, index, 'cancel');
+    }
     this.releaseEditPreview();
     this.stopAudio();
     this.editingIndex.set(null);
@@ -616,6 +654,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     this.editWaveformSourceFile = null;
     this.sourceMedia = file;
     this.sourceMediaJobId = lesson.manifest.jobId;
+    void this.cacheSourceMedia(lesson.manifest.jobId, file);
     this.editPreviewSourceUrl.set(URL.createObjectURL(file));
     this.editPreviewError.set('');
     this.editWaveformError.set('');
@@ -1250,6 +1289,8 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     try {
       await this.client.recut(lesson.manifest.jobId, segments);
       const refreshed = await this.client.result(lesson.manifest.jobId);
+      this.persistTextSnapshot(refreshed);
+      this.clearEditDraft(lesson.manifest.jobId, index, 'saved');
       this.releaseEditPreview();
       this.setResult(refreshed);
       this.reviewed = false;
@@ -1518,6 +1559,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
         cleanupResult = 'already_absent';
       }
 
+      await this.clearLocalJobCache(currentJob.jobId);
       this.clearResult();
       this.job.set(null);
       this.editingIndex.set(null);
@@ -1644,23 +1686,341 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       return;
     }
 
-    const isNewLesson = this.result()?.manifest.jobId !== result.manifest.jobId;
+    const restored = this.applyPersistedTextSnapshot(result);
+    const isNewLesson = this.result()?.manifest.jobId !== restored.manifest.jobId;
     this.clearResult();
 
     if (isNewLesson) {
-      this.title = result.manifest.title;
-      this.description = result.manifest.description;
+      this.title = restored.manifest.title;
+      this.description = restored.manifest.description;
     }
 
-    this.result.set(result);
+    this.result.set(restored);
 
-    this.urls = result.files.map((file) =>
+    this.urls = restored.files.map((file) =>
       URL.createObjectURL(file),
     );
 
     this.previewUrls.set(this.urls);
 
     this.reviewed = false;
+  }
+
+  private editDraftKey(jobId: string, index: number): string {
+    return `${this.editDraftStoragePrefix}.${this.userId}.${jobId}.${index}`;
+  }
+
+  private textSnapshotKey(jobId: string): string {
+    return `${this.textSnapshotStoragePrefix}.${this.userId}.${jobId}`;
+  }
+
+  private persistOpenEditDraft(reason: 'navigation' | 'pagehide' = 'navigation'): void {
+    const lesson = this.result();
+    const index = this.editingIndex();
+    if (!lesson || index === null || !this.userId) return;
+
+    const text = this.editText.trim();
+    const start = Number(this.editStart);
+    const end = Number(this.editEnd);
+    if (
+      !text || text.length > 1000 || !Number.isFinite(start) || !Number.isFinite(end) ||
+      start < 0 || end <= start || end > lesson.manifest.duration
+    ) return;
+
+    const started = performance.now();
+    console.info('[Admin.AILesson.EditDraft.Save.Start]', {
+      jobId: lesson.manifest.jobId,
+      segmentIndex: index,
+      reason,
+    });
+
+    try {
+      const draft: PersistedSegmentEditDraft = {
+        text,
+        start,
+        end,
+        savedAtUtc: new Date().toISOString(),
+      };
+      localStorage.setItem(this.editDraftKey(lesson.manifest.jobId, index), JSON.stringify(draft));
+      console.info('[Admin.AILesson.EditDraft.Save.Success]', {
+        jobId: lesson.manifest.jobId,
+        segmentIndex: index,
+        reason,
+        durationMs: Math.round(performance.now() - started),
+      });
+    } catch {
+      console.warn('[Admin.AILesson.EditDraft.Save.Failed]', {
+        jobId: lesson.manifest.jobId,
+        segmentIndex: index,
+        reason,
+        code: 'browser_storage_unavailable',
+        durationMs: Math.round(performance.now() - started),
+      });
+    }
+  }
+
+  private readEditDraft(
+    jobId: string,
+    index: number,
+    duration: number,
+  ): PersistedSegmentEditDraft | null {
+    if (!this.userId) return null;
+    const started = performance.now();
+    try {
+      const raw = localStorage.getItem(this.editDraftKey(jobId, index));
+      if (!raw) return null;
+      const value = JSON.parse(raw) as Partial<PersistedSegmentEditDraft>;
+      if (
+        typeof value.text !== 'string' || !value.text.trim() || value.text.length > 1000 ||
+        typeof value.start !== 'number' || !Number.isFinite(value.start) || value.start < 0 ||
+        typeof value.end !== 'number' || !Number.isFinite(value.end) ||
+        value.end <= value.start || value.end > duration
+      ) {
+        localStorage.removeItem(this.editDraftKey(jobId, index));
+        return null;
+      }
+      console.info('[Admin.AILesson.EditDraft.Restore.Success]', {
+        jobId,
+        segmentIndex: index,
+        durationMs: Math.round(performance.now() - started),
+      });
+      return {
+        text: value.text,
+        start: value.start,
+        end: value.end,
+        savedAtUtc: typeof value.savedAtUtc === 'string' ? value.savedAtUtc : '',
+      };
+    } catch {
+      console.warn('[Admin.AILesson.EditDraft.Restore.Failed]', {
+        jobId,
+        segmentIndex: index,
+        code: 'browser_storage_unavailable',
+        durationMs: Math.round(performance.now() - started),
+      });
+      return null;
+    }
+  }
+
+  private clearEditDraft(
+    jobId: string,
+    index: number,
+    reason: 'cancel' | 'saved' | 'cleanup',
+  ): void {
+    if (!this.userId) return;
+    try {
+      localStorage.removeItem(this.editDraftKey(jobId, index));
+      console.info('[Admin.AILesson.EditDraft.Clear.Success]', { jobId, segmentIndex: index, reason });
+    } catch {
+      console.warn('[Admin.AILesson.EditDraft.Clear.Failed]', {
+        jobId,
+        segmentIndex: index,
+        reason,
+        code: 'browser_storage_unavailable',
+      });
+    }
+  }
+
+  private persistTextSnapshot(lesson: ImportedLesson): void {
+    if (!this.userId) return;
+    const started = performance.now();
+    console.info('[Admin.AILesson.TextSnapshot.Save.Start]', {
+      jobId: lesson.manifest.jobId,
+      segmentCount: lesson.manifest.segments.length,
+    });
+    try {
+      const snapshot: PersistedSegmentTextSnapshot = {
+        texts: lesson.manifest.segments.map((segment) => segment.text),
+        savedAtUtc: new Date().toISOString(),
+      };
+      localStorage.setItem(this.textSnapshotKey(lesson.manifest.jobId), JSON.stringify(snapshot));
+      console.info('[Admin.AILesson.TextSnapshot.Save.Success]', {
+        jobId: lesson.manifest.jobId,
+        segmentCount: snapshot.texts.length,
+        durationMs: Math.round(performance.now() - started),
+      });
+    } catch {
+      console.warn('[Admin.AILesson.TextSnapshot.Save.Failed]', {
+        jobId: lesson.manifest.jobId,
+        segmentCount: lesson.manifest.segments.length,
+        code: 'browser_storage_unavailable',
+        durationMs: Math.round(performance.now() - started),
+      });
+    }
+  }
+
+  private applyPersistedTextSnapshot(lesson: ImportedLesson): ImportedLesson {
+    if (!this.userId) return lesson;
+    const started = performance.now();
+    try {
+      const raw = localStorage.getItem(this.textSnapshotKey(lesson.manifest.jobId));
+      if (!raw) return lesson;
+      const snapshot = JSON.parse(raw) as Partial<PersistedSegmentTextSnapshot>;
+      if (
+        !Array.isArray(snapshot.texts) ||
+        snapshot.texts.length !== lesson.manifest.segments.length ||
+        snapshot.texts.some((text) => typeof text !== 'string' || !text.trim() || text.length > 1000)
+      ) {
+        localStorage.removeItem(this.textSnapshotKey(lesson.manifest.jobId));
+        return lesson;
+      }
+      const restored: ImportedLesson = {
+        ...lesson,
+        manifest: {
+          ...lesson.manifest,
+          segments: lesson.manifest.segments.map((segment, index) => ({
+            ...segment,
+            text: snapshot.texts![index],
+          })),
+        },
+      };
+      console.info('[Admin.AILesson.TextSnapshot.Restore.Success]', {
+        jobId: lesson.manifest.jobId,
+        segmentCount: restored.manifest.segments.length,
+        durationMs: Math.round(performance.now() - started),
+      });
+      return restored;
+    } catch {
+      console.warn('[Admin.AILesson.TextSnapshot.Restore.Failed]', {
+        jobId: lesson.manifest.jobId,
+        code: 'browser_storage_unavailable',
+        durationMs: Math.round(performance.now() - started),
+      });
+      return lesson;
+    }
+  }
+
+  private async openSourceMediaDatabase(): Promise<IDBDatabase | null> {
+    if (typeof indexedDB === 'undefined') return null;
+    return await new Promise<IDBDatabase | null>((resolve) => {
+      const request = indexedDB.open(this.sourceMediaDatabaseName, 1);
+      request.onupgradeneeded = () => {
+        const database = request.result;
+        if (!database.objectStoreNames.contains(this.sourceMediaStoreName)) {
+          database.createObjectStore(this.sourceMediaStoreName, { keyPath: 'key' });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+      request.onblocked = () => resolve(null);
+    });
+  }
+
+  private sourceMediaKey(jobId: string): string {
+    return `${this.userId}:${jobId}`;
+  }
+
+  private async cacheSourceMedia(jobId: string, file: File | null): Promise<void> {
+    if (!file || !this.userId) return;
+    const started = performance.now();
+    console.info('[Admin.AILesson.SourceCache.Save.Start]', { jobId, bytes: file.size });
+    try {
+      const database = await this.openSourceMediaDatabase();
+      if (!database) throw new Error('indexeddb_unavailable');
+      const record: CachedSourceMedia = {
+        key: this.sourceMediaKey(jobId),
+        name: file.name,
+        type: file.type,
+        lastModified: file.lastModified,
+        bytes: file.size,
+        blob: file,
+      };
+      await new Promise<void>((resolve, reject) => {
+        const transaction = database.transaction(this.sourceMediaStoreName, 'readwrite');
+        transaction.objectStore(this.sourceMediaStoreName).put(record);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error);
+      });
+      database.close();
+      console.info('[Admin.AILesson.SourceCache.Save.Success]', {
+        jobId,
+        bytes: file.size,
+        durationMs: Math.round(performance.now() - started),
+      });
+    } catch {
+      console.warn('[Admin.AILesson.SourceCache.Save.Failed]', {
+        jobId,
+        bytes: file.size,
+        code: 'browser_storage_unavailable',
+        durationMs: Math.round(performance.now() - started),
+      });
+    }
+  }
+
+  private async restoreSourceMedia(jobId: string): Promise<void> {
+    if (!this.userId || (this.sourceMediaJobId === jobId && this.sourceMedia)) return;
+    const started = performance.now();
+    console.info('[Admin.AILesson.SourceCache.Restore.Start]', { jobId });
+    try {
+      const database = await this.openSourceMediaDatabase();
+      if (!database) throw new Error('indexeddb_unavailable');
+      const record = await new Promise<CachedSourceMedia | null>((resolve, reject) => {
+        const transaction = database.transaction(this.sourceMediaStoreName, 'readonly');
+        const request = transaction.objectStore(this.sourceMediaStoreName).get(this.sourceMediaKey(jobId));
+        request.onsuccess = () => resolve((request.result as CachedSourceMedia | undefined) ?? null);
+        request.onerror = () => reject(request.error);
+      });
+      database.close();
+      if (!record) {
+        console.info('[Admin.AILesson.SourceCache.Restore.Success]', {
+          jobId,
+          result: 'not_found',
+          durationMs: Math.round(performance.now() - started),
+        });
+        return;
+      }
+      if (!(record.blob instanceof Blob) || record.bytes <= 0 || record.bytes > 100_000_000) {
+        await this.deleteSourceMedia(jobId);
+        return;
+      }
+      this.sourceMedia = new File([record.blob], record.name || 'source-media', {
+        type: record.type || record.blob.type,
+        lastModified: Number.isFinite(record.lastModified) ? record.lastModified : Date.now(),
+      });
+      this.sourceMediaJobId = jobId;
+      console.info('[Admin.AILesson.SourceCache.Restore.Success]', {
+        jobId,
+        result: 'restored',
+        bytes: this.sourceMedia.size,
+        durationMs: Math.round(performance.now() - started),
+      });
+    } catch {
+      console.warn('[Admin.AILesson.SourceCache.Restore.Failed]', {
+        jobId,
+        code: 'browser_storage_unavailable',
+        durationMs: Math.round(performance.now() - started),
+      });
+    }
+  }
+
+  private async deleteSourceMedia(jobId: string): Promise<void> {
+    if (!this.userId || typeof indexedDB === 'undefined') return;
+    try {
+      const database = await this.openSourceMediaDatabase();
+      if (!database) return;
+      await new Promise<void>((resolve) => {
+        const transaction = database.transaction(this.sourceMediaStoreName, 'readwrite');
+        transaction.objectStore(this.sourceMediaStoreName).delete(this.sourceMediaKey(jobId));
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => resolve();
+        transaction.onabort = () => resolve();
+      });
+      database.close();
+    } catch {
+      // Best-effort local cleanup only; never block lesson cleanup because browser cache failed.
+    }
+  }
+
+  private async clearLocalJobCache(jobId: string): Promise<void> {
+    for (let index = 0; index < 20; index += 1) {
+      this.clearEditDraft(jobId, index, 'cleanup');
+    }
+    try {
+      localStorage.removeItem(this.textSnapshotKey(jobId));
+    } catch {
+      // Best-effort cleanup only.
+    }
+    await this.deleteSourceMedia(jobId);
   }
 
   private clearResult(): void {
@@ -1731,19 +2091,29 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     }
   }
 
+  @HostListener('window:pagehide')
+  onPageHide(): void {
+    this.persistOpenEditDraft('pagehide');
+  }
+
   ngOnDestroy(): void {
+    this.persistOpenEditDraft('navigation');
     this.destroyed = true;
 
     this.controller?.abort();
 
-    this.releaseEditPreview();
-    this.stopAudio();
+    this.clearResult();
 
-    this.urls.forEach((url) =>
-      URL.revokeObjectURL(url),
-    );
-
-    this.urls = [];
+    this.sourceMedia = null;
+    this.sourceMediaJobId = null;
+    this.media = null;
+    this.transcriptFile = null;
+    this.script = '';
+    this.title = '';
+    this.description = '';
+    this.editText = '';
+    this.editStart = 0;
+    this.editEnd = 0;
     this.editWaveformBuffer = null;
     this.editWaveformSourceFile = null;
     this.editWaveformAttempt += 1;

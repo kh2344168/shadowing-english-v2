@@ -27,6 +27,8 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   @ViewChild('teacher') teacher?: ElementRef<HTMLAudioElement>;
   readonly slotId = this.route.snapshot.paramMap.get('slotId') ?? '';
+  readonly reviewMode =
+    this.route.snapshot.routeConfig?.path?.endsWith('/shadowing-review') ?? false;
   readonly lesson = signal<LessonOverview | null>(null);
   readonly segment = signal<Segment | null>(null);
   readonly position = signal(1);
@@ -61,9 +63,22 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
     this.lesson.set(null);
     this.segment.set(null);
     try {
-      const overview = await firstValueFrom(this.api.overview(this.slotId));
+      let overview = await firstValueFrom(this.api.overview(this.slotId));
+      if (this.reviewMode) {
+        const material = await firstValueFrom(this.api.aiMaterial(this.slotId));
+        if (!material.completed.vocabulary || !material.shadowingReviewEnabled) {
+          this.error.set('أكمل الكلمات أولًا قبل مراجعة الشادوينج.');
+          return;
+        }
+        overview = {
+          ...overview,
+          completedSegments: material.progress.shadowingReview ?? 0,
+          isComplete: material.completed.shadowingReview ?? false,
+        };
+      }
       this.lesson.set(overview);
-      if (overview.segmentCount > 0) {
+      if (this.reviewMode && overview.isComplete) this.finished.set(true);
+      else if (overview.segmentCount > 0) {
         const next = Math.min(overview.completedSegments + 1, overview.segmentCount);
         await this.loadSegment(next);
       }
@@ -244,17 +259,23 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
         await firstValueFrom(this.auth.csrf());
         this.csrfReady = true;
       }
-      const result = await firstValueFrom(this.api.save(this.slotId, position));
+      const result = this.reviewMode
+        ? await firstValueFrom(this.api.shadowingReviewProgress(this.slotId, position))
+        : await firstValueFrom(this.api.save(this.slotId, position));
       saved = true;
       this.lesson.set({
         ...lesson,
-        completedSegments: result.completedSegments,
+        completedSegments: this.reviewMode
+          ? (result as { completed: number }).completed
+          : (result as { completedSegments: number }).completedSegments,
         isComplete: result.isComplete,
       });
       console.info('[Student.Shadowing.UI.Progress.Success]', {
         slotId: this.slotId,
         position,
-        completedSegments: result.completedSegments,
+        completedSegments: this.reviewMode
+          ? (result as { completed: number }).completed
+          : (result as { completedSegments: number }).completedSegments,
         isComplete: result.isComplete,
         durationMs: Date.now() - started,
       });

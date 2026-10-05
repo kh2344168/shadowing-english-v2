@@ -1,0 +1,59 @@
+@use '../learning';
+
+.ai-stage .learning-card {
+  display: grid;
+  gap: 10px;
+}
+.ai-stage blockquote {
+  margin: 8px 0;
+  padding: 12px 16px;
+  border-inline-start: 3px solid #00685f;
+  background: #f2f8f6;
+}
+.ai-stage label {
+  display: grid;
+  gap: 7px;
+  font-weight: 700;
+}
+.ai-stage input,
+.ai-stage textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #bcd6d1;
+  border-radius: 12px;
+  font: inherit;
+}
+.ai-stage textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+.ai-stage fieldset {
+  display: grid;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+}
+.ai-stage fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ai-stage fieldset input {
+  width: auto;
+  min-height: auto;
+}
+.ai-stage .result {
+  border-radius: 12px;
+  background: #edf8f5;
+  padding: 12px;
+}
+.ai-stage .result.error {
+  background: #fff0ef;
+}
+.ai-stage .learning-button {
+  justify-self: start;
+}
+.ai-stage audio {
+  width: 100%;
+}

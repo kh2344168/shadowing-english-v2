@@ -1,8 +1,9 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <UserSecretsId>5c7dc977-f8c7-4340-88d9-27f8032dbbf2</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../ShadowingEnglish.Core/ShadowingEnglish.Core.csproj" />

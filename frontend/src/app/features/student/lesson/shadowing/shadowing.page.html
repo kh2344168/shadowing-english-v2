@@ -1,6 +1,12 @@
 <section class="learning-page" dir="rtl" aria-labelledby="shadowing-title">
-  <a class="learning-back" [routerLink]="['/student/lessons', slotId, 'overview']">← نظرة الدرس</a>
-  <h1 id="shadowing-title" class="page-title">تدريب Shadowing</h1>
+  <a
+    class="learning-back"
+    [routerLink]="reviewMode ? ['/student/lessons', slotId, 'vocabulary'] : ['/student/lessons', slotId, 'overview']"
+    >← {{ reviewMode ? 'الكلمات' : 'نظرة الدرس' }}</a
+  >
+  <h1 id="shadowing-title" class="page-title">
+    {{ reviewMode ? 'الشادوينج بعد فهم الكلمات' : 'تدريب Shadowing' }}
+  </h1>
   @if (loading()) {
   <p role="status" class="learning-status">جارٍ تحميل التدريب...</p>
   } @else if (lesson(); as data) {
@@ -17,7 +23,12 @@
   @if (finished()) {
   <div class="learning-card" role="status">
     <h2>أحسنت! اكتمل تدريب Shadowing</h2>
-    <a class="learning-button" routerLink="/student/curriculum">العودة إلى المنهج</a>
+    <a
+      class="learning-button"
+      [routerLink]="reviewMode ? ['/student/lessons', slotId, 'listen-type'] : data.hasAiContent ? ['/student/lessons', slotId, 'vocabulary'] : ['/student/curriculum']"
+      >{{ reviewMode ? 'ابدأ استمع واكتب' : data.hasAiContent ? 'ابدأ الكلمات' : 'العودة للمنهج' }}
+      ←</a
+    >
   </div>
   } @else if (segment(); as current) {
   <div class="learning-card practice-card">

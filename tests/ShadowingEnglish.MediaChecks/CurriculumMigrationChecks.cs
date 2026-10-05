@@ -11,7 +11,7 @@ namespace ShadowingEnglish.MediaChecks;
 // Explicit opt-in only. Uses two NEW disposable databases on loopback SQL Server, never a deployed database.
 internal static class CurriculumMigrationChecks
 {
-    private const string CurrentMigration = "20261002101732_AddIndependentCurriculumDraft";
+    private const string CurrentMigration = "20261005134000_AddAiProviderManagement";
     private const string PreviousMigration = "20261001144800_EnforceCurriculumScope";
     private static void Assert(bool condition, string reason)
     { if (!condition) throw new InvalidOperationException(reason); }

@@ -81,6 +81,8 @@ internal static class Runner
         }
         if (args.SequenceEqual(new[] { "--curriculum-migrations" }))
             return await CurriculumMigrationChecks.RunAsync(Check, () => failures);
+        if (args.SequenceEqual(new[] { "--ai-text-check" }))
+            return await AiTextChecks.RunAsync(Check, () => failures);
         var api = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
         Assert(File.Exists(Path.Combine(api, "ShadowingEnglish.Api.csproj")), "Run from the V2 root.");
         await Check("Uncaught exceptions return redacted diagnostics", async () =>

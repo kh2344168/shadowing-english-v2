@@ -1,137 +1,577 @@
-<main class="tools-page" dir="rtl" aria-labelledby="tools-title">
+<main class="ai-tools-page" dir="rtl" aria-labelledby="ai-tools-title">
   <header class="page-head">
     <div>
-      <p class="eyebrow">إعداد الأدوات المحلية</p>
-      <h1 id="tools-title">أدوات AI</h1>
-      <p>نزّل معالج الصوت المحلي، ثم شغّل ملف التثبيت وتحقق من اتصاله.</p>
+      <p class="eyebrow">إدارة أدوات الذكاء الاصطناعي</p>
+      <h1 id="ai-tools-title">أدوات AI ومزوّدو الخدمات</h1>
+      <p>
+        اربط المعالج الصوتي المحلي وأدر مفاتيح مزوّدي AI من الخادم. مفاتيح API لا تُعرض مرة أخرى بعد الحفظ.
+      </p>
     </div>
-    <a routerLink="/admin/ai-processing" class="head-link">العودة إلى إنشاء الدرس</a>
+    <a routerLink="/admin/ai-processing" class="head-link">الانتقال إلى إنشاء الدرس بالـAI</a>
   </header>
 
-  <section class="tool-card" aria-labelledby="whisperx-title">
-    <div class="tool-card__head">
-      <div class="tool-icon" aria-hidden="true">AI</div>
+  @if (providerError()) {
+    <div class="global-message global-message--error" role="alert">
+      <span class="material-symbols-outlined" aria-hidden="true">error</span>
+      <span>{{ providerError() }}</span>
+      <button type="button" (click)="loadProviders()" [disabled]="providersLoading()">إعادة المحاولة</button>
+    </div>
+  }
+  @if (providerNotice()) {
+    <div class="global-message global-message--success" role="status">
+      <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>
+      <span>{{ providerNotice() }}</span>
+    </div>
+  }
+
+  <section class="local-section" aria-labelledby="local-processor-title">
+    <div class="section-heading">
       <div>
-        <div class="tool-title-line">
-          <h2 id="whisperx-title">معالج WhisperX المحلي</h2>
-          <span class="local-badge">يعمل على هذا الجهاز</span>
-        </div>
-        <p>يجهّز المقاطع الصوتية محليًا لاستخدامها في دروس Shadowing.</p>
+        <p class="section-kicker">Local Audio Processor</p>
+        <h2 id="local-processor-title">معالج WhisperX المحلي</h2>
+        <p>معالجة الصوت تتم على جهاز الأدمن ولا تمر عبر مزوّدي AI السحابيين.</p>
       </div>
-    </div>
-
-    <ol class="setup-steps" aria-label="خطوات إعداد المعالج المحلي">
-      <li [class.is-done]="downloadState() === 'downloaded'">
-        <span class="step-number">1</span>
-        <div>
-          <strong>تنزيل ملف التثبيت</strong>
-          <small>يُجهّز الملف بربط خاص بحساب الأدمن الحالي.</small>
-        </div>
-      </li>
-      <li [class.is-done]="downloadState() === 'downloaded'">
-        <span class="step-number">2</span>
-        <div>
-          <strong>فتح ملف التثبيت</strong>
-          <small>افتح الملف الذي تم تنزيله مرة واحدة واتركه يكمل الإعداد.</small>
-        </div>
-      </li>
-      <li [class.is-done]="processorState() === 'connected'">
-        <span class="step-number">3</span>
-        <div>
-          <strong>التحقق من الاتصال</strong>
-          <small>تظهر حالة الاتصال بعد استجابة الخدمة المحلية المرتبطة بهذا الحساب.</small>
-        </div>
-      </li>
-    </ol>
-
-    <section
-      class="download-panel"
-      [class.download-panel--busy]="downloadState() === 'downloading'"
-      [class.download-panel--error]="downloadState() === 'failed'"
-      aria-labelledby="download-title"
-      aria-live="polite"
-    >
-      <div class="panel-copy">
-        <h3 id="download-title">1. تنزيل الأداة</h3>
-        @if (downloadState() === 'ready') {
-        <p>نزّل ملف التثبيت لإعداد WhisperX والربط تلقائيًا.</p>
-        } @else if (downloadState() === 'downloading') {
-        <p>جارٍ تجهيز وتنزيل ملف التثبيت...</p>
-        } @else if (downloadState() === 'downloaded') {
-        <p class="download-message">{{ downloadMessage() }}</p>
-        } @else {
-        <p>{{ downloadMessage() }}</p>
-        }
-      </div>
-      <button
-        type="button"
-        class="primary"
-        (click)="downloadInstaller()"
-        [disabled]="!userId || busyOperation() !== null"
-      >
-        {{ downloadState() === 'downloading' ? 'جارٍ التنزيل...' : 'تنزيل ملف التثبيت' }}
-      </button>
-    </section>
-
-    <section
-      class="connection-panel"
-      [class.connection-panel--checking]="processorState() === 'checking'"
-      [class.connection-panel--connected]="processorState() === 'connected'"
-      [class.connection-panel--error]="processorState() === 'offline' || processorState() === 'failed'"
-      aria-labelledby="connection-title"
-      role="status"
-      aria-live="polite"
-    >
-      <span class="connection-mark" aria-hidden="true">
-        @switch (processorState()) { @case ('checking') { … } @case ('connected') { ✓ } @case
-        ('unlinked') { ! } @case ('offline') { × } @case ('failed') { × } }
+      <span class="security-pill">
+        <span class="material-symbols-outlined" aria-hidden="true">key_off</span>
+        لا يحتاج إلى مفتاح API خارجي
       </span>
-      <div class="connection-copy">
-        <h3 id="connection-title">
-          @switch (processorState()) { @case ('checking') { جارٍ التحقق من الأداة } @case
-          ('connected') { الأداة متصلة } @case ('unlinked') { الخدمة تعمل والربط غير مكتمل } @case
-          ('offline') { الخدمة المحلية لا تستجيب } @case ('failed') { تعذر التحقق من الأداة } }
-        </h3>
-        <p>{{ processorMessage() }}</p>
-        @if (verificationCompleted()) {
-        <span class="verified-label">اكتمل التحقق من الحالة الحالية</span>
-        }
-      </div>
-    </section>
-
-    <div class="actions" aria-label="إجراءات الاتصال والتحقق">
-      <button
-        type="button"
-        class="secondary"
-        (click)="connectToProcessor()"
-        [disabled]="!userId || busyOperation() !== null"
-      >
-        {{ busyOperation() === 'connect' ? 'جارٍ الاتصال...' : 'اتصال بالخدمة المحلية' }}
-      </button>
-      <button
-        type="button"
-        class="secondary"
-        (click)="verifyProcessor()"
-        [disabled]="!userId || busyOperation() !== null"
-      >
-        {{ busyOperation() === 'verify' ? 'جارٍ التحقق...' : 'تحقق من الحالة' }}
-      </button>
     </div>
 
-    <details class="recovery-panel">
-      <summary>استعادة ربط أداة مثبتة مسبقًا</summary>
-      <p>
-        استخدم هذا الخيار فقط إذا فقد المتصفح بيانات الربط. اختر <bdi>shadowing-link.json</bdi> من
-        مجلد الأداة.
-      </p>
-      <label class="file-button" for="ai-tool-link">اختيار ملف الربط</label>
-      <input
-        id="ai-tool-link"
-        type="file"
-        accept=".json,application/json"
-        (change)="importLink($event)"
-        [disabled]="!userId || busyOperation() !== null"
-      />
-    </details>
+    <article class="local-card">
+      <div class="local-main">
+        <div class="provider-logo provider-logo--local" aria-hidden="true">WX</div>
+        <div class="local-copy">
+          <div class="title-line">
+            <h3>WhisperX Local Processor</h3>
+            <span class="status-badge" [attr.data-status]="processorState()">
+              @switch (processorState()) {
+                @case ('connected') { متصل }
+                @case ('checking') { جارٍ التحقق }
+                @case ('unlinked') { غير مربوط }
+                @case ('offline') { غير متصل }
+                @default { تعذر الاتصال }
+              }
+            </span>
+          </div>
+          <p>{{ processorMessage() }}</p>
+        </div>
+      </div>
+
+      <dl class="meta-grid">
+        <div><dt>الإصدار</dt><dd dir="ltr">{{ processorVersion() }}</dd></div>
+        <div><dt>آخر تحقق ناجح</dt><dd>{{ formatProviderTime(processorLastSuccess()) }}</dd></div>
+        <div><dt>الربط المحلي</dt><dd>{{ hasSavedLink() ? 'محفوظ على هذا المتصفح' : 'غير محفوظ' }}</dd></div>
+      </dl>
+
+      <div class="local-actions">
+        <button type="button" class="btn btn-primary" (click)="verifyProcessor()" [disabled]="!userId || busyOperation() !== null">
+          <span class="material-symbols-outlined" aria-hidden="true">network_check</span>
+          {{ busyOperation() === 'verify' ? 'جارٍ اختبار الاتصال' : 'اختبار الاتصال' }}
+        </button>
+        <button type="button" class="btn btn-secondary" (click)="connectToProcessor()" [disabled]="!userId || busyOperation() !== null">
+          {{ busyOperation() === 'connect' ? 'جارٍ الاتصال...' : 'إعادة الربط' }}
+        </button>
+        <button type="button" class="btn btn-secondary" (click)="downloadInstaller()" [disabled]="!userId || busyOperation() !== null">
+          <span class="material-symbols-outlined" aria-hidden="true">download</span>
+          {{ downloadState() === 'downloading' ? 'جارٍ التنزيل...' : (processorState() === 'connected' ? 'إعادة تنزيل / تثبيت الأداة' : 'تنزيل أداة WhisperX') }}
+        </button>
+      </div>
+
+      @if (downloadMessage()) {
+        <p class="inline-note" [class.inline-note--error]="downloadState() === 'failed'">{{ downloadMessage() }}</p>
+      }
+
+      <details class="recovery-panel">
+        <summary>استعادة ربط أداة مثبتة مسبقًا</summary>
+        <p>استخدم هذا الخيار فقط إذا فقد المتصفح بيانات الربط. اختر <bdi dir="ltr">shadowing-link.json</bdi> من مجلد الأداة.</p>
+        <label class="file-button" for="ai-tool-link">اختيار ملف الربط</label>
+        <input id="ai-tool-link" type="file" accept=".json,application/json" (change)="importLink($event)" [disabled]="!userId || busyOperation() !== null" />
+      </details>
+    </article>
   </section>
+
+  <section class="providers-section" aria-labelledby="providers-title">
+    <div class="section-heading section-heading--providers">
+      <div>
+        <p class="section-kicker">Server-side Credentials</p>
+        <h2 id="providers-title">إدارة مزوّدي AI</h2>
+        <p>المفاتيح تُرسل إلى Backend للحفظ المشفّر. بعد الحفظ لا تعيد الـAPI المفتاح الكامل إطلاقًا.</p>
+      </div>
+      <span class="security-pill" [class.security-pill--warning]="!encryptionReady()">
+        <span class="material-symbols-outlined" aria-hidden="true">shield_lock</span>
+        {{ encryptionReady() ? 'تشفير الخادم جاهز' : 'تشفير الخادم غير مهيأ' }}
+      </span>
+    </div>
+
+    @if (providersLoading()) {
+      <div class="providers-loading" role="status" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        جارٍ تحميل إعدادات المزوّدين...
+      </div>
+    } @else {
+      <section class="provider-overview" aria-label="ملخص المزوّدين الفعليين">
+        <article class="overview-card overview-card--local">
+          <span class="overview-label">المعالجة المحلية</span>
+          <strong>1</strong>
+          <small>WhisperX · لا يحتاج API Key</small>
+        </article>
+        <article class="overview-card">
+          <span class="overview-label">معالجة النصوص عبر API</span>
+          <strong>{{ configuredFor('text') }}</strong>
+          <small>{{ enabledFor('text') }} مفعّل · {{ connectedFor('text') }} متصل بنجاح</small>
+        </article>
+        <article class="overview-card">
+          <span class="overview-label">الصور</span>
+          <strong>{{ configuredImageProviders() }}</strong>
+          <small>توليد {{ configuredFor('image-generation') }} · بحث {{ configuredFor('image-search') }}</small>
+        </article>
+      </section>
+
+      <aside class="protected-manual-provider" aria-label="المزود اليدوي المحمي">
+        <span class="material-symbols-outlined" aria-hidden="true">lock</span>
+        <div>
+          <strong>المزود اليدوي الحالي — محمي</strong>
+          <p>هذا المزود خارج إدارة مزوّدي API الجديدة. لا يدخل في الأعداد أعلاه، ولا يمكن تعديله أو حذف بياناته أو تغيير ترتيبه من هذه الصفحة.</p>
+        </div>
+        <span class="protected-badge">لا يتم لمسه</span>
+      </aside>
+
+      <!-- TEXT AI -->
+      <section class="capability-block" aria-labelledby="text-ai-title">
+        <div class="capability-head">
+          <div>
+            <p class="capability-index">01</p>
+            <div class="capability-title-row">
+              <h3 id="text-ai-title">Text and Lesson Content AI</h3>
+              <span class="actual-count">{{ configuredFor('text') }} مزود API مضاف فعليًا</span>
+            </div>
+            <p>المفردات والـchunks، Listen & Type، الاختبارات، محادثات الدرس وتقييم الإجابات المدعومة.</p>
+          </div>
+          <div class="capability-actions">
+            <button type="button" class="btn btn-secondary" (click)="testFallback('text')" [disabled]="fallbackBusy() !== null || providerBusy() !== null || enabledConfigs('text').length === 0">
+              {{ fallbackBusy() === 'text' ? 'جارٍ اختبار fallback...' : 'اختبار fallback' }}
+            </button>
+            <button type="button" class="btn btn-primary" (click)="openAddProvider('text')" [disabled]="providerBusy() !== null || fallbackBusy() !== null || !encryptionReady()">
+              <span class="material-symbols-outlined" aria-hidden="true">add</span> إضافة مزوّد نصوص
+            </button>
+          </div>
+        </div>
+
+        @if (enabledConfigs('text').length > 0) {
+          <div class="fallback-panel">
+            <div class="fallback-panel__head">
+              <div><strong>ترتيب fallback الحالي</strong><span>يتم التوقف فور نجاح أول مزوّد.</span></div>
+              <span class="drag-help">اسحب لإعادة الترتيب</span>
+            </div>
+            <div cdkDropList [cdkDropListData]="enabledConfigs('text')" (cdkDropListDropped)="dropProvider($event, 'text')" class="fallback-list">
+              @for (provider of enabledConfigs('text'); track provider.id; let i = $index) {
+                <div class="fallback-row" cdkDrag>
+                  <span class="drag-handle material-symbols-outlined" cdkDragHandle aria-hidden="true">drag_indicator</span>
+                  <span class="fallback-number">{{ i + 1 }}</span>
+                  <strong dir="ltr">{{ provider.providerName }}</strong>
+                  <span class="status-badge" [attr.data-status]="provider.status">{{ statusLabel(provider.status) }}</span>
+                  <div class="mobile-order-actions">
+                    <button type="button" aria-label="رفع الأولوية" (click)="moveProvider(provider, -1)" [disabled]="i === 0 || providerBusy() !== null">↑</button>
+                    <button type="button" aria-label="خفض الأولوية" (click)="moveProvider(provider, 1)" [disabled]="i === enabledConfigs('text').length - 1 || providerBusy() !== null">↓</button>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        @if (attemptsFor('text').length > 0) {
+          <div class="diagnostics" role="status">
+            <strong>نتيجة اختبار fallback</strong>
+            @for (attempt of attemptsFor('text'); track attempt.attempt) {
+              <p [class.attempt-success]="attempt.success">
+                المحاولة {{ attempt.attempt }}: <bdi dir="ltr">{{ attempt.providerName }}</bdi> —
+                {{ attempt.success ? 'نجحت' : failureLabel(attempt.failureReason) }}
+              </p>
+            }
+          </div>
+        }
+
+        @if (configuredFor('text') > 0) {
+          <div class="configured-heading"><strong>المضاف فعليًا</strong><span>{{ configuredFor('text') }} مزود لديه بيانات اعتماد محفوظة على الخادم</span></div>
+          <div class="provider-grid" data-provider-state="configured">
+            @for (card of configuredCards('text'); track card.definition.providerKey) {
+              <ng-container [ngTemplateOutlet]="providerCard" [ngTemplateOutletContext]="{ card: card }"></ng-container>
+            }
+          </div>
+        } @else {
+          <div class="empty-state compact-empty">
+            <span class="material-symbols-outlined" aria-hidden="true">key_off</span>
+            <strong>لا يوجد مزود Text API مضاف فعليًا</strong>
+            <p>المزود اليدوي المحمي لا يدخل في هذا العدد.</p>
+          </div>
+        }
+
+        <div class="available-heading"><strong>متاح للإضافة</strong><span>{{ availableToAddFor('text') }} مزود يمكن إضافة مفتاح له من الواجهة</span></div>
+        <div class="available-provider-list" data-provider-state="available">
+          @for (card of availableProviderCards('text'); track card.definition.providerKey) {
+            <ng-container [ngTemplateOutlet]="availableProvider" [ngTemplateOutletContext]="{ card: card }"></ng-container>
+          }
+        </div>
+      </section>
+
+      <!-- IMAGE GENERATION -->
+      <section class="capability-block" aria-labelledby="image-generation-title">
+        <div class="capability-head">
+          <div>
+            <p class="capability-index">02</p>
+            <div class="capability-title-row">
+              <h3 id="image-generation-title">Image Generation AI</h3>
+              <span class="actual-count">{{ configuredFor('image-generation') }} مزود مضاف فعليًا</span>
+            </div>
+            <p>صور المفردات، الأسئلة البصرية، إعادة توليد صورة غير مناسبة والرسوم التعليمية المناسبة للعمر.</p>
+          </div>
+          <div class="capability-actions">
+            @if (enabledConfigs('image-generation').length > 0) {
+              <button type="button" class="btn btn-secondary" (click)="testFallback('image-generation')" [disabled]="fallbackBusy() !== null || providerBusy() !== null">
+                {{ fallbackBusy() === 'image-generation' ? 'جارٍ اختبار fallback...' : 'اختبار fallback' }}
+              </button>
+            }
+            <button type="button" class="btn btn-primary" (click)="openAddProvider('image-generation')" [disabled]="implementedFor('image-generation') === 0 || providerBusy() !== null || fallbackBusy() !== null || !encryptionReady()" [title]="implementedFor('image-generation') === 0 ? 'غير متاح في الكود حاليًا' : ''">
+              <span class="material-symbols-outlined" aria-hidden="true">add_photo_alternate</span> إضافة مزود صور
+            </button>
+          </div>
+        </div>
+
+        @if (enabledConfigs('image-generation').length > 0) {
+          <div class="fallback-panel">
+            <div class="fallback-panel__head">
+              <div><strong>ترتيب fallback لتوليد الصور</strong><span>مستقل عن Text AI وعن مكتبات البحث.</span></div>
+              <span class="drag-help">اسحب لإعادة الترتيب</span>
+            </div>
+            <div cdkDropList [cdkDropListData]="enabledConfigs('image-generation')" (cdkDropListDropped)="dropProvider($event, 'image-generation')" class="fallback-list">
+              @for (provider of enabledConfigs('image-generation'); track provider.id; let i = $index) {
+                <div class="fallback-row" cdkDrag>
+                  <span class="drag-handle material-symbols-outlined" cdkDragHandle aria-hidden="true">drag_indicator</span>
+                  <span class="fallback-number">{{ i + 1 }}</span>
+                  <strong dir="ltr">{{ provider.providerName }}</strong>
+                  <span class="status-badge" [attr.data-status]="provider.status">{{ statusLabel(provider.status) }}</span>
+                  <div class="mobile-order-actions">
+                    <button type="button" aria-label="رفع الأولوية" (click)="moveProvider(provider, -1)" [disabled]="i === 0 || providerBusy() !== null">↑</button>
+                    <button type="button" aria-label="خفض الأولوية" (click)="moveProvider(provider, 1)" [disabled]="i === enabledConfigs('image-generation').length - 1 || providerBusy() !== null">↓</button>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        @if (configuredFor('image-generation') === 0) {
+          <div class="empty-state">
+            <span class="material-symbols-outlined" aria-hidden="true">image_not_supported</span>
+            <strong>لم تتم إضافة مزود لتوليد الصور بعد</strong>
+            <p>المزوّدون المقترحون أدناه ظاهرون كمرجع، لكنهم لن يظهروا كمتصلين قبل وجود Adapter فعلي في الخادم.</p>
+          </div>
+        }
+
+        @if (configuredFor('image-generation') > 0) {
+          <div class="configured-heading"><strong>المضاف فعليًا</strong><span>{{ configuredFor('image-generation') }} مزود توليد صور</span></div>
+          <div class="provider-grid" data-provider-state="configured">
+            @for (card of configuredCards('image-generation'); track card.definition.providerKey) {
+              <ng-container [ngTemplateOutlet]="providerCard" [ngTemplateOutletContext]="{ card: card }"></ng-container>
+            }
+          </div>
+        }
+
+        <div class="available-heading"><strong>مزودو الصور المتاحون في الكتالوج</strong><span>غير المنفذ يظهر كمرجع فقط ولا يُحسب كمزود مضاف.</span></div>
+        <div class="available-provider-list" data-provider-state="available">
+          @for (card of availableProviderCards('image-generation'); track card.definition.providerKey) {
+            <ng-container [ngTemplateOutlet]="availableProvider" [ngTemplateOutletContext]="{ card: card }"></ng-container>
+          }
+        </div>
+      </section>
+
+      <!-- IMAGE SEARCH -->
+      <section class="capability-block" aria-labelledby="image-search-title">
+        <div class="capability-head">
+          <div>
+            <p class="capability-index">03</p>
+            <div class="capability-title-row">
+              <h3 id="image-search-title">Image Search Libraries</h3>
+              <span class="actual-count">{{ configuredFor('image-search') }} مكتبة مضافة فعليًا</span>
+            </div>
+            <p>بحث منفصل في مكتبات الصور المرخّصة. مفاتيحه وحدوده ونتائجه مستقلة عن توليد الصور.</p>
+          </div>
+          <div class="capability-actions">
+            <button type="button" class="btn btn-secondary" (click)="testFallback('image-search')" [disabled]="fallbackBusy() !== null || providerBusy() !== null || enabledConfigs('image-search').length === 0">
+              {{ fallbackBusy() === 'image-search' ? 'جارٍ اختبار fallback...' : 'اختبار fallback' }}
+            </button>
+            <button type="button" class="btn btn-primary" (click)="openAddProvider('image-search')" [disabled]="providerBusy() !== null || fallbackBusy() !== null || !encryptionReady()">
+              <span class="material-symbols-outlined" aria-hidden="true">add</span> إضافة مكتبة صور
+            </button>
+          </div>
+        </div>
+
+        @if (enabledConfigs('image-search').length > 0) {
+          <div class="fallback-panel">
+            <div class="fallback-panel__head">
+              <div><strong>ترتيب fallback للبحث</strong><span>مستقل تمامًا عن Text AI وعن Image Generation.</span></div>
+              <span class="drag-help">اسحب لإعادة الترتيب</span>
+            </div>
+            <div cdkDropList [cdkDropListData]="enabledConfigs('image-search')" (cdkDropListDropped)="dropProvider($event, 'image-search')" class="fallback-list">
+              @for (provider of enabledConfigs('image-search'); track provider.id; let i = $index) {
+                <div class="fallback-row" cdkDrag>
+                  <span class="drag-handle material-symbols-outlined" cdkDragHandle aria-hidden="true">drag_indicator</span>
+                  <span class="fallback-number">{{ i + 1 }}</span>
+                  <strong dir="ltr">{{ provider.providerName }}</strong>
+                  <span class="status-badge" [attr.data-status]="provider.status">{{ statusLabel(provider.status) }}</span>
+                  <div class="mobile-order-actions">
+                    <button type="button" aria-label="رفع الأولوية" (click)="moveProvider(provider, -1)" [disabled]="i === 0 || providerBusy() !== null">↑</button>
+                    <button type="button" aria-label="خفض الأولوية" (click)="moveProvider(provider, 1)" [disabled]="i === enabledConfigs('image-search').length - 1 || providerBusy() !== null">↓</button>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        @if (attemptsFor('image-search').length > 0) {
+          <div class="diagnostics" role="status">
+            <strong>نتيجة اختبار fallback</strong>
+            @for (attempt of attemptsFor('image-search'); track attempt.attempt) {
+              <p [class.attempt-success]="attempt.success">
+                المحاولة {{ attempt.attempt }}: <bdi dir="ltr">{{ attempt.providerName }}</bdi> —
+                {{ attempt.success ? 'نجحت' : failureLabel(attempt.failureReason) }}
+              </p>
+            }
+          </div>
+        }
+
+        @if (configuredFor('image-search') > 0) {
+          <div class="configured-heading"><strong>المضاف فعليًا</strong><span>{{ configuredFor('image-search') }} مكتبة صور لديها مفتاح محفوظ</span></div>
+          <div class="provider-grid" data-provider-state="configured">
+            @for (card of configuredCards('image-search'); track card.definition.providerKey) {
+              <ng-container [ngTemplateOutlet]="providerCard" [ngTemplateOutletContext]="{ card: card }"></ng-container>
+            }
+          </div>
+        } @else {
+          <div class="empty-state compact-empty">
+            <span class="material-symbols-outlined" aria-hidden="true">search_off</span>
+            <strong>لا توجد مكتبة صور API مضافة فعليًا</strong>
+          </div>
+        }
+
+        <div class="available-heading"><strong>متاح للإضافة</strong><span>{{ availableToAddFor('image-search') }} مكتبة يمكن إضافة مفتاح لها حاليًا</span></div>
+        <div class="available-provider-list" data-provider-state="available">
+          @for (card of availableProviderCards('image-search'); track card.definition.providerKey) {
+            <ng-container [ngTemplateOutlet]="availableProvider" [ngTemplateOutletContext]="{ card: card }"></ng-container>
+          }
+        </div>
+      </section>
+    }
+  </section>
+
+  <!-- Reusable provider card -->
+  <ng-template #providerCard let-card="card">
+    <article class="provider-card" [class.provider-card--unavailable]="!card.definition.implemented">
+      <div class="provider-card__top">
+        <div class="provider-identity">
+          <div class="provider-logo" [attr.data-provider]="card.definition.providerKey" aria-hidden="true">{{ providerMark(card.definition.providerKey) }}</div>
+          <div>
+            <h4 dir="ltr">{{ card.definition.displayName }}</h4>
+            <span>{{ capabilityLabel(card.definition.capability) }}</span>
+          </div>
+        </div>
+        @if (!card.definition.implemented) {
+          <span class="status-badge" data-status="unavailable">غير متاح في الكود حاليًا</span>
+        } @else {
+          <span class="status-badge" [attr.data-status]="card.config?.status || 'not_configured'">
+            {{ statusLabel(card.config?.status || 'not_configured') }}
+          </span>
+        }
+      </div>
+
+      <div class="provider-summary">
+        <span>Fallback <strong>#{{ card.config?.priority ?? card.definition.defaultPriority }}</strong></span>
+        <span>المفتاح <bdi dir="ltr">{{ card.config?.maskedKey || 'غير مضاف' }}</bdi></span>
+        <span>النموذج <bdi dir="ltr">{{ card.config?.model || card.definition.models[0] || 'غير مطلوب' }}</bdi></span>
+      </div>
+
+      @if (card.config; as config) {
+        <dl class="provider-details">
+          @if (config.accountId) { <div><dt>Account ID</dt><dd><bdi dir="ltr">{{ config.accountId }}</bdi></dd></div> }
+          @if (config.projectId) { <div><dt>Project ID</dt><dd><bdi dir="ltr">{{ config.projectId }}</bdi></dd></div> }
+          <div><dt>آخر نجاح</dt><dd>{{ formatProviderTime(config.lastSuccessfulRequestUtc) }}</dd></div>
+          <div><dt>آخر فشل</dt><dd>{{ formatProviderTime(config.lastFailedRequestUtc) }}</dd></div>
+        </dl>
+
+        @if (config.lastFailureReason) {
+          <p class="safe-failure"><span class="material-symbols-outlined" aria-hidden="true">info</span>{{ failureLabel(config.lastFailureReason) }}</p>
+        }
+        <p class="audit-line">آخر تعديل: {{ config.updatedBy || 'Admin' }} · {{ formatProviderTime(config.updatedAtUtc) }}</p>
+
+        <div class="provider-actions">
+          <button type="button" class="btn btn-primary btn-compact" (click)="testProvider(config)" [disabled]="providerBusy() !== null || fallbackBusy() !== null || !config.hasCredential">
+            {{ providerBusy() === 'test:' + config.id ? 'جارٍ اختبار الاتصال' : 'اختبار الاتصال' }}
+          </button>
+          <button type="button" class="btn btn-secondary btn-compact" (click)="toggleProvider(config)" [disabled]="providerBusy() !== null || fallbackBusy() !== null || !config.hasCredential">
+            {{ config.enabled ? 'تعطيل' : 'تفعيل' }}
+          </button>
+          <button type="button" class="btn btn-secondary btn-compact" (click)="openEditProvider(config)" [disabled]="providerBusy() !== null || fallbackBusy() !== null">تعديل الإعداد</button>
+          <button type="button" class="btn btn-danger-ghost btn-compact" (click)="requestRemoveCredentials(config)" [disabled]="providerBusy() !== null || fallbackBusy() !== null || !config.hasCredential">حذف بيانات الاعتماد</button>
+        </div>
+      } @else {
+        <div class="not-configured-copy">
+          @if (card.definition.implemented) {
+            <p>لم تتم إضافة بيانات اعتماد لهذا المزود.</p>
+            <button type="button" class="btn btn-secondary btn-compact" (click)="openAddProvider(card.definition.capability, card.definition.providerKey)" [disabled]="providerBusy() !== null || fallbackBusy() !== null || !encryptionReady()">إضافة الإعداد</button>
+          } @else {
+            <p>هذه البطاقة مرجع للمزوّد المخطط له فقط، ولا يمكن حفظ مفتاح له قبل تنفيذ Adapter آمن على الخادم.</p>
+          }
+        </div>
+      }
+    </article>
+  </ng-template>
+
+  <ng-template #availableProvider let-card="card">
+    <article class="available-provider-item" [class.available-provider-item--unavailable]="!card.definition.implemented">
+      <div class="provider-identity">
+        <div class="provider-logo" [attr.data-provider]="card.definition.providerKey" aria-hidden="true">{{ providerMark(card.definition.providerKey) }}</div>
+        <div>
+          <h4 dir="ltr">{{ card.definition.displayName }}</h4>
+          <span>{{ capabilityLabel(card.definition.capability) }}</span>
+        </div>
+      </div>
+      @if (card.definition.implemented) {
+        <span class="status-badge" data-status="not_configured">متاح للإضافة</span>
+        <button type="button" class="btn btn-secondary btn-compact" (click)="openAddProvider(card.definition.capability, card.definition.providerKey)" [disabled]="providerBusy() !== null || fallbackBusy() !== null || !encryptionReady()">إضافة الإعداد</button>
+      } @else {
+        <span class="status-badge" data-status="unavailable">غير متاح في الكود حاليًا</span>
+      }
+    </article>
+  </ng-template>
+
+  <!-- Add/Edit provider dialog -->
+  @if (providerDialogOpen()) {
+    <div
+      class="modal-backdrop"
+      role="button"
+      tabindex="0"
+      aria-label="إغلاق نافذة إعداد المزود"
+      (click)="closeProviderDialog()"
+      (keydown.enter)="closeProviderDialog()"
+      (keydown.space)="closeProviderDialog(); $event.preventDefault()"
+    >
+      <section class="provider-modal" role="dialog" aria-modal="true" aria-labelledby="provider-dialog-title" (mousedown)="$event.stopPropagation()">
+        <header class="modal-head">
+          <div>
+            <p class="eyebrow">Secure Provider Configuration</p>
+            <h2 id="provider-dialog-title">{{ editingProviderId() ? 'تعديل إعداد المزود' : 'إضافة مزود AI' }}</h2>
+          </div>
+          <button type="button" class="icon-button" aria-label="إغلاق" (click)="closeProviderDialog()" [disabled]="providerBusy() === 'save'">×</button>
+        </header>
+
+        <form class="provider-form" (ngSubmit)="saveAndTestProvider(apiKeyInput)">
+          <label>
+            <span>نوع المزود</span>
+            <select name="capability" [(ngModel)]="providerForm.capability" (ngModelChange)="onCapabilityChanged()" [disabled]="!!editingProviderId() || providerBusy() !== null">
+              <option value="text">Text AI</option>
+              <option value="image-generation" [disabled]="implementedFor('image-generation') === 0">Image Generation</option>
+              <option value="image-search">Image Search</option>
+            </select>
+          </label>
+
+          <label>
+            <span>المزود</span>
+            <select name="providerKey" [(ngModel)]="providerForm.providerKey" (ngModelChange)="onProviderChanged()" [disabled]="!!editingProviderId() || providerBusy() !== null">
+              @for (definition of formDefinitions(); track definition.providerKey) {
+                @if (definition.implemented) { <option [value]="definition.providerKey">{{ definition.displayName }}</option> }
+              }
+            </select>
+          </label>
+
+          <label class="full-row">
+            <span>{{ editingProviderId() ? 'مفتاح API جديد (اتركه فارغًا للاحتفاظ بالمحفوظ)' : 'مفتاح API' }}</span>
+            <div class="secret-input">
+              <input #apiKeyInput [type]="providerForm.showKey ? 'text' : 'password'" name="apiKey" autocomplete="new-password" spellcheck="false" dir="ltr" [required]="!editingProviderId()" [disabled]="providerBusy() !== null" />
+              <button type="button" (click)="providerForm.showKey = !providerForm.showKey" (keydown.enter)="providerForm.showKey = !providerForm.showKey; $event.preventDefault()" (keydown.space)="providerForm.showKey = !providerForm.showKey; $event.preventDefault()" [disabled]="providerBusy() !== null">
+                {{ providerForm.showKey ? 'إخفاء' : 'إظهار' }}
+              </button>
+            </div>
+            <small>يمكن إظهار المفتاح فقط قبل الحفظ. بعد الحفظ سيظهر آخر 4 أحرف فقط.</small>
+          </label>
+
+          @if (currentFormDefinition()?.requiresAccountId) {
+            <label>
+              <span>Cloudflare Account ID</span>
+              <input name="accountId" [(ngModel)]="providerForm.accountId" dir="ltr" autocomplete="off" [disabled]="providerBusy() !== null" />
+            </label>
+          }
+          @if (currentFormDefinition()?.supportsProjectId) {
+            <label>
+              <span>Google Project ID <em>اختياري عند عدم الحاجة</em></span>
+              <input name="projectId" [(ngModel)]="providerForm.projectId" dir="ltr" autocomplete="off" [disabled]="providerBusy() !== null" />
+            </label>
+          }
+
+          @if ((currentFormDefinition()?.models?.length || 0) > 0) {
+            <label>
+              <span>النموذج</span>
+              <select name="model" [(ngModel)]="providerForm.model" dir="ltr" [disabled]="providerBusy() !== null">
+                @for (model of currentFormDefinition()?.models || []; track model) { <option [value]="model">{{ model }}</option> }
+              </select>
+            </label>
+          }
+
+          <label>
+            <span>أولوية fallback</span>
+            <input type="number" name="priority" min="1" max="100" [(ngModel)]="providerForm.priority" [disabled]="providerBusy() !== null" />
+          </label>
+
+          <label class="checkbox-row full-row">
+            <input type="checkbox" name="enabled" [(ngModel)]="providerForm.enabled" [disabled]="providerBusy() !== null" />
+            <span>تفعيل المزود فور الحفظ</span>
+          </label>
+
+          <div class="security-callout full-row">
+            <span class="material-symbols-outlined" aria-hidden="true">security</span>
+            <p>عنوان الـAPI غير قابل للتعديل من الواجهة. الخادم يستخدم عناوين ثابتة ومسموحًا بها فقط.</p>
+          </div>
+
+          <footer class="modal-actions full-row">
+            <button type="button" class="btn btn-secondary" (click)="closeProviderDialog()" [disabled]="providerBusy() === 'save'">إلغاء</button>
+            <button type="submit" class="btn btn-primary" [disabled]="!canSaveProvider(apiKeyInput.value)">
+              {{ providerBusy() === 'save' ? 'جارٍ الحفظ والاختبار...' : 'حفظ واختبار الاتصال' }}
+            </button>
+          </footer>
+        </form>
+
+        @if (replaceConfirmation()) {
+          <div class="inline-confirm" role="alertdialog" aria-labelledby="replace-key-title">
+            <span class="material-symbols-outlined confirm-icon" aria-hidden="true">key</span>
+            <div>
+              <h3 id="replace-key-title">تأكيد استبدال المفتاح</h3>
+              <p>سيتم استبدال بيانات الاعتماد المشفّرة الحالية. لن يمكن استرجاع المفتاح القديم من الواجهة.</p>
+            </div>
+            <div class="inline-confirm__actions">
+              <button type="button" class="btn btn-secondary" (click)="replaceConfirmation.set(false)" [disabled]="providerBusy() === 'save'">إلغاء</button>
+              <button type="button" class="btn btn-primary" (click)="saveAndTestProvider(apiKeyInput, true)" [disabled]="providerBusy() !== null">تأكيد الاستبدال</button>
+            </div>
+          </div>
+        }
+      </section>
+    </div>
+  }
+
+  <!-- Remove credential confirmation -->
+  @if (removeConfirmationId()) {
+    @if (configById(removeConfirmationId()); as config) {
+      <div class="confirm-backdrop" role="presentation">
+        <section class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remove-key-title">
+          <span class="material-symbols-outlined confirm-icon confirm-icon--danger" aria-hidden="true">delete_forever</span>
+          <h2 id="remove-key-title">حذف بيانات الاعتماد؟</h2>
+          <p>سيُحذف المفتاح المشفّر الخاص بـ <bdi dir="ltr">{{ config.providerName }}</bdi> وسيتم تعطيل المزود فورًا.</p>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" (click)="removeConfirmationId.set(null)" [disabled]="providerBusy() !== null">إلغاء</button>
+            <button type="button" class="btn btn-danger" (click)="removeCredentials(config)" [disabled]="providerBusy() !== null || fallbackBusy() !== null">تأكيد حذف بيانات الاعتماد</button>
+          </div>
+        </section>
+      </div>
+    }
+  }
 </main>

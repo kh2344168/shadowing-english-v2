@@ -197,12 +197,17 @@ export class LocalProcessorClient {
   }
 
   async health(): Promise<{
+    protocolVersion: number;
+    profile?: string;
+    installed?: boolean;
     linked: boolean;
     activeJobId?: string | null;
     settings?: ProcessorSettings;
   }> {
     const result = await this.json<{
       protocolVersion: number;
+      profile?: string;
+      installed?: boolean;
       linked: boolean;
       activeJobId?: string | null;
       settings?: ProcessorSettings;

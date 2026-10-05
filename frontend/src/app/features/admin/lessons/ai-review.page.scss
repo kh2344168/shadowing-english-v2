@@ -1,0 +1,265 @@
+:host {
+  display: block;
+}
+.review-page {
+  max-width: 1120px;
+  margin: auto;
+  padding: 24px 16px 80px;
+  color: #0b1c30;
+}
+.review-header,
+.review-overview,
+.stage-heading {
+  border: 1px solid #e5eeff;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 18px 45px rgb(15 23 42 / 5%);
+}
+.review-header {
+  padding: 24px;
+}
+.review-header p,
+.overview-heading p,
+.stage-copy p,
+.stage-heading p {
+  color: #64748b;
+  margin: 4px 0;
+}
+.eyebrow {
+  display: block;
+  margin-top: 12px;
+  color: #00685f;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+h1,
+h2 {
+  margin: 14px 0;
+  color: #004e47;
+}
+p {
+  line-height: 1.8;
+}
+.back,
+.publish {
+  color: #004e47;
+  font-weight: 700;
+}
+.review-overview {
+  padding: 24px;
+  margin: 24px 0;
+}
+.overview-heading,
+.stage-heading,
+.overview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.overview-heading {
+  padding-bottom: 18px;
+  border-bottom: 1px solid #e5eeff;
+}
+.overview-heading h2,
+.stage-heading h2 {
+  margin: 0;
+}
+.progress-badge,
+.stage-badge {
+  border-radius: 99px;
+  background: #fff7e8;
+  color: #946112;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.stage-badge.reviewed {
+  background: #eaf7e6;
+  color: #3f8d2b;
+}
+.stage-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+.stage-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid #e5eeff;
+  border-radius: 14px;
+  padding: 16px;
+}
+.stage-row.is-selected {
+  border-color: #a1f1e5;
+  background: #f8fefd;
+}
+.stage-number {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #e6f6f4;
+  color: #004e47;
+  font-weight: 800;
+}
+.stage-copy h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.stage-copy small {
+  display: block;
+  color: #004e47;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.stage-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.stage-controls button,
+.overview-actions button {
+  margin: 0;
+}
+.overview-actions {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #a1f1e5;
+  border-radius: 12px;
+  background: #effbf8;
+}
+.overview-actions p {
+  margin: 0;
+  flex: 1;
+}
+.stage-heading {
+  padding: 18px 24px;
+  margin: 20px 0;
+}
+.stage-heading .eyebrow {
+  margin: 0 0 6px;
+}
+.state,
+.alert,
+.notice {
+  padding: 14px;
+  border-radius: 12px;
+  margin: 16px 0;
+  background: #ecf8f5;
+}
+.alert {
+  color: #8c2a2a;
+  background: #fff0f0;
+}
+.card {
+  background: #fff;
+  border: 1px solid #e5eeff;
+  border-radius: 16px;
+  padding: 24px;
+  margin: 18px 0;
+}
+fieldset {
+  border: 1px solid #e5eeff;
+  border-radius: 12px;
+  padding: 12px;
+  margin: 14px 0;
+}
+legend {
+  padding: 0 6px;
+  font-weight: 700;
+}
+label {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+  font-weight: 600;
+}
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+label.check input {
+  width: 20px;
+  min-height: 20px;
+}
+input,
+textarea,
+select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #bacfca;
+  border-radius: 8px;
+  padding: 8px;
+  font: inherit;
+}
+textarea {
+  min-height: 90px;
+}
+button,
+.publish {
+  display: inline-block;
+  min-height: 44px;
+  padding: 10px 16px;
+  margin: 6px 6px 6px 0;
+  border: 0;
+  border-radius: 9px;
+  color: #fff;
+  background: #00685f;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+}
+button.secondary {
+  background: #effbf8;
+  border: 1px solid #a1f1e5;
+  color: #004e47;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 3px solid #27bbaa;
+  outline-offset: 2px;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 600px) {
+  .review-header,
+  .review-overview,
+  .stage-heading {
+    padding: 16px;
+  }
+  .stage-row {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .stage-controls {
+    grid-column: 1 / -1;
+    justify-content: space-between;
+  }
+  .overview-actions button,
+  .stage-controls button {
+    flex: 1;
+  }
+  .card {
+    padding: 14px;
+  }
+}

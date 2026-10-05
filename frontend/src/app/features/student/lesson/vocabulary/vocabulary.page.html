@@ -1,1 +1,43 @@
-<app-feature-placeholder title="المفردات" />
+<section class="learning-page ai-stage" dir="rtl" aria-labelledby="vocabulary-title">
+  <a class="learning-back" [routerLink]="['/student/lessons', slotId, 'overview']">← نظرة الدرس</a>
+  <h1 id="vocabulary-title" class="page-title">كلمات وعبارات الدرس</h1>
+  @if (loading()) {
+  <p role="status" class="learning-status">جاري تحميل الكلمات...</p>
+  } @else if (material(); as data) { @if (completed() < data.vocabulary.length) {
+  <article class="learning-card" dir="auto">
+    <span class="learning-eyebrow"
+      >{{ data.vocabulary[completed()].kind === 'chunk' ? 'العبارة' : 'الكلمة' }} {{ completed() + 1
+      }} من {{ data.vocabulary.length }}</span
+    >
+    <h2 lang="en">{{ data.vocabulary[completed()].word }}</h2>
+    <p>{{ data.vocabulary[completed()].meaningAr }}</p>
+    <blockquote lang="en">{{ data.vocabulary[completed()].exampleEn }}</blockquote>
+    <p>{{ data.vocabulary[completed()].exampleAr }}</p>
+    @if (data.vocabulary[completed()].explanation) {
+    <p lang="en" dir="ltr">{{ data.vocabulary[completed()].explanation }}</p>
+    } @if (data.vocabulary[completed()].extraExample) {
+    <blockquote lang="en" dir="ltr">{{ data.vocabulary[completed()].extraExample }}</blockquote>
+    } @if (data.vocabulary[completed()].usageNote) {
+    <p>{{ data.vocabulary[completed()].usageNote }}</p>
+    }
+    <button type="button" class="learning-button" [disabled]="busy()" (click)="next()">
+      {{ busy() ? 'جاري الحفظ...' : 'عرفت الكلمة، التالي ←' }}
+    </button>
+  </article>
+  } @else {
+  <section class="learning-card" role="status">
+    <h2>أنهيت الكلمات</h2>
+    <p>يمكنك الرجوع للكلمات أو بدء المرحلة التالية.</p>
+    <a
+      class="learning-button"
+      [routerLink]="['/student/lessons', slotId, data.shadowingReviewEnabled ? 'shadowing-review' : 'listen-type']"
+      >{{ data.shadowingReviewEnabled ? 'أعد الشادوينج بعد فهم الكلمات' : 'ابدأ استمع واكتب' }} ←</a
+    >
+  </section>
+  } } @if (error()) {
+  <p role="alert" class="learning-status error">
+    {{ error() }}
+    <button type="button" (click)="load()">تحديث</button>
+  </p>
+  }
+</section>

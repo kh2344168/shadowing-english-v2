@@ -1,4 +1,11 @@
+@use '../ai-practice';
+
 :host {
   display: block;
   min-width: 0;
+}
+.missed-word {
+  border-bottom: 2px solid #b23138;
+  color: #962e31;
+  font-weight: 700;
 }

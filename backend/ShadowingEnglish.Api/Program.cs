@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Http.Features;
 using ShadowingEnglish.Api.Common;
 using ShadowingEnglish.Api.Modules.Admin;
+using ShadowingEnglish.Api.Modules.AI;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using ShadowingEnglish.Api.Modules.Auth;
@@ -73,6 +74,21 @@ builder.Services.ConfigureApplicationCookie(options =>
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IShadowingMediaStore>(services => ShadowingMediaStoreFactory.Create(
     builder.Environment, builder.Configuration, services.GetRequiredService<ILoggerFactory>()));
+builder.Services.AddSingleton<AiProviderCredentialProtector>();
+builder.Services.AddHttpClient<AiProviderConnectionTester>(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(12);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("ShadowingEnglishV2/1.0");
+    })
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient(nameof(TextAiRouter), client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(12);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("ShadowingEnglishV2/1.0");
+    })
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddSingleton<TextAiRouter>();
+builder.Services.AddHostedService<LessonAiWorker>();
 
 // Bound sensitive authentication and write requests with built-in policies.
 builder.Services.AddRateLimiter(options =>
@@ -118,11 +134,31 @@ builder.Services.AddRateLimiter(options =>
             AutoReplenishment = true
         }));
 
+    options.AddPolicy("admin-ai-provider-write", context => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 20,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
+
     options.AddPolicy("student-progress-write", context => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
         factory: _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 60,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
+
+    options.AddPolicy("student-ai-write", context => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0,
             AutoReplenishment = true
@@ -168,10 +204,13 @@ app.UseAuthorization();
 
 app.MapAuthEndpoints();
 app.MapAdminAccountsEndpoints();
+app.MapAdminAiProviderEndpoints();
+app.MapAdminLessonAiEndpoints();
 app.MapAdminGroupsEndpoints();
 app.MapAdminCurriculumsEndpoints();
 app.MapAdminShadowingEndpoints();
 app.MapStudentLearningEndpoints();
+app.MapStudentAiLearningEndpoints();
 
 app.MapGet("/health", (ILogger<Program> logger) =>
 {

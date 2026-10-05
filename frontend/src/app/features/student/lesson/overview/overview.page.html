@@ -98,6 +98,21 @@
         </div>
       </section>
 
+      @if (data.hasAiContent) {
+        <section class="practice-card" aria-labelledby="words-card-title">
+          <div class="practice-card__icon" aria-hidden="true">📖</div>
+          <div class="practice-card__body">
+            <h2 id="words-card-title">الكلمات ومراحل الدرس</h2>
+            <p>كلمات الدرس، ثم استمع واكتب، فالاختبار والمحادثة.</p>
+            @if (data.isComplete) {
+              <a class="practice-card__action" [routerLink]="['/student/lessons', data.slotId, 'vocabulary']">ابدأ الكلمات ←</a>
+            } @else {
+              <div class="practice-card__unavailable" role="status">تفتح المراحل بعد إنهاء تدريب Shadowing.</div>
+            }
+          </div>
+        </section>
+      }
+
       <footer class="lesson-note">
         هذه الصفحة تعرض بيانات الدرس المنشور والمتاح لمجموعتك فقط، ولا تقوم بتحميل ملفات الصوت قبل بدء التدريب.
       </footer>

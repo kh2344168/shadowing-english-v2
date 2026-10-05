@@ -1,4 +1,52 @@
+@use '../ai-practice';
+
 :host {
   display: block;
   min-width: 0;
+}
+.conversation-intro {
+  margin-bottom: 12px;
+}
+.conversation-thread {
+  display: grid;
+  gap: 12px;
+  min-height: 120px;
+  padding: 16px;
+  border-radius: 14px;
+  background: #e5ddd5;
+}
+.chat-pair {
+  display: grid;
+  gap: 8px;
+}
+.chat-bubble {
+  width: fit-content;
+  max-width: min(85%, 480px);
+  padding: 10px 14px;
+  border-radius: 12px;
+  color: #182a27;
+  overflow-wrap: anywhere;
+  box-shadow: 0 1px 3px #0001;
+}
+.chat-bubble.student {
+  justify-self: end;
+  background: #d9fdd3;
+}
+.chat-bubble.tutor {
+  justify-self: start;
+  background: #fff;
+}
+.chat-bubble p {
+  margin: 4px 0;
+}
+.chat-bubble details {
+  margin-top: 8px;
+  font-size: 0.9rem;
+}
+.chat-bubble summary {
+  cursor: pointer;
+  color: #075c55;
+}
+.composer {
+  margin-top: 12px;
 }

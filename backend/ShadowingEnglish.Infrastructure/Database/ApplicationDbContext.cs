@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using ShadowingEnglish.Core.Groups;
 using ShadowingEnglish.Core.Learning;
+using ShadowingEnglish.Infrastructure.AIProviders;
 using ShadowingEnglish.Infrastructure.Identity;
 
 namespace ShadowingEnglish.Infrastructure.Database;
@@ -21,6 +22,11 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<GroupCurriculumAssignment> GroupCurriculumAssignments => Set<GroupCurriculumAssignment>();
     public DbSet<PublishedLessonSlot> PublishedLessonSlots => Set<PublishedLessonSlot>();
     public DbSet<StudentStageProgress> StudentStageProgress => Set<StudentStageProgress>();
+    public DbSet<LessonAiContent> LessonAiContents => Set<LessonAiContent>();
+    public DbSet<StudentPracticeAttempt> StudentPracticeAttempts => Set<StudentPracticeAttempt>();
+    public DbSet<StudentAiDailyUsage> StudentAiDailyUsages => Set<StudentAiDailyUsage>();
+    public DbSet<AiProviderConfiguration> AiProviderConfigurations => Set<AiProviderConfiguration>();
+    public DbSet<AiProviderAuditEntry> AiProviderAuditEntries => Set<AiProviderAuditEntry>();
 
     public override int SaveChanges() { RejectPublishedMutations(); return base.SaveChanges(); }
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
@@ -162,6 +168,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.HasIndex(x => new { x.PublishedCurriculumVersionId, x.WeekNumber, x.DayNumber, x.SortOrder }).IsUnique();
             entity.HasOne<PublishedCurriculumVersion>().WithMany().HasForeignKey(x => x.PublishedCurriculumVersionId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<LessonVersion>().WithMany().HasForeignKey(x => x.LessonVersionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LessonAiContent>().WithMany().HasForeignKey(x => x.AiContentId).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<StudentStageProgress>(entity =>
         {
@@ -174,6 +181,81 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
                 .HasForeignKey(x => new { x.SlotId, x.PublishedCurriculumVersionId })
                 .HasPrincipalKey(x => new { x.Id, x.PublishedCurriculumVersionId })
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<LessonAiContent>(entity =>
+        {
+            entity.ToTable("LessonAiContents");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Status).IsRequired().HasMaxLength(16);
+            entity.Property(x => x.PayloadJson).HasMaxLength(32000);
+            entity.Property(x => x.ProviderName).HasMaxLength(32);
+            entity.Property(x => x.ErrorCode).HasMaxLength(64);
+            entity.HasIndex(x => new { x.LessonVersionId, x.CreatedAtUtc });
+            entity.HasOne<LessonVersion>().WithMany().HasForeignKey(x => x.LessonVersionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.CreatedByAdminId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<StudentAiDailyUsage>(entity =>
+        {
+            entity.ToTable("StudentAiDailyUsages", table => table.HasCheckConstraint("CK_StudentAiDailyUsages_Used", "[UsedRequests] >= 0"));
+            entity.HasKey(x => new { x.StudentId, x.DayUtc });
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<StudentPracticeAttempt>(entity =>
+        {
+            entity.ToTable("StudentPracticeAttempts");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.StageKey).IsRequired().HasMaxLength(32);
+            entity.Property(x => x.Answer).IsRequired().HasMaxLength(600);
+            entity.Property(x => x.FeedbackJson).IsRequired().HasMaxLength(3000);
+            entity.HasIndex(x => x.PublishedCurriculumVersionId);
+            entity.HasIndex(x => new { x.SlotId, x.PublishedCurriculumVersionId });
+            entity.HasIndex(x => new { x.StudentId, x.SlotId, x.StageKey, x.CreatedAtUtc });
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PublishedCurriculumVersion>().WithMany().HasForeignKey(x => x.PublishedCurriculumVersionId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PublishedLessonSlot>().WithMany()
+                .HasForeignKey(x => new { x.SlotId, x.PublishedCurriculumVersionId })
+                .HasPrincipalKey(x => new { x.Id, x.PublishedCurriculumVersionId })
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<AiProviderConfiguration>(entity =>
+        {
+            entity.ToTable("AiProviderConfigurations", table => table.HasCheckConstraint(
+                "CK_AiProviderConfigurations_Priority", "[Priority] BETWEEN 1 AND 100"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Capability).IsRequired().HasMaxLength(32);
+            entity.Property(x => x.ProviderKey).IsRequired().HasMaxLength(48);
+            entity.Property(x => x.EncryptedApiKey).HasMaxLength(4096);
+            entity.Property(x => x.KeyLast4).HasMaxLength(4);
+            entity.Property(x => x.AccountId).HasMaxLength(160);
+            entity.Property(x => x.ProjectId).HasMaxLength(160);
+            entity.Property(x => x.Model).HasMaxLength(200);
+            entity.Property(x => x.Status).IsRequired().HasMaxLength(40);
+            entity.Property(x => x.LastFailureReason).HasMaxLength(64);
+            entity.Property(x => x.Revision).IsConcurrencyToken();
+            entity.Property(x => x.LastMutationRequestHash).HasMaxLength(64);
+            entity.HasIndex(x => new { x.Capability, x.ProviderKey }).IsUnique();
+            entity.HasIndex(x => new { x.Capability, x.Enabled, x.Priority });
+            entity.HasOne<ApplicationUser>().WithMany()
+                .HasForeignKey(x => x.UpdatedByAdminId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<AiProviderAuditEntry>(entity =>
+        {
+            entity.ToTable("AiProviderAuditEntries");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Capability).IsRequired().HasMaxLength(32);
+            entity.Property(x => x.ProviderKey).IsRequired().HasMaxLength(48);
+            entity.Property(x => x.Action).IsRequired().HasMaxLength(40);
+            entity.Property(x => x.ResultCode).IsRequired().HasMaxLength(64);
+            entity.HasIndex(x => new { x.ProviderConfigurationId, x.OccurredAtUtc });
+            entity.HasOne<AiProviderConfiguration>().WithMany()
+                .HasForeignKey(x => x.ProviderConfigurationId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany()
+                .HasForeignKey(x => x.ActorAdminId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

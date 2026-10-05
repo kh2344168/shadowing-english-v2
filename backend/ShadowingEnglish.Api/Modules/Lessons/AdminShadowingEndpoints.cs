@@ -10,6 +10,7 @@ using ShadowingEnglish.Core.Learning;
 using ShadowingEnglish.Infrastructure.Database;
 using ShadowingEnglish.Infrastructure.Identity;
 using ShadowingEnglish.Api.Modules.Media;
+using ShadowingEnglish.Api.Modules.AI;
 
 namespace ShadowingEnglish.Api.Modules.Lessons;
 
@@ -158,6 +159,13 @@ public static class AdminShadowingEndpoints
                     VersionNumber = 1, Title = title, Description = description,
                     CreatedAtUtc = DateTimeOffset.UtcNow });
                 db.LessonSegments.AddRange(rows);
+                // Generated material is a separate background draft; it never publishes the lesson.
+                var now = DateTimeOffset.UtcNow;
+                db.LessonAiContents.Add(new LessonAiContent
+                {
+                    Id = Guid.NewGuid(), LessonVersionId = versionId, CreatedByAdminId = actor.Id,
+                    Status = "Pending", Revision = Guid.NewGuid(), CreatedAtUtc = now, UpdatedAtUtc = now
+                });
                 databaseSaveStarted = true;
                 await db.SaveChangesAsync(http.RequestAborted);
                 committed = true;

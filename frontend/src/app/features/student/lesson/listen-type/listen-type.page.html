@@ -1,1 +1,57 @@
-<app-feature-placeholder title="استمع واكتب" />
+<section class="learning-page ai-stage" dir="rtl" aria-labelledby="dictation-title">
+  <a
+    class="learning-back"
+    [routerLink]="['/student/lessons', slotId, material()?.shadowingReviewEnabled ? 'shadowing-review' : 'vocabulary']"
+    >← المرحلة السابقة</a
+  >
+  <h1 id="dictation-title" class="page-title">استمع واكتب</h1>
+  @if (loading()) {
+  <p role="status" class="learning-status">جاري تحميل التدريب...</p>
+  } @else if (material(); as data) { @if (completed() < data.dictation.length) {
+  <article class="learning-card">
+    <span class="learning-eyebrow"
+      >الجملة {{ completed() + 1 }} من {{ data.dictation.length }}</span
+    >
+    <p>اضغط تشغيل ثم اكتب الجملة الإنجليزية التي سمعتها.</p>
+    @if (data.dictation[completed()].hint) {
+    <p>تلميح: {{ data.dictation[completed()].hint }}</p>
+    }
+    <audio #teacher controls preload="none" aria-label="صوت الجملة"></audio>
+    <button type="button" class="learning-button subtle" (click)="play()">تشغيل الجملة</button>
+    <label for="heard">ماذا سمعت؟</label>
+    <input id="heard" dir="ltr" [(ngModel)]="answer" maxlength="600" autocomplete="off" />
+    <button
+      type="button"
+      class="learning-button"
+      [disabled]="busy() || !answer.trim()"
+      (click)="submit()"
+    >
+      {{ busy() ? 'جاري التحقق...' : 'تحقق من الإجابة' }}
+    </button>
+  </article>
+  } @else {
+  <section class="learning-card" role="status">
+    <h2>أنهيت الاستماع والكتابة</h2>
+    <a class="learning-button" [routerLink]="['/student/lessons', slotId, 'quiz']"
+      >ابدأ الاختبار ←</a
+    >
+  </section>
+  } @if (feedback(); as result) {
+  <div class="result" [class.error]="!result.correct" role="status">
+    <strong>{{ result.correct ? 'إجابة صحيحة!' : 'راجع الكلمات واكتب الجملة مرة أخرى.' }}</strong>
+    @if (!result.correct) {
+    <p>الكلمات التي تحتاج مراجعة:</p>
+    <p lang="en" dir="ltr">
+      @for (word of reviewWords(result.expected); track $index) {
+      <span [class.missed-word]="result.wrongPositions.includes($index)">{{ word }} </span>
+      }
+    </p>
+    }
+  </div>
+  } } @if (error()) {
+  <p role="alert" class="learning-status error">
+    {{ error() }}
+    <button type="button" (click)="load()">تحديث</button>
+  </p>
+  }
+</section>

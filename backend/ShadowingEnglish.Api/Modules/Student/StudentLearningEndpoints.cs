@@ -105,7 +105,7 @@ public static class StudentLearningEndpoints
                 log.LogInformation("Student.Overview.Success StudentId={StudentId} SlotId={SlotId} DurationMs={DurationMs}", student, slotId, Ms(clock));
                 return Results.Ok(new OverviewDto(slotId, slot.VersionId, slot.Title, slot.Description,
                     slot.WeekNumber, slot.DayNumber, slot.SortOrder, count,
-                    progress?.CompletedSegments ?? 0, progress?.IsComplete ?? false));
+                    progress?.CompletedSegments ?? 0, progress?.IsComplete ?? false, slot.AiContentId is not null));
             }
             catch (Exception ex) { return Fail(log, ex, "Overview", student.Value, clock); }
         });
@@ -249,7 +249,7 @@ public static class StudentLearningEndpoints
                 version.GroupId == member.GroupId && version.PublishedAtUtc <= now &&
                 version.AvailableAtUtc <= now && slot.Id == slotId && slot.AvailableAtUtc <= now
             select new ScopedLesson(version.Id, lesson.Id, lesson.Title, lesson.Description,
-                slot.WeekNumber, slot.DayNumber, slot.SortOrder)).SingleOrDefaultAsync();
+                slot.WeekNumber, slot.DayNumber, slot.SortOrder, slot.AiContentId)).SingleOrDefaultAsync();
     }
 
     private static double Ms(long start) => Stopwatch.GetElapsedTime(start).TotalMilliseconds;
@@ -271,13 +271,14 @@ public static class StudentLearningEndpoints
     { log.LogError("Student.{Operation}.Failed ErrorCode=learning_operation_failed ErrorType={ErrorType} StudentId={StudentId} DurationMs={DurationMs}", ex.GetType().Name, operation, studentId, Ms(start)); return Results.Problem(statusCode: 500); }
 
     private sealed record ScopedLesson(Guid VersionId, Guid LessonVersionId, string Title, string Description,
-        int WeekNumber, int DayNumber, int SortOrder);
+        int WeekNumber, int DayNumber, int SortOrder, Guid? AiContentId);
     private sealed record LessonCard(Guid SlotId, string Title, int WeekNumber, int DayNumber, int SortOrder,
         int CompletedSegments, bool IsComplete);
     private sealed record CurriculumDto(string? GroupName, Guid? PublishedVersionId, string? CurriculumTitle,
         LessonCard[] Items, bool HasMore);
     private sealed record OverviewDto(Guid SlotId, Guid VersionId, string Title, string Description,
-        int WeekNumber, int DayNumber, int SortOrder, int SegmentCount, int CompletedSegments, bool IsComplete);
+        int WeekNumber, int DayNumber, int SortOrder, int SegmentCount, int CompletedSegments, bool IsComplete,
+        bool HasAiContent);
     private sealed record SegmentDto(int Position, string Text, string AudioUrl);
     private sealed record SaveProgressRequest(int CompletedSegments);
     private sealed record ProgressDto(int CompletedSegments, bool IsComplete);

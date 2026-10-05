@@ -42,6 +42,7 @@
         <div class="card-body"><h2>{{ lesson.title }}</h2><p>{{ lesson.description || 'درس صوتي جاهز للتنظيم في المنهج.' }}</p></div>
         <div class="card-bottom"><div class="meta"><span class="material-symbols-outlined" aria-hidden="true">graphic_eq</span>{{ lesson.segmentCount }} مقطع صوتي</div>
           <div class="card-actions">
+            <a class="add-curriculum" [routerLink]="['/admin/lessons', lesson.versionId, 'ai']" [attr.aria-label]="'مراجعة كلمات ' + lesson.title">مراجعة الكلمات والتمارين</a>
             <a class="add-curriculum" routerLink="/admin/curriculums" [queryParams]="{ lessonVersionId: lesson.versionId }" [attr.aria-label]="'إضافة ' + lesson.title + ' إلى المنهج'"><span class="material-symbols-outlined" aria-hidden="true">playlist_add</span>إضافة للمنهج</a>
           </div>
         </div>

@@ -1,1 +1,66 @@
-<app-feature-placeholder title="المحادثة" />
+<section class="learning-page ai-stage" dir="rtl" aria-labelledby="conversation-title">
+  <a class="learning-back" [routerLink]="['/student/lessons', slotId, 'quiz']">← الاختبار</a>
+  <h1 id="conversation-title" class="page-title">محادثة الدرس</h1>
+  @if (loading()) {
+  <p role="status" class="learning-status">جاري تحميل المحادثة...</p>
+  } @else if (material(); as data) {
+  <header class="learning-card conversation-intro">
+    <span class="learning-eyebrow">الموقف: {{ data.conversationScenario }}</span>
+    <p>ركّز على: {{ data.grammarFocus }}</p>
+    @if (data.aiRole || data.studentRole) {
+    <p>المعلّم: {{ data.aiRole || 'محادث إنجليزي' }} · أنت: {{ data.studentRole || 'متعلم' }}</p>
+    } @if (data.targetPhrases?.length) {
+    <p>
+      كلمات وعبارات الدرس: <span lang="en" dir="ltr">{{ data.targetPhrases?.join(' · ') }}</span>
+    </p>
+    } @if (data.conversationGoals?.length) {
+    <p>الهدف: {{ data.conversationGoals?.join('؛ ') }}</p>
+    }
+    <p>اكتب ردك بالإنجليزي، وستحصل على تصحيح واقتراح أفضل.</p>
+    <small>المحادثة النصية فقط. لا تشارك بيانات شخصية.</small>
+  </header>
+  @if (history(); as log) {
+  <div class="conversation-thread" aria-label="محادثة الدرس">
+    @if (data.openingMessage) {
+    <p class="chat-bubble tutor" lang="en" dir="ltr">{{ data.openingMessage }}</p>
+    } @for (turn of log.turns; track $index) {
+    <article class="chat-pair">
+      <p class="chat-bubble student" dir="ltr" lang="en">{{ turn.message }}</p>
+      <div class="chat-bubble tutor">
+        <p dir="ltr" lang="en">{{ turn.feedback.reply }}</p>
+        <details>
+          <summary>اعرض التصحيح والملاحظات</summary>
+          <p>التصحيح: {{ turn.feedback.correction }}</p>
+          <p>صياغة أفضل: <span dir="ltr" lang="en">{{ turn.feedback.betterAnswer }}</span></p>
+          <p>ملاحظة القاعدة: {{ turn.feedback.grammarTip }}</p>
+        </details>
+      </div>
+    </article>
+    }
+  </div>
+  @if (log.turns.length < 10 && log.remainingToday > 0) {
+  <div class="learning-card composer">
+    <label for="student-message">ردك بالإنجليزي</label>
+    <textarea id="student-message" dir="ltr" [(ngModel)]="message" maxlength="400"></textarea>
+    <button
+      type="button"
+      class="learning-button"
+      [disabled]="busy() || !message.trim()"
+      (click)="send()"
+    >
+      {{ busy() ? 'جاري الرد...' : 'أرسل الرد' }}
+    </button>
+  </div>
+  }
+  <p role="status" class="learning-status">
+    {{ log.turns.length }} من 10 ردود في الدرس. المتبقي اليوم: {{ log.remainingToday }} ردود AI. @if
+    (log.turns.length >= 10) { انتهت المحادثة. } @else if (!log.remainingToday) { يمكنك استكمال
+    الدرس في يوم جديد. }
+  </p>
+  } } @if (error()) {
+  <p role="alert" class="learning-status error">
+    {{ error() }}
+    <button type="button" (click)="load()">تحديث</button>
+  </p>
+  }
+</section>

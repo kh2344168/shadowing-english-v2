@@ -6,6 +6,52 @@ import { vi } from 'vitest';
 import { StudentShadowingPage } from './shadowing.page';
 
 describe('StudentShadowingPage', () => {
+  it('resumes the second Shadowing stage after approved vocabulary', async () => {
+    await TestBed.configureTestingModule({
+      imports: [StudentShadowingPage],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({ slotId: 'review-1' }),
+              routeConfig: { path: 'lessons/:slotId/shadowing-review' },
+            },
+          },
+        },
+      ],
+    }).compileComponents();
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(StudentShadowingPage);
+    fixture.detectChanges();
+    http.expectOne('/api/student/learning/slots/review-1').flush({
+      slotId: 'review-1',
+      title: 'Lesson',
+      segmentCount: 2,
+      completedSegments: 2,
+      isComplete: true,
+    });
+    await Promise.resolve();
+    http.expectOne('/api/student/learning/slots/review-1/ai-material').flush({
+      completed: { vocabulary: true, shadowingReview: false },
+      progress: { shadowingReview: 1 },
+      shadowingReviewEnabled: true,
+    });
+    await Promise.resolve();
+    http.expectOne('/api/student/learning/slots/review-1/segments/2').flush({
+      position: 2,
+      text: 'Hello again',
+      audioUrl: '/audio',
+    });
+    await fixture.whenStable();
+    expect(fixture.componentInstance.reviewMode).toBe(true);
+    expect(fixture.componentInstance.position()).toBe(2);
+    http.verify();
+    fixture.destroy();
+  });
   it('restores the next segment, requests audio only after play, and saves on explicit Next', async () => {
     await TestBed.configureTestingModule({
       imports: [StudentShadowingPage],

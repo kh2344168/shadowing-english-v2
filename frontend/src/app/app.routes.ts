@@ -32,6 +32,11 @@ export const routes: Routes = [
           import('./features/admin/lessons/lessons.page').then((m) => m.AdminLessonsPage),
       },
       {
+        path: 'lessons/:versionId/ai',
+        loadComponent: () =>
+          import('./features/admin/lessons/ai-review.page').then((m) => m.AdminAiReviewPage),
+      },
+      {
         path: 'lesson-builder',
         loadComponent: () =>
           import('./features/admin/lesson-builder/lesson-builder.page').then(
@@ -142,6 +147,13 @@ export const routes: Routes = [
       },
       {
         path: 'lessons/:slotId/shadowing',
+        loadComponent: () =>
+          import('./features/student/lesson/shadowing/shadowing.page').then(
+            (m) => m.StudentShadowingPage,
+          ),
+      },
+      {
+        path: 'lessons/:slotId/shadowing-review',
         loadComponent: () =>
           import('./features/student/lesson/shadowing/shadowing.page').then(
             (m) => m.StudentShadowingPage,

@@ -1,1 +1,81 @@
-<app-feature-placeholder title="الاختبار" />
+<section class="learning-page ai-stage" dir="rtl" aria-labelledby="quiz-title">
+  <a class="learning-back" [routerLink]="['/student/lessons', slotId, 'listen-type']"
+    >← استمع واكتب</a
+  >
+  <h1 id="quiz-title" class="page-title">اختبار الدرس</h1>
+  @if (loading()) {
+  <p role="status" class="learning-status">جاري تحميل الأسئلة...</p>
+  } @else if (material(); as data) { @if (completed() < data.quiz.length) {
+  <article class="learning-card">
+    <span class="learning-eyebrow">السؤال {{ completed() + 1 }} من {{ data.quiz.length }}</span>
+    <h2>{{ data.quiz[completed()].question }}</h2>
+    @if (data.quiz[completed()].type === 'word-order') {
+    <p>رتب الكلمات لتكوين الجملة الصحيحة:</p>
+    <div class="word-chips" dir="ltr" aria-label="الكلمات بالترتيب الذي اخترته">
+      @for (index of ordered(); track $index) {
+      <button type="button" class="word-chip selected" (click)="removeWord(index)">
+        {{ data.quiz[completed()].options[index] }} ×
+      </button>
+      }
+    </div>
+    <div class="word-chips" dir="ltr" aria-label="كلمات يمكنك اختيارها">
+      @for (word of data.quiz[completed()].options; track $index) {
+      <button
+        type="button"
+        class="word-chip"
+        [disabled]="ordered().includes($index)"
+        (click)="addWord($index)"
+      >
+        {{ word }}
+      </button>
+      }
+    </div>
+    } @else { @if (data.quiz[completed()].type === 'vocabulary-card') {
+    <p>اختر الكلمة المناسبة لمعنى البطاقة.</p>
+    }
+    <fieldset>
+      <legend>اختر الإجابة الصحيحة</legend>
+      @for (option of data.quiz[completed()].options; track $index) {
+      <label
+        ><input
+          type="radio"
+          name="quiz-answer"
+          [checked]="selected() === $index"
+          (change)="choose($index)"
+        />
+        <span>{{ option }}</span>
+      </label>
+      }
+    </fieldset>
+    }
+    <button
+      type="button"
+      class="learning-button"
+      [disabled]="busy() || (data.quiz[completed()].type === 'word-order' ? ordered().length !== data.quiz[completed()].options.length : selected() === null)"
+      (click)="submit()"
+    >
+      {{ busy() ? 'جاري التحقق...' : 'تحقق من الإجابة' }}
+    </button>
+  </article>
+  } @else {
+  <section class="learning-card" role="status">
+    <h2>أنهيت الاختبار</h2>
+    <a class="learning-button" [routerLink]="['/student/lessons', slotId, 'conversation']"
+      >ابدأ المحادثة ←</a
+    >
+  </section>
+  } @if (feedback(); as result) {
+  <div class="result" [class.error]="!result.correct" role="status">
+    <strong
+      >{{ result.correct ? 'إجابة صحيحة!' : 'الإجابة الصحيحة: ' + (result.correctAnswer ||
+      answeredOptions()[result.correctIndex]) }}</strong
+    >
+    <p>{{ result.explanationAr }}</p>
+  </div>
+  } } @if (error()) {
+  <p role="alert" class="learning-status error">
+    {{ error() }}
+    <button type="button" (click)="load()">تحديث</button>
+  </p>
+  }
+</section>

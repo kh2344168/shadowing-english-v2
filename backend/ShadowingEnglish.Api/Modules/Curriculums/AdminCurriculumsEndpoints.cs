@@ -250,6 +250,12 @@ public static class AdminCurriculumsEndpoints
                     return op.Fail(409, "active_progress_prevents_republish");
                 var slots = await db.CurriculumDraftLessonSlots.AsNoTracking()
                     .Where(x => x.CurriculumTemplateId == template.Id).ToArrayAsync(http.RequestAborted);
+                var content = await db.LessonAiContents.AsNoTracking()
+                    .Where(x => lessonIds.Contains(x.LessonVersionId) && x.Status == "Approved")
+                    .OrderByDescending(x => x.ApprovedAtUtc).ThenByDescending(x => x.Id)
+                    .Select(x => new { x.Id, x.LessonVersionId }).ToListAsync(http.RequestAborted);
+                var currentContent = content.GroupBy(x => x.LessonVersionId)
+                    .ToDictionary(x => x.Key, x => x.First().Id);
                 var maxNumber = await db.PublishedCurriculumVersions.Where(x => x.GroupId == request.GroupId && x.CurriculumTemplateId == template.Id)
                     .Select(x => (int?)x.VersionNumber).MaxAsync(http.RequestAborted) ?? 0;
                 var now = DateTimeOffset.UtcNow;
@@ -263,6 +269,8 @@ public static class AdminCurriculumsEndpoints
                 db.PublishedLessonSlots.AddRange(slots.Select(x => new PublishedLessonSlot
                 {
                     Id = Guid.NewGuid(), PublishedCurriculumVersionId = version.Id, LessonVersionId = x.LessonVersionId,
+                    AiContentId = currentContent.GetValueOrDefault(x.LessonVersionId) is Guid selected && selected != Guid.Empty
+                        ? selected : null,
                     WeekNumber = x.WeekNumber, DayNumber = x.DayNumber, SortOrder = x.SortOrder, AvailableAtUtc = now
                 }));
                 if (assignment is null) db.GroupCurriculumAssignments.Add(new GroupCurriculumAssignment

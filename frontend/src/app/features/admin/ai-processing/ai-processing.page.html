@@ -550,6 +550,7 @@
           }
 
           @if (savedLesson()) {
+            <a class="primary-button" [routerLink]="['/admin/lessons', savedLesson()!.versionId, 'ai']">مراجعة الكلمات والتمارين</a>
             <button
               type="button"
               class="primary-button"
@@ -592,7 +593,7 @@
           </strong>
 
           <p>
-            هنربط المرحلة دي بعد ما نقفل مرحلة الشادوينج بالكامل.
+            تبدأ تلقائيًا بعد حفظ الدرس. افتح مراجعة الكلمات والتمارين لاعتمادها قبل نشر المنهج.
           </p>
         </div>
       </article>
