@@ -117,7 +117,8 @@ public static class AdminCurriculumsEndpoints
                         op.Ok((await ReadDraft(db, id, http.RequestAborted))!, count: ordered.Length, result: "no_change");
                 if (template.DraftRevision != request.ExpectedDraftRevision) return op.Fail(409, "draft_changed");
                 var ids = ordered.Select(x => x.LessonVersionId).ToArray();
-                if (await db.LessonVersions.CountAsync(x => ids.Contains(x.Id), http.RequestAborted) != ids.Length)
+                if (await db.LessonVersions.CountAsync(x => ids.Contains(x.Id) &&
+                    db.LessonDefinitions.Any(d => d.Id == x.LessonDefinitionId && !d.IsArchived), http.RequestAborted) != ids.Length)
                     return op.Fail(404, "lesson_not_found");
                 var old = await db.CurriculumDraftLessonSlots.Where(x => x.CurriculumTemplateId == id)
                     .ToArrayAsync(http.RequestAborted);
@@ -223,6 +224,9 @@ public static class AdminCurriculumsEndpoints
                     .Where(x => x.CurriculumTemplateId == request.CurriculumTemplateId)
                     .Select(x => x.LessonVersionId).ToArrayAsync(http.RequestAborted);
                 if (lessonIds.Length == 0) return op.Fail(409, "curriculum_empty");
+                if (await db.LessonVersions.CountAsync(x => lessonIds.Contains(x.Id) &&
+                    db.LessonDefinitions.Any(d => d.Id == x.LessonDefinitionId && !d.IsArchived), http.RequestAborted) != lessonIds.Length)
+                    return op.Fail(409, "lesson_archived");
                 var audio = await db.LessonSegments.AsNoTracking().Where(x => lessonIds.Contains(x.LessonVersionId))
                     .Select(x => new { x.LessonVersionId, x.AudioStorageKey }).ToArrayAsync(http.RequestAborted);
                 if (lessonIds.Any(id => audio.All(x => x.LessonVersionId != id)) ||

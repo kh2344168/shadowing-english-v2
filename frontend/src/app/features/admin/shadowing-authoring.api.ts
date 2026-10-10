@@ -10,6 +10,19 @@ export interface AuthoringLesson {
   segmentCount: number;
 }
 
+export interface LessonEditDetails {
+  id: string;
+  versionId: string;
+  versionNumber: number;
+  title: string;
+  description: string;
+  segments: { position: number; text: string }[];
+}
+
+export interface LessonEditResult extends AuthoringLesson {
+  aiNeedsReview: boolean;
+}
+
 export interface AuthoringGroup {
   id: string;
   name: string;
@@ -112,6 +125,32 @@ export class ShadowingAuthoringApi {
   lessons(page = 1): Observable<Page<AuthoringLesson>> {
     return this.http.get<Page<AuthoringLesson>>(`${this.base}/lessons`, {
       params: new HttpParams().set('page', page),
+    });
+  }
+
+  lessonDetails(id: string): Observable<LessonEditDetails> {
+    return this.http.get<LessonEditDetails>(`${this.base}/lessons/${encodeURIComponent(id)}`);
+  }
+
+  editLesson(
+    id: string, expectedVersionId: string, requestId: string, title: string,
+    description: string, segments: { position: number; text: string; audio: File | null }[],
+  ): Observable<LessonEditResult> {
+    const body = new FormData();
+    body.append('expectedVersionId', expectedVersionId);
+    body.append('requestId', requestId);
+    body.append('title', title);
+    body.append('description', description);
+    body.append('segments', JSON.stringify(segments.map((segment) => segment.text.trim())));
+    segments.forEach((segment, index) => {
+      if (segment.audio) body.append(`audio${index}`, segment.audio);
+    });
+    return this.http.put<LessonEditResult>(`${this.base}/lessons/${encodeURIComponent(id)}`, body);
+  }
+
+  deleteLessonPermanently(id: string, expectedVersionId: string): Observable<void> {
+    return this.http.request<void>('DELETE', `${this.base}/lessons/${encodeURIComponent(id)}`, {
+      body: { expectedVersionId, permanentlyDelete: true },
     });
   }
 

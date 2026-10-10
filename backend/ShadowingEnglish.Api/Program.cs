@@ -89,6 +89,7 @@ builder.Services.AddHttpClient(nameof(TextAiRouter), client =>
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddSingleton<TextAiRouter>();
 builder.Services.AddHostedService<LessonAiWorker>();
+builder.Services.AddHostedService<LessonMediaDeletionWorker>();
 
 // Bound sensitive authentication and write requests with built-in policies.
 builder.Services.AddRateLimiter(options =>
@@ -209,6 +210,7 @@ app.MapAdminLessonAiEndpoints();
 app.MapAdminGroupsEndpoints();
 app.MapAdminCurriculumsEndpoints();
 app.MapAdminShadowingEndpoints();
+app.MapAdminLessonManagementEndpoints();
 app.MapStudentLearningEndpoints();
 app.MapStudentShadowingReportingEndpoints();
 app.MapStudentAiLearningEndpoints();

@@ -39,6 +39,8 @@ public static class AdminShadowingEndpoints
             {
                 const int size = 20;
                 var rows = await db.LessonVersions.AsNoTracking()
+                    .Where(x => db.LessonDefinitions.Any(d => d.Id == x.LessonDefinitionId && !d.IsArchived) &&
+                        !db.LessonVersions.Any(v => v.LessonDefinitionId == x.LessonDefinitionId && v.VersionNumber > x.VersionNumber))
                     .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
                     .Skip(((page ?? 1) - 1) * size).Take(size + 1)
                     .Select(x => new LessonDto(x.LessonDefinitionId, x.Id, x.Title, x.Description,

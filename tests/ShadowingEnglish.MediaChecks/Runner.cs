@@ -440,6 +440,7 @@ internal static class Runner
                     "media_diagnostics_missing");
             });
             await CurriculumChecks.RunAsync(api, store, logs, wave, Check);
+            await PurgeChecks.RunAsync(api, store, logs, wave, Check);
         }
         finally
         {
@@ -521,6 +522,14 @@ internal sealed class MediaApp(string contentRoot, IShadowingMediaStore store, S
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await db.Database.EnsureCreatedAsync(); // Explicit disposable test database only.
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE PendingLessonMediaDeletions (
+                StorageKey TEXT NOT NULL PRIMARY KEY,
+                QueuedAtUtc TEXT NOT NULL,
+                NextAttemptAtUtc TEXT NOT NULL,
+                Attempts INTEGER NOT NULL
+            )
+            """);
         var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
         foreach (var role in new[] { "Admin", "Student" })
             if (!(await roles.CreateAsync(new IdentityRole<Guid>(role) { Id = Guid.NewGuid() })).Succeeded)
