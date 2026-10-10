@@ -24,7 +24,7 @@ public sealed class MediaStorageUnavailableException : IOException
 public static class ShadowingMediaKeys
 {
     public static bool IsValid(string key) => key.Length <= 100 &&
-        System.Text.RegularExpressions.Regex.IsMatch(key, "^[a-z0-9-]+\\.wav$",
+        System.Text.RegularExpressions.Regex.IsMatch(key, "^[a-z0-9-]+\\.(wav|webm|mp4)$",
             System.Text.RegularExpressions.RegexOptions.CultureInvariant);
     public static void Validate(string key)
     {

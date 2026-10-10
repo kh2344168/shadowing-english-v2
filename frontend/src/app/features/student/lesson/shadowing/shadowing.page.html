@@ -1,81 +1,1092 @@
-<section class="learning-page" dir="rtl" aria-labelledby="shadowing-title">
-  <a
-    class="learning-back"
-    [routerLink]="reviewMode ? ['/student/lessons', slotId, 'vocabulary'] : ['/student/lessons', slotId, 'overview']"
-    >← {{ reviewMode ? 'الكلمات' : 'نظرة الدرس' }}</a
-  >
-  <h1 id="shadowing-title" class="page-title">
-    {{ reviewMode ? 'الشادوينج بعد فهم الكلمات' : 'تدريب Shadowing' }}
-  </h1>
-  @if (loading()) {
-  <p role="status" class="learning-status">جارٍ تحميل التدريب...</p>
-  } @else if (lesson(); as data) {
-  <header class="learning-card">
-    <span class="learning-eyebrow">{{ data.title }}</span>
-    <h2>الجملة {{ position() }} من {{ data.segmentCount }}</h2>
-    <p>استمع، كرر بصوتك، ثم اضغط «التالي» حين تكون جاهزًا.</p>
-    <progress
-      [value]="data.completedSegments"
-      [max]="data.segmentCount || 1"
-      [attr.aria-label]="'أكملت ' + data.completedSegments + ' من ' + data.segmentCount"
-    ></progress>
-  </header>
-  @if (finished()) {
-  <div class="learning-card" role="status">
-    <h2>أحسنت! اكتمل تدريب Shadowing</h2>
-    <a
-      class="learning-button"
-      [routerLink]="reviewMode ? ['/student/lessons', slotId, 'listen-type'] : data.hasAiContent ? ['/student/lessons', slotId, 'vocabulary'] : ['/student/curriculum']"
-      >{{ reviewMode ? 'ابدأ استمع واكتب' : data.hasAiContent ? 'ابدأ الكلمات' : 'العودة للمنهج' }}
-      ←</a
-    >
-  </div>
-  } @else if (segment(); as current) {
-  <div class="learning-card practice-card">
-    <span class="learning-eyebrow">استمع إلى الجملة</span>
-    <p class="practice-phrase" dir="ltr" [class.is-playing]="playing()">{{ current.text }}</p>
-    <audio
-      #teacher
-      controls
-      preload="none"
-      (play)="playing.set(true)"
-      (pause)="playing.set(false)"
-      (ended)="playing.set(false)"
-      aria-label="صوت المعلم"
-    ></audio>
-    <button type="button" class="learning-button" (click)="playTeacher()">استمع من البداية</button>
-  </div>
-  <div class="learning-card practice-card">
-    <h2>جرّب بصوتك</h2>
-    <p>التسجيل مؤقت على جهازك في هذه الصفحة، ولا يُرفع إلى الخادم.</p>
-    @if (!recording()) {
-    <button
-      type="button"
-      class="learning-button subtle"
-      [disabled]="microphonePending()"
-      (click)="startRecording()"
-    >
-      ابدأ تسجيل صوتك
-    </button>
-    } @else {
-    <button type="button" class="learning-button" (click)="stopRecording()">أوقف التسجيل</button> }
-    @if (recordingUrl(); as localUrl) {
-    <audio controls [src]="localUrl" aria-label="استمع إلى تسجيلك"></audio> }
-  </div>
-  <button
-    type="button"
-    class="learning-button next-action"
-    [disabled]="saving() || recording() || microphonePending()"
-    (click)="next()"
-  >
-    {{ saving() ? 'جارٍ حفظ التقدم...' : position() === data.segmentCount ? 'إنهاء التدريب' :
-    'التالي ←' }}
-  </button>
-  } @else {
-  <p role="status" class="learning-status">لا توجد جمل متاحة لهذا الدرس.</p>
-  } } @if (error()) {
-  <p role="alert" class="learning-status error">
-    {{ error() }} <button type="button" (click)="load()">تحديث</button>
-  </p>
-  }
+<video
+  #mediaPlayer
+  class="fixed h-px w-px opacity-0 pointer-events-none"
+  preload="metadata"
+  crossorigin="use-credentials"
+  playsinline
+  (loadedmetadata)="onMediaMetadataLoaded()"
+  (timeupdate)="onMediaTimeUpdate()"
+  (ended)="onTeacherMediaEnded()"
+  (error)="onMediaLoadError()"
+></video>
+
+<section
+  *ngIf="state === 'loading' && !lesson"
+  class="student-loading mx-auto my-8 max-w-4xl"
+  role="status"
+  dir="rtl"
+>
+  بنجهز الشادوينج...
 </section>
+
+<section
+  *ngIf="state === 'error'"
+  class="max-w-4xl mx-auto my-8 rounded-3xl border border-error-container bg-error-container/40 p-6 text-right text-sm font-black text-error shadow-sm"
+  dir="rtl"
+>
+  {{ error }}
+</section>
+
+<div *ngIf="lesson && state !== 'error'" class="flex flex-col w-full min-w-0 font-body-md text-on-surface select-none pb-24" dir="rtl">
+  <!-- MOBILE SHADOWING UI: visible only on phones -->
+  <section class="shadowing-mobile-ui" aria-label="واجهة الشادوينج على الهاتف">
+    <!-- Compact lesson/session strip -->
+    <div class="mobile-session-strip">
+      <a
+        [routerLink]="['/student/lessons', slotId, 'overview']"
+        class="mobile-icon-button"
+        title="العودة إلى مراحل الدرس"
+        aria-label="العودة إلى مراحل الدرس"
+      >
+        <span class="material-symbols-outlined rtl:rotate-180">arrow_forward</span>
+      </a>
+
+      <div class="mobile-session-copy">
+        <span class="mobile-session-title">{{ lessonTitle }}</span>
+        <span class="mobile-session-meta">الجملة {{ currentSegmentIndex + 1 }} من {{ lesson.segments.length }}</span>
+      </div>
+
+      <div class="mobile-session-actions">
+        <button type="button" class="mobile-icon-button" (click)="toggleSentenceDrawer()" [attr.aria-expanded]="sentenceDrawerOpen" aria-controls="drawer-sentences" title="قائمة الجمل" aria-label="قائمة الجمل">
+          <span class="material-symbols-outlined">format_list_numbered_rtl</span>
+        </button>
+        <button type="button" class="mobile-icon-button" (click)="toggleSettingsDrawer()" [attr.aria-expanded]="settingsDrawerOpen" aria-controls="drawer-settings" title="إعدادات التدريب" aria-label="إعدادات التدريب">
+          <span class="material-symbols-outlined">tune</span>
+        </button>
+      </div>
+    </div>
+
+    <div *ngIf="showMicPermissionBanner" class="mobile-mic-alert">
+      <span class="material-symbols-outlined">mic_off</span>
+      <div>
+        <strong>الميكروفون غير مفعّل</strong>
+        <span>فعّله حتى يعمل التسجيل ومطابقة كلماتك.</span>
+      </div>
+      <button type="button" (click)="requestMicPermission()">السماح</button>
+    </div>
+
+    <!-- Prompt utilities -->
+    <div class="mobile-prompt-tools">
+      <button type="button" class="mobile-tool-pill" (click)="toggleSentenceTranslation()" [disabled]="!hasSentenceTranslation">
+        <span class="material-symbols-outlined">translate</span>
+        <span>{{ sentenceTranslationVisible ? 'إخفاء الترجمة' : 'إظهار الترجمة' }}</span>
+      </button>
+      <div class="mobile-prompt-tool-icons">
+        <button type="button" class="mobile-icon-button mobile-icon-button--small" (click)="copyCurrentSentence()" title="نسخ الجملة" aria-label="نسخ الجملة">
+          <span class="material-symbols-outlined">content_copy</span>
+        </button>
+        <button type="button" class="mobile-icon-button mobile-icon-button--small" (click)="replayCurrentSegment()" title="اسمع الجملة" aria-label="اسمع الجملة">
+          <span class="material-symbols-outlined">volume_up</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Target sentence card -->
+    <section class="mobile-target-card">
+      <div class="mobile-card-eyebrow">الجملة المستهدفة للتدريب</div>
+      <div class="mobile-karaoke-sentence" dir="ltr">
+        <ng-container *ngIf="karaokeWords.length > 0; else mobilePlainSentence">
+          <span
+            *ngFor="let word of karaokeWords; let i = index"
+            class="mobile-karaoke-word"
+            [ngClass]="{
+              'mobile-karaoke-word--teacher': (state === 'teacher' || manualPreviewActive) && i === currentKaraokeIndex,
+              'mobile-karaoke-word--matched-current': shouldShowSpeechReview && state === 'student' && i === currentKaraokeIndex && studentKaraokeState(i) === 'matched',
+              'mobile-karaoke-word--wrong-current': shouldShowSpeechReview && state === 'student' && i === currentKaraokeIndex && studentKaraokeState(i) === 'wrong',
+              'mobile-karaoke-word--matched': shouldShowSpeechReview && state === 'student' && i !== currentKaraokeIndex && studentKaraokeState(i) === 'matched',
+              'mobile-karaoke-word--wrong': shouldShowSpeechReview && state === 'student' && i !== currentKaraokeIndex && studentKaraokeState(i) === 'wrong'
+            }"
+          >{{ word }}</span>
+        </ng-container>
+        <ng-template #mobilePlainSentence>{{ currentSegment?.text || 'No sentence text' }}</ng-template>
+      </div>
+
+      <div *ngIf="hasSentenceTranslation && sentenceTranslationVisible" class="mobile-translation-box">
+        {{ currentSegment?.translation }}
+      </div>
+    </section>
+
+
+    <!-- Compact mobile player -->
+    <section class="mobile-audio-card">
+      <div class="mobile-phase-panel">
+        <div class="mobile-phase-row">
+          <div class="mobile-phase-badges">
+            <span
+              class="mobile-phase-badge"
+              [ngClass]="{
+                'mobile-phase-badge--teacher': state === 'teacher' || manualPreviewActive,
+                'mobile-phase-badge--student': state === 'student',
+                'mobile-phase-badge--neutral': !(state === 'teacher' || manualPreviewActive || state === 'student')
+              }"
+            >
+              <span class="mobile-status-dot"></span>
+              {{ state === 'student' ? 'صوتك' : 'صوت النموذج' }}
+            </span>
+            <span class="mobile-mode-badge">{{ liveWaveLabel }}</span>
+          </div>
+
+          <div class="mobile-time" dir="ltr">
+            <strong>{{ audioCurrentTimeLabel }}</strong>
+            <span>/</span>
+            <span>{{ audioTotalTimeLabel }}</span>
+          </div>
+        </div>
+
+        <div class="mobile-waveform" dir="ltr" aria-hidden="true">
+          <div class="mobile-wave-group mobile-wave-group--teacher">
+            <span
+              *ngFor="let bar of teacherWaveBarsSlice"
+              class="mobile-wave-bar"
+              [style.height.px]="bar > 28 ? 20 : bar > 18 ? 14 : 9"
+              [class.mobile-wave-bar--active]="state === 'teacher' || manualPreviewActive"
+            ></span>
+          </div>
+          <div class="mobile-wave-divider"></div>
+          <div class="mobile-wave-group mobile-wave-group--student">
+            <span
+              *ngFor="let bar of studentWaveBarsSlice"
+              class="mobile-wave-bar"
+              [style.height.px]="bar > 28 ? 20 : bar > 18 ? 14 : 9"
+              [class.mobile-wave-bar--active]="state === 'student'"
+            ></span>
+          </div>
+        </div>
+
+        <div class="mobile-progress-track">
+          <div class="mobile-progress-fill" [style.width]="scrubCursorLeft"></div>
+        </div>
+      </div>
+
+      <div class="mobile-player-meta-row">
+        <div class="mobile-speed-control" dir="ltr">
+          <button type="button" (click)="setTeacherPlaybackRate(1.0)" [class.active]="teacherPlaybackRate === 1.0">1.0x</button>
+          <button type="button" (click)="setTeacherPlaybackRate(1.25)" [class.active]="teacherPlaybackRate === 1.25">1.25x</button>
+          <button type="button" (click)="setTeacherPlaybackRate(1.5)" [class.active]="teacherPlaybackRate === 1.5">1.5x</button>
+          <button type="button" (click)="setTeacherPlaybackRate(2.0)" [class.active]="teacherPlaybackRate === 2.0">2.0x</button>
+        </div>
+
+        <div class="mobile-meta-actions">
+          <button
+            *ngIf="state === 'student'"
+            type="button"
+            class="mobile-audit-counter"
+            [class.mobile-audit-counter--active]="shouldShowSpeechReview"
+            [disabled]="speechReviewRequiredByTeacher"
+            (click)="requestSpeechReview()"
+            title="تدقيق الكلام"
+            aria-label="تدقيق الكلام"
+          >
+            <span class="material-symbols-outlined">fact_check</span>
+            <span>تدقيق</span>
+            <strong>{{ currentSpeechMatchScore === null ? '—' : currentSpeechMatchScore + '%' }}</strong>
+          </button>
+          <div class="mobile-repeat-pill">
+            <span>التكرار</span>
+            <strong>{{ currentRepetitionLabel }}</strong>
+          </div>
+          <button type="button" class="mobile-icon-button mobile-icon-button--small" (click)="toggleTeacherMute()" [title]="teacherMuted ? 'إلغاء كتم صوت المدرس' : 'كتم صوت المدرس'">
+            <span class="material-symbols-outlined">{{ teacherMuted ? 'volume_off' : 'volume_up' }}</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="mobile-controls-row">
+        <button type="button" class="mobile-control-square mobile-control-square--replay" (click)="replayCurrentSegment()" title="إعادة الجملة" aria-label="إعادة الجملة">
+          <span class="material-symbols-outlined">replay</span>
+        </button>
+
+        <div class="mobile-main-controls">
+          <button type="button" class="mobile-control-circle" (click)="previousSegment()" [disabled]="!hasPreviousSegment || segmentNavigationInProgress" title="الجملة السابقة" aria-label="الجملة السابقة">
+            <span class="material-symbols-outlined rtl:rotate-180">skip_next</span>
+          </button>
+
+          <button
+            type="button"
+            class="mobile-play-button"
+            (click)="handlePrimaryAction()"
+            [disabled]="primaryActionDisabled"
+            [title]="primaryActionLabel"
+            aria-label="تشغيل أو إيقاف"
+          >
+            <span class="material-symbols-outlined">{{ state === 'teacher' || state === 'student' ? 'pause' : 'play_arrow' }}</span>
+          </button>
+
+          <button type="button" class="mobile-control-circle" (click)="nextSegment()" [disabled]="!hasNextSegment || segmentNavigationInProgress" title="الجملة التالية" aria-label="الجملة التالية">
+            <span class="material-symbols-outlined rtl:rotate-180">skip_previous</span>
+          </button>
+        </div>
+
+        <button type="button" class="mobile-control-square mobile-control-square--mic" (click)="toggleSettingsDrawer()" title="حالة الميكروفون والإعدادات" aria-label="حالة الميكروفون والإعدادات">
+          <span class="material-symbols-outlined">mic</span>
+          <span *ngIf="state === 'student'" class="mobile-mic-live-dot"></span>
+        </button>
+      </div>
+
+      <div class="mobile-live-note" [ngClass]="{ 'mobile-live-note--student': state === 'student' }">
+        <span class="material-symbols-outlined">{{ state === 'student' ? 'record_voice_over' : 'graphic_eq' }}</span>
+        <span>{{ liveSignalLabel }}</span>
+      </div>
+    </section>
+  </section>
+
+  <div class="shadowing-desktop-ui">
+  <!-- TOP BAR: CONTEXT & SESSION HEADER -->
+  <header class="w-full bg-surface-container-lowest shadow-sm z-30 sticky top-0">
+    <div class="max-w-6xl mx-auto px-margin-mobile sm:px-margin h-16 flex items-center justify-between gap-space-sm">
+      <!-- Back Link & Lesson Context -->
+      <div class="flex items-center gap-space-md min-w-0">
+        <a
+          [routerLink]="['/student/lessons', slotId, 'overview']"
+          class="flex items-center gap-space-xs text-on-surface-variant hover:text-primary font-label-md text-label-md px-space-sm py-space-xs rounded-xl hover:bg-surface-container transition-all no-underline"
+          id="btn-back"
+          title="العودة إلى مراحل الدرس"
+        >
+          <span class="material-symbols-outlined text-[20px] rtl:rotate-180">arrow_forward</span>
+          <span class="hidden sm:inline">العودة إلى مراحل الدرس</span>
+        </a>
+        <div class="h-6 w-px bg-surface-container-high hidden md:block"></div>
+        <div class="flex items-center gap-space-xs min-w-0">
+          <div class="truncate">
+            <span class="font-headline-sm text-headline-sm text-on-surface font-bold truncate block">
+              {{ lessonTitle }}
+            </span>
+          </div>
+          <span class="hidden lg:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-label-sm text-label-sm font-bold shrink-0">
+            <span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+            {{ activeStageTitle }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Center / Right: Progress, Sentence List, Settings, Close -->
+      <div class="flex items-center gap-space-sm shrink-0">
+        <!-- Sentence Counter Badge -->
+        <div class="flex items-center gap-space-xs bg-surface-container-low px-3 py-1.5 rounded-xl text-on-surface">
+          <span class="material-symbols-outlined text-[18px] text-primary">record_voice_over</span>
+          <span class="font-label-md text-label-md font-bold" id="top-progress-text">
+            الجملة <span class="text-primary font-extrabold">{{ currentSegmentIndex + 1 }}</span> من {{ lesson.segments.length }}
+          </span>
+          <span class="text-on-surface-variant text-label-sm font-semibold mr-1">({{ segmentProgressPercent }}%)</span>
+        </div>
+
+        <!-- Speech review counter lives with the other session counters. -->
+        <button
+          *ngIf="state === 'student'"
+          type="button"
+          class="audit-counter"
+          [class.audit-counter--active]="shouldShowSpeechReview"
+          [disabled]="speechReviewRequiredByTeacher"
+          (click)="requestSpeechReview()"
+          title="تدقيق الكلام"
+        >
+          <span class="material-symbols-outlined text-[18px]">fact_check</span>
+          <span>تدقيق</span>
+          <strong>{{ currentSpeechMatchScore === null ? '—' : currentSpeechMatchScore + '%' }}</strong>
+        </button>
+
+        <!-- Quick Sentences Drawer Toggle -->
+        <button
+          type="button"
+          (click)="toggleSentenceDrawer()"
+          class="relative flex items-center justify-center w-10 h-10 rounded-xl text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer border-0 bg-transparent"
+          id="btn-toggle-sentences"
+          title="قائمة الجمل"
+        >
+          <span class="material-symbols-outlined text-[22px]">format_list_numbered_rtl</span>
+          <span class="absolute top-1.5 left-1.5 w-2 h-2 rounded-full bg-primary ring-2 ring-surface-container-lowest"></span>
+        </button>
+
+        <!-- Quick Settings Drawer Toggle -->
+        <button
+          type="button"
+          (click)="toggleSettingsDrawer()"
+          class="flex items-center justify-center w-10 h-10 rounded-xl text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer border-0 bg-transparent"
+          id="btn-toggle-settings"
+          title="إعدادات التدريب"
+        >
+          <span class="material-symbols-outlined text-[22px]">tune</span>
+        </button>
+
+        <!-- Exit / Close Button -->
+        <button
+          type="button"
+          (click)="stopTraining()"
+          class="flex items-center justify-center w-10 h-10 rounded-xl text-on-surface-variant hover:text-error hover:bg-error-container/30 transition-colors cursor-pointer border-0 bg-transparent"
+          id="btn-exit"
+          title="إنهاء الجلسة"
+        >
+          <span class="material-symbols-outlined text-[22px]">close</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Micro Linear Progress Track -->
+    <div class="w-full bg-surface-container h-1 relative overflow-hidden">
+      <div
+        class="h-full bg-gradient-to-l from-primary-fixed-dim to-primary transition-all duration-500 rounded-l-full"
+        id="top-progress-bar"
+        [style.width.%]="segmentProgressPercent"
+      ></div>
+    </div>
+  </header>
+
+  <!-- MAIN CANVAS CONTAINER -->
+  <main class="w-full max-w-5xl mx-auto px-margin-mobile sm:px-margin py-space-lg flex flex-col gap-space-lg relative">
+    <!-- ALERT BANNER: MICROPHONE PERMISSION -->
+    <div
+      *ngIf="showMicPermissionBanner"
+      class="rounded-2xl bg-amber-50 p-space-md shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-space-md text-amber-900 transition-all duration-300"
+      id="mic-permission-banner"
+    >
+      <div class="flex items-center gap-space-md">
+        <div class="w-11 h-11 rounded-xl bg-tertiary-fixed text-on-tertiary-fixed flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[24px]">mic_off</span>
+        </div>
+        <div class="flex flex-col">
+          <p class="font-headline-sm text-headline-sm font-bold">تنبيه: ميكروفون المتصفح غير مفعّل</p>
+          <p class="font-body-md text-body-md text-amber-800">تحتاج المنصة إلى صلاحية الميكروفون لتسجيل صوتك أثناء التدريب. عند إكمال المرحلة يُرفع آخر تسجيل فقط للأدمن للتقييم.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-space-sm w-full sm:w-auto justify-end">
+        <button
+          type="button"
+          class="px-5 py-2.5 rounded-xl bg-tertiary text-on-tertiary font-label-lg text-label-lg shadow-sm hover:bg-on-tertiary-fixed-variant transition-colors flex items-center gap-1.5 border-0 cursor-pointer"
+          (click)="requestMicPermission()"
+        >
+          <span class="material-symbols-outlined text-[18px]">check_circle</span>
+          السماح بالميكروفون الآن
+        </button>
+      </div>
+    </div>
+
+    <!-- MAIN HERO PRACTICE CARD (THE CENTERPIECE) -->
+    <section class="w-full bg-surface-container-lowest rounded-3xl p-space-md sm:p-space-xl shadow-md relative overflow-hidden flex flex-col gap-space-lg">
+      <!-- Ambient Decorative Backdrop Glows -->
+      <div class="absolute -top-24 -left-24 w-72 h-72 rounded-full bg-primary/5 blur-3xl pointer-events-none"></div>
+      <div class="absolute -bottom-24 -right-24 w-72 h-72 rounded-full bg-tertiary/5 blur-3xl pointer-events-none"></div>
+
+      <!-- Card Top: Dynamic Status Badge & Sub-Tools -->
+      <div class="flex items-center justify-between gap-space-sm flex-wrap relative z-10">
+        <!-- Interactive State Badge -->
+        <div
+          class="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full transition-all duration-300"
+          id="status-badge"
+          [ngClass]="{
+            'bg-orange-100 text-orange-800': state === 'teacher' || manualPreviewActive,
+            'bg-primary-container text-on-primary-container': state === 'student',
+            'bg-amber-100 text-amber-800': state === 'between',
+            'bg-emerald-100 text-emerald-800': state === 'saving' || state === 'finished',
+            'bg-surface-container-high text-on-surface-variant': state === 'paused',
+            'bg-surface-container-high text-on-surface': state === 'ready' || state === 'stopped'
+          }"
+        >
+          <!-- Pulse Dot / Icon -->
+          <span class="relative flex h-3 w-3">
+            <span
+              *ngIf="state === 'teacher' || manualPreviewActive"
+              class="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"
+              id="status-ping"
+            ></span>
+            <span
+              *ngIf="state === 'student'"
+              class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"
+            ></span>
+            <span
+              class="relative inline-flex rounded-full h-3 w-3"
+              [ngClass]="{
+                'bg-orange-500': state === 'teacher' || manualPreviewActive,
+                'bg-primary': state === 'student',
+                'bg-amber-600': state === 'between',
+                'bg-emerald-600': state === 'saving' || state === 'finished',
+                'bg-outline': state === 'paused' || state === 'ready' || state === 'stopped'
+              }"
+              id="status-dot"
+            ></span>
+          </span>
+          <span class="font-label-lg text-label-lg font-bold tracking-wide" id="status-text">
+            {{ state === 'teacher' || manualPreviewActive ? 'دور المدرس: استمع للنطق الصحيح' : state === 'student' ? 'دورك الآن: جارٍ التسجيل والمطابقة الصوتية' : state === 'paused' ? 'الجلسة متوقفة مؤقتاً' : state === 'saving' ? 'جارٍ حفظ التسجيل...' : state === 'finished' ? 'تم إنهاء الجلسة بنجاح' : state === 'between' ? 'استراحة قصيرة... استعد' : 'جاهز للبدء: اضغط تشغيل أو الميكروفون' }}
+          </span>
+        </div>
+
+        <!-- Sentence Utility Actions (TTS Slow, Copy, Toggle Translation) -->
+        <div class="flex items-center gap-1.5 bg-surface-container-low p-1 rounded-2xl">
+          <button
+            type="button"
+            (click)="toggleSentenceTranslation()"
+            class="px-3 py-1.5 rounded-xl text-on-surface-variant hover:text-primary hover:bg-surface-container-highest font-label-sm text-label-sm font-bold flex items-center gap-1 transition-all border-0 bg-transparent cursor-pointer"
+            id="btn-toggle-translation"
+            title="إظهار / إخفاء الترجمة"
+          >
+            <span class="material-symbols-outlined text-[17px]">translate</span>
+            <span id="translation-btn-label">{{ sentenceTranslationVisible ? 'إخفاء الترجمة' : 'إظهار الترجمة' }}</span>
+          </button>
+          <button
+            type="button"
+            (click)="toggleSlowAudio()"
+            [class.text-primary]="teacherPlaybackRate === 0.75"
+            class="w-8 h-8 rounded-xl text-on-surface-variant hover:text-primary hover:bg-surface-container-highest flex items-center justify-center transition-all border-0 bg-transparent cursor-pointer"
+            id="btn-slow-audio"
+            title="نطق بطيء 0.75x"
+          >
+            <span class="material-symbols-outlined text-[18px]">slow_motion_video</span>
+          </button>
+          <button
+            type="button"
+            (click)="copyCurrentSentence()"
+            class="w-8 h-8 rounded-xl text-on-surface-variant hover:text-primary hover:bg-surface-container-highest flex items-center justify-center transition-all border-0 bg-transparent cursor-pointer"
+            id="btn-copy-text"
+            title="نسخ الجملة"
+          >
+            <span class="material-symbols-outlined text-[18px]">content_copy</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- PHRASE SHOWCASE AREA (LTR High-Contrast Karaoke Typography) -->
+      <div class="flex flex-col gap-space-md items-center text-center py-space-sm sm:py-space-md relative z-10">
+        <!-- English Sentence (Karaoke Highlightable Tokens) -->
+        <div class="w-full text-center select-text" dir="ltr">
+          <p
+            class="font-display-lg text-display-lg sm:text-[34px] leading-relaxed tracking-tight text-on-surface font-extrabold flex flex-wrap justify-center items-center gap-x-2.5 gap-y-1"
+            id="karaoke-sentence"
+          >
+            <ng-container *ngIf="karaokeWords.length > 0">
+              <span
+                *ngFor="let word of karaokeWords; let i = index"
+                class="karaoke-word transition-all duration-200 px-1.5 py-0.5 rounded-lg"
+                [ngClass]="{
+                  'bg-orange-100 text-orange-700 shadow-sm font-black scale-105':
+                    (state === 'teacher' || manualPreviewActive) && i === currentKaraokeIndex,
+                  'bg-primary text-on-primary shadow-sm font-black scale-105':
+                    shouldShowSpeechReview && state === 'student' && i === currentKaraokeIndex && studentKaraokeState(i) === 'matched',
+                  'bg-error-container text-error shadow-sm font-black scale-105':
+                    shouldShowSpeechReview && state === 'student' && i === currentKaraokeIndex && studentKaraokeState(i) === 'wrong',
+                  'bg-primary/10 text-primary font-black':
+                    shouldShowSpeechReview && state === 'student' && i !== currentKaraokeIndex && studentKaraokeState(i) === 'matched',
+                  'bg-error-container/50 text-error font-black':
+                    shouldShowSpeechReview && state === 'student' && i !== currentKaraokeIndex && studentKaraokeState(i) === 'wrong',
+                  'text-on-surface-variant':
+                    !((state === 'teacher' || manualPreviewActive) && i === currentKaraokeIndex) &&
+                    !(shouldShowSpeechReview && state === 'student' && studentKaraokeState(i) !== 'pending')
+                }"
+                [attr.data-idx]="i"
+              >{{ word }}</span>
+            </ng-container>
+            <span *ngIf="karaokeWords.length === 0" class="text-on-surface">
+              {{ currentSegment?.text || 'No sentence text' }}
+            </span>
+          </p>
+        </div>
+
+        <!-- Arabic Translation Box -->
+        <div
+          *ngIf="hasSentenceTranslation && sentenceTranslationVisible"
+          class="transition-all duration-300 max-w-2xl px-space-md py-space-xs rounded-xl bg-surface-container-low text-on-surface-variant flex items-center justify-center gap-2"
+          id="translation-container"
+        >
+          <span class="material-symbols-outlined text-[18px] text-outline">format_quote</span>
+          <p class="font-headline-sm text-headline-sm text-on-surface font-semibold" id="arabic-translation-text">
+            {{ currentSegment?.translation }}
+          </p>
+        </div>
+
+        <!-- Word Pronunciation Hint Badge (Phonetic Breakdown) -->
+        <div
+          *ngIf="currentSegmentPhoneticHint"
+          class="inline-flex items-center gap-2 text-on-surface-variant font-label-md text-label-md"
+        >
+          <span class="font-mono bg-surface-container px-2 py-0.5 rounded text-outline">{{ currentSegmentPhoneticHint.ipa }}</span>
+          <span class="text-outline-variant">•</span>
+          <span>{{ currentSegmentPhoneticHint.tip }}</span>
+        </div>
+        <div *ngIf="state === 'student' && shouldShowSpeechReview" class="speech-review-details w-full max-w-2xl rounded-2xl border border-primary/15 bg-primary/5 p-3 text-right text-xs">
+          <span>تطابق الكلمات الملتقطة: <b>{{ currentSpeechMatchScore === null ? 'غير متاح' : currentSpeechMatchScore + '% · ' + currentSpeechReviewLabel }}</b></span>
+          <span *ngIf="currentRecognizedSpeechText" dir="ltr" class="mt-2 block rounded-xl bg-white p-2 text-left">{{ currentRecognizedSpeechText }}</span>
+          <small class="mt-1 block text-on-surface-variant">هذا يقارن النص الملتقط بالجملة فقط، ولا يعتبر تقييمًا للّكنة.</small>
+        </div>
+      </div>
+
+      <!-- TEACHER AUDIO WAVEFORM & PLAYBACK SUITE -->
+      <div class="w-full bg-surface-container-low rounded-2xl p-space-md sm:p-space-lg flex flex-col gap-space-md relative z-10">
+        <!-- Header of Audio Strip with Unified Legend & 1x-2x Speed Controls -->
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div class="flex items-center gap-space-xs">
+            <div class="w-8 h-8 rounded-lg bg-tertiary-fixed text-on-tertiary-fixed flex items-center justify-center shadow-xs">
+              <span class="material-symbols-outlined text-[18px]">graphic_eq</span>
+            </div>
+            <div class="flex flex-col">
+              <div class="flex items-center gap-2">
+                <span class="font-label-lg text-label-lg font-bold text-on-surface">متابعة الصوت والترديد</span>
+              </div>
+              <!-- Unified Track Legend -->
+              <div class="flex items-center gap-3 mt-0.5 text-xs font-semibold text-on-surface-variant">
+                <span class="flex items-center gap-1">
+                  <span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
+                  <span>تقدم صوت المدرس</span>
+                </span>
+                <span class="flex items-center gap-1">
+                  <span class="w-2.5 h-2.5 rounded-full bg-primary"></span>
+                  <span>مستوى صوت الطالب الحقيقي</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Speed Controls (1x to 2x range) & Mute -->
+          <div class="flex items-center gap-2">
+            <div class="flex items-center bg-surface-container-high p-0.5 rounded-xl">
+              <button
+                type="button"
+                (click)="setTeacherPlaybackRate(1.0)"
+                class="speed-btn px-2.5 py-1 rounded-lg text-label-sm font-bold transition-all border-0 cursor-pointer"
+                [ngClass]="teacherPlaybackRate === 1.0 ? 'bg-surface-container-lowest text-primary shadow-xs' : 'text-on-surface-variant hover:text-on-surface bg-transparent'"
+              >1.0x</button>
+              <button
+                type="button"
+                (click)="setTeacherPlaybackRate(1.25)"
+                class="speed-btn px-2.5 py-1 rounded-lg text-label-sm font-bold transition-all border-0 cursor-pointer"
+                [ngClass]="teacherPlaybackRate === 1.25 ? 'bg-surface-container-lowest text-primary shadow-xs' : 'text-on-surface-variant hover:text-on-surface bg-transparent'"
+              >1.25x</button>
+              <button
+                type="button"
+                (click)="setTeacherPlaybackRate(1.5)"
+                class="speed-btn px-2.5 py-1 rounded-lg text-label-sm font-bold transition-all border-0 cursor-pointer"
+                [ngClass]="teacherPlaybackRate === 1.5 ? 'bg-surface-container-lowest text-primary shadow-xs' : 'text-on-surface-variant hover:text-on-surface bg-transparent'"
+              >1.5x</button>
+              <button
+                type="button"
+                (click)="setTeacherPlaybackRate(2.0)"
+                class="speed-btn px-2.5 py-1 rounded-lg text-label-sm font-bold transition-all border-0 cursor-pointer"
+                [ngClass]="teacherPlaybackRate === 2.0 ? 'bg-surface-container-lowest text-primary shadow-xs' : 'text-on-surface-variant hover:text-on-surface bg-transparent'"
+              >2.0x</button>
+            </div>
+            <button
+              type="button"
+              (click)="toggleTeacherMute()"
+              class="w-9 h-9 rounded-xl text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high flex items-center justify-center transition-all border-0 bg-transparent cursor-pointer"
+              id="btn-mute-teacher"
+              [title]="teacherMuted ? 'إلغاء كتم صوت المدرس' : 'كتم صوت المدرس للتدريب المستقل'"
+            >
+              <span class="material-symbols-outlined text-[20px]" [class.text-error]="teacherMuted" id="teacher-mute-icon">
+                {{ teacherMuted ? 'volume_off' : 'volume_up' }}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Unified Audio Waveform Visualizer (Teacher in Orange, Student in Primary Teal, Inactive in Muted) -->
+        <div class="relative w-full h-16 bg-surface-container-lowest rounded-xl px-4 py-2 flex items-center justify-between cursor-pointer overflow-hidden group shadow-inner" id="waveform-track" dir="ltr">
+          <!-- Full Unified Waveform Bars -->
+          <div class="w-full flex items-center justify-between gap-1 h-full select-none">
+            <!-- النصف الأول: waveform حقيقية من صوت المدرس الحالي -->
+            <div class="flex items-center gap-1 flex-1 justify-around h-full">
+              <span
+                *ngFor="let bar of teacherWaveBarsSlice; let i = index"
+                class="w-1.5 rounded-full transition-all duration-100"
+                [style.height.px]="bar"
+                [ngClass]="state === 'teacher' || manualPreviewActive ? 'bg-orange-500' : 'bg-orange-300/40'"
+              ></span>
+            </div>
+            <!-- فاصل وسطي -->
+            <div class="h-10 w-px bg-outline-variant/40 mx-1 flex flex-col justify-between items-center">
+              <span class="w-1.5 h-1.5 rounded-full bg-outline-variant"></span>
+              <span class="w-1.5 h-1.5 rounded-full bg-outline-variant"></span>
+            </div>
+            <!-- النصف الثاني: وقت الطالب (teal) -->
+            <div class="flex items-center gap-1 flex-1 justify-around h-full">
+              <span
+                *ngFor="let bar of studentWaveBarsSlice; let i = index"
+                class="w-1.5 rounded-full transition-all duration-100"
+                [style.height.px]="bar"
+                [ngClass]="state === 'student' ? 'bg-primary' : 'bg-primary/40'"
+              ></span>
+            </div>
+          </div>
+          <!-- Scrubbing Head Marker -->
+          <div
+            class="absolute top-0 bottom-0 w-1 bg-primary shadow-sm pointer-events-none transition-all duration-150"
+            id="scrub-cursor"
+            [style.left]="scrubCursorLeft"
+          ></div>
+        </div>
+
+        <!-- Streamlined Sentence Navigation Controls -->
+        <div class="flex items-center justify-between flex-wrap gap-space-sm">
+          <!-- Time Elapsed / Total (LTR for clock) -->
+          <div class="font-mono text-label-md font-bold text-on-surface-variant flex items-center gap-1" dir="ltr">
+            <span class="text-on-surface" id="audio-current-time">{{ audioCurrentTimeLabel }}</span>
+            <span>/</span>
+            <span id="audio-total-time">{{ audioTotalTimeLabel }}</span>
+          </div>
+
+          <!-- Central Sentence-Level Navigation Deck -->
+          <div class="flex items-center gap-2 sm:gap-3 mx-auto">
+            <!-- Replay / Repeat Sentence Button -->
+            <button
+              type="button"
+              (click)="replayCurrentSegment()"
+              class="w-10 h-10 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface flex items-center justify-center transition-all active:scale-95 border-0 cursor-pointer"
+              id="btn-replay"
+              title="إعادة الجملة"
+            >
+              <span class="material-symbols-outlined text-[20px]">replay</span>
+            </button>
+
+            <!-- Previous Sentence Button -->
+            <button
+              type="button"
+              (click)="previousSegment()"
+              [disabled]="!hasPreviousSegment || segmentNavigationInProgress"
+              class="w-10 h-10 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface flex items-center justify-center transition-all active:scale-95 border-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              id="btn-prev-sentence"
+              title="الجملة السابقة"
+            >
+              <span class="material-symbols-outlined text-[20px] rtl:rotate-180">skip_next</span>
+            </button>
+
+            <!-- PRIMARY PLAY / PAUSE BUTTON -->
+            <button
+              type="button"
+              (click)="handlePrimaryAction()"
+              [disabled]="primaryActionDisabled"
+              class="w-14 h-14 rounded-2xl bg-primary text-on-primary flex items-center justify-center shadow-[0_4px_0_0_#005049] hover:brightness-110 active:translate-y-1 active:shadow-none transition-all border-0 cursor-pointer disabled:opacity-50"
+              id="btn-teacher-play"
+              [title]="primaryActionLabel"
+            >
+              <span class="material-symbols-outlined text-[32px]" id="play-pause-icon">
+                {{ state === 'teacher' || state === 'student' ? 'pause' : 'play_arrow' }}
+              </span>
+            </button>
+
+            <!-- Next Sentence Button -->
+            <button
+              type="button"
+              (click)="nextSegment()"
+              [disabled]="!hasNextSegment || segmentNavigationInProgress"
+              class="w-10 h-10 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface flex items-center justify-center transition-all active:scale-95 border-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              id="btn-next-sentence"
+              title="الجملة التالية"
+            >
+              <span class="material-symbols-outlined text-[20px] rtl:rotate-180">skip_previous</span>
+            </button>
+
+            <!-- Auto-Loop Sentence Toggle -->
+            <button
+              type="button"
+              (click)="replayCurrentSegment()"
+              class="px-3 h-10 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-primary flex items-center gap-1.5 transition-all active:scale-95 font-label-sm text-label-sm font-bold border-0 cursor-pointer"
+              id="btn-toggle-loop"
+              title="إعادة سماع الجملة"
+            >
+              <span class="material-symbols-outlined text-[20px]">replay</span>
+              <span>إعادة سماع الجملة</span>
+            </button>
+          </div>
+
+          <!-- Repetition Counter Tracker -->
+          <div class="flex items-center gap-1.5 font-label-md text-label-md text-on-surface-variant">
+            <span>التكرار:</span>
+            <span class="font-extrabold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
+              {{ currentRepetitionLabel }} من {{ sessionTargetRepetitions }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SAVED RECORDINGS SECTION -->
+    <section
+      *ngIf="recordings.length > 0"
+      class="w-full rounded-3xl border border-outline-variant/30 bg-surface-container-lowest p-5 shadow-sm"
+    >
+      <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 class="text-base font-black text-on-surface">التسجيلات المحفوظة</h3>
+          <p class="text-xs font-bold text-on-surface-variant">التسجيلات تحتوي على صوتك أنت فقط وتُحفظ محليًا على جهازك. عند إكمال المرحلة يُرفع آخر تسجيل فقط للأدمن حتى يستطيع سماعه وتقييم الأداء.</p>
+        </div>
+        <strong class="inline-flex w-fit items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-black text-primary">
+          {{ recordings.length }} تسجيل
+        </strong>
+      </div>
+      <div class="grid gap-3">
+        <div
+          *ngFor="let recording of recordings"
+          class="rounded-2xl border border-outline-variant/20 bg-surface-container-low p-4 shadow-xs"
+        >
+          <div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <strong class="block text-xs font-black text-on-surface">
+                {{ recording.meta.countsTowardProgress === false ? 'مراجعة الشادوينج' : 'تكرار ' + recording.meta.repetitionFrom }}
+              </strong>
+              <small class="text-[11px] font-bold text-on-surface-variant">
+                {{ recording.meta.durationLabel }} · {{ recording.meta.createdAt | date:'short' }}
+              </small>
+            </div>
+            <button
+              type="button"
+              (click)="deleteRecording(recording)"
+              class="inline-flex w-fit items-center gap-1.5 rounded-xl border border-error/20 bg-error/10 px-3 py-1.5 text-xs font-bold text-error transition hover:bg-error/20 cursor-pointer"
+            >
+              <span class="material-symbols-outlined text-[16px]">delete</span>
+              حذف
+            </button>
+          </div>
+          <audio *ngIf="recording.url" class="w-full" [src]="recording.url" controls></audio>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  </div>
+
+  <!-- DRAWER 1: SENTENCE NAVIGATOR (SLIDE-OVER RTL) -->
+  <div
+    *ngIf="sentenceDrawerOpen"
+    (click)="toggleSentenceDrawer()"
+    class="fixed inset-0 bg-black/40 backdrop-blur-xs z-40 transition-opacity"
+  ></div>
+
+  <aside
+    *ngIf="sentenceDrawerOpen"
+    class="fixed inset-y-0 right-0 w-full sm:w-96 bg-surface-container-lowest shadow-2xl z-50 transform translate-x-0 transition-transform duration-300 flex flex-col"
+    id="drawer-sentences"
+  >
+    <!-- Drawer Header -->
+    <div class="h-16 px-space-md bg-surface-container-low flex items-center justify-between border-b border-surface-container-high">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-primary text-[22px]">format_list_numbered_rtl</span>
+        <h3 class="font-headline-sm text-headline-sm font-bold text-on-surface">فهرس جمل الدرس ({{ lesson.segments.length }})</h3>
+      </div>
+      <button
+        type="button"
+        class="w-9 h-9 rounded-xl hover:bg-surface-container flex items-center justify-center text-on-surface-variant border-0 bg-transparent cursor-pointer"
+        (click)="toggleSentenceDrawer()"
+      >
+        <span class="material-symbols-outlined text-[20px]">close</span>
+      </button>
+    </div>
+
+    <!-- Sentence Scrollable List -->
+    <div class="flex-1 overflow-y-auto p-space-md space-y-space-xs divide-y divide-surface-container-high/40">
+      <div
+        *ngFor="let seg of lesson.segments; let idx = index"
+        class="pt-2 pb-2 flex items-start gap-3 p-2.5 rounded-xl transition-colors cursor-pointer group"
+        [ngClass]="{
+          'bg-primary/10 shadow-xs': idx === currentSegmentIndex,
+          'hover:bg-surface-container-low': idx !== currentSegmentIndex,
+          'opacity-60 hover:opacity-100': idx > currentSegmentIndex,
+          'pointer-events-none': segmentNavigationInProgress
+        }"
+        [attr.aria-disabled]="segmentNavigationInProgress"
+        (click)="selectSegmentFromDrawer(idx)"
+      >
+        <!-- Completed Icon / Current / Number -->
+        <div
+          *ngIf="idx < currentSegmentIndex"
+          class="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5"
+        >
+          <span class="material-symbols-outlined text-[16px]">check</span>
+        </div>
+        <div
+          *ngIf="idx === currentSegmentIndex"
+          class="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center shrink-0 mt-0.5 font-bold text-xs"
+        >
+          {{ idx + 1 }}
+        </div>
+        <div
+          *ngIf="idx > currentSegmentIndex"
+          class="w-7 h-7 rounded-full bg-surface-container-high text-on-surface-variant flex items-center justify-center shrink-0 mt-0.5 font-bold text-xs"
+        >
+          {{ idx + 1 }}
+        </div>
+
+        <div class="flex flex-col min-w-0 flex-1">
+          <div class="flex items-center justify-between">
+            <p
+              class="font-label-lg text-label-lg text-left font-semibold truncate"
+              [ngClass]="idx === currentSegmentIndex ? 'text-primary font-bold' : 'text-on-surface group-hover:text-primary'"
+              dir="ltr"
+            >
+              {{ seg.loaded ? seg.text : 'Sentence ' + (idx + 1) }}
+            </p>
+            <span
+              *ngIf="idx === currentSegmentIndex"
+              class="px-2 py-0.5 rounded-full bg-primary text-on-primary text-[10px] font-bold mr-2 shrink-0"
+            >الحالية</span>
+          </div>
+          <p class="font-body-sm text-body-sm text-on-surface-variant truncate">
+            {{ seg.loaded ? (seg.translation || 'بدون ترجمة') : 'اضغط لتحميل الجملة عند الحاجة' }}
+          </p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- DRAWER 2: PRACTICE SETTINGS PANEL (SLIDE-OVER LTR) -->
+  <div
+    *ngIf="settingsDrawerOpen"
+    (click)="toggleSettingsDrawer()"
+    class="settings-drawer__backdrop fixed inset-0 bg-black/40 backdrop-blur-xs z-40 transition-opacity"
+  ></div>
+
+  <aside
+    *ngIf="settingsDrawerOpen"
+    class="fixed inset-y-0 left-0 h-[100dvh] max-h-[100dvh] w-full sm:w-96 bg-surface-container-lowest shadow-2xl z-50 transform translate-x-0 transition-transform duration-300 flex flex-col overflow-hidden"
+    id="drawer-settings"
+  >
+    <!-- Settings Header -->
+    <div class="h-16 px-space-md bg-surface-container-low flex items-center justify-between border-b border-surface-container-high">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-primary text-[22px]">tune</span>
+        <h3 class="font-headline-sm text-headline-sm font-bold text-on-surface">إعدادات جلسة الشادوينج</h3>
+      </div>
+      <button
+        type="button"
+        class="w-9 h-9 rounded-xl hover:bg-surface-container flex items-center justify-center text-on-surface-variant border-0 bg-transparent cursor-pointer"
+        (click)="toggleSettingsDrawer()"
+      >
+        <span class="material-symbols-outlined text-[20px]">close</span>
+      </button>
+    </div>
+
+    <!-- Settings Controls Body -->
+    <div class="settings-drawer__body min-h-0 flex-1 overflow-y-auto p-space-md space-y-space-lg">
+      <!-- Option 0a: Teacher Playback Speed -->
+      <div class="flex flex-col gap-2">
+        <label class="font-label-lg text-label-lg font-bold text-on-surface">سرعة استماع صوت المدرس</label>
+        <p class="font-body-sm text-body-sm text-on-surface-variant">اضبط سرعة تشغيل الصوت — ابدأ ببطء ثم زدها تدريجياً.</p>
+        <div class="grid grid-cols-3 gap-2 mt-1">
+          <button
+            type="button"
+            *ngFor="let rate of [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]"
+            (click)="setTeacherPlaybackRate(rate)"
+            class="py-2 rounded-xl font-label-sm text-label-sm font-bold transition-all border-0 cursor-pointer"
+            [ngClass]="teacherPlaybackRate === rate ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'"
+          >{{ rate }}×</button>
+        </div>
+      </div>
+
+      <!-- Option 0b: Student Turn Completion Mode -->
+      <div class="flex flex-col gap-3">
+        <div class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-surface-container-low">
+          <div class="completion-copy flex flex-col gap-1">
+            <span class="font-label-lg text-label-lg font-bold text-on-surface">تحديد وقت لدور الطالب</span>
+            <span class="font-body-sm text-body-sm text-on-surface-variant">
+              {{ studentTurnTimeLimitEnabled
+                ? 'يوجد حد زمني لدورك، وبعده تنتقل الجملة تلقائيًا.'
+                : 'الوضع الموصى به: خذ وقتك بالكامل، والانتقال التلقائي يعتمد على انتهاء كلامك أو زر الجملة التالية.' }}
+            </span>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer shrink-0">
+            <input
+              type="checkbox"
+              [ngModel]="studentTurnTimeLimitEnabled"
+              (ngModelChange)="setStudentTurnTimeLimitEnabled($event)"
+              class="sr-only peer"
+            >
+            <div class="w-11 h-6 bg-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+          </label>
+        </div>
+
+        <div *ngIf="!studentTurnTimeLimitEnabled" class="rounded-2xl border border-primary/20 bg-primary/5 p-3">
+          <div class="flex items-start gap-2">
+            <span class="material-symbols-outlined text-primary text-[20px]">record_voice_over</span>
+            <div>
+              <strong class="block text-sm text-on-surface">الانتقال حسب نطق الجملة</strong>
+              <p class="mt-1 text-xs leading-5 text-on-surface-variant">
+                سرعة كلامك لا تمنع التقدم. التدقيق منفصل عن الانتقال: استخدم «دقق كلامي» عندما تريد مراجعة الكلمات، أو سيظهر تلقائيًا إذا طلبه المدرس.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div *ngIf="studentTurnTimeLimitEnabled" class="flex flex-col gap-2">
+          <label class="font-label-lg text-label-lg font-bold text-on-surface">وقت ترديد الطالب</label>
+          <p class="font-body-sm text-body-sm text-on-surface-variant">نسبة من مدة جملة المدرس — مثلاً 80% تعني أن جملة 5 ث تعطيك 4 ث للترديد.</p>
+          <div class="grid grid-cols-5 gap-2 mt-1">
+            <button
+              type="button"
+              *ngFor="let ratio of [0.6, 0.8, 1.0, 1.2, 1.5]"
+              (click)="setStudentDurationRatio(ratio)"
+              class="py-2 rounded-xl font-label-sm text-label-sm font-bold transition-all border-0 cursor-pointer"
+              [ngClass]="studentDurationRatio === ratio ? 'bg-tertiary text-on-tertiary shadow-xs' : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'"
+            >{{ ratio * 100 | number:'1.0-0' }}%</button>
+          </div>
+          <div class="flex items-center justify-between text-xs text-on-surface-variant px-1">
+            <span>الوقت الحالي للترديد: <strong class="text-on-surface">{{ studentDurationRatioLabel }}</strong></span>
+            <span class="text-primary font-bold">{{ studentDurationRatioPercent }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Option 1: Repetitions per sentence -->
+      <div class="flex flex-col gap-2">
+        <label class="font-label-lg text-label-lg font-bold text-on-surface">عدد دورات الشادوينج في الجلسة</label>
+        <p class="font-body-sm text-body-sm text-on-surface-variant">الدورة الأولى تحفظ إكمال المرحلة عند إنهاء كل الجمل، وأي دورات إضافية تكون مراجعة اختيارية لنفس الدرس.</p>
+        <div class="grid grid-cols-4 gap-2 mt-1">
+          <button
+            type="button"
+            *ngFor="let rep of [1, 3, 5, 7]"
+            (click)="setSessionTarget(rep)"
+            class="rep-chip py-2 rounded-xl font-label-md text-label-md font-bold transition-all border-0 cursor-pointer"
+            [ngClass]="sessionTargetRepetitions === rep ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'"
+          >{{ rep }}</button>
+        </div>
+      </div>
+
+      <!-- Option 2: Countdown pause before recording -->
+      <div class="flex flex-col gap-2">
+        <label class="font-label-lg text-label-lg font-bold text-on-surface">فترة الانتظار قبل بدء التسجيل</label>
+        <p class="font-body-sm text-body-sm text-on-surface-variant">مهلة بالثواني لمنحك وقتاً للتنفس والاستعداد للترديد.</p>
+        <div class="grid grid-cols-3 gap-2 mt-1">
+          <button
+            type="button"
+            (click)="setCountdownPause(0)"
+            class="pause-chip py-2 rounded-xl font-label-sm text-label-sm font-bold transition-all border-0 cursor-pointer"
+            [ngClass]="countdownPauseSeconds === 0 ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'"
+          >بدون (0 ث)</button>
+          <button
+            type="button"
+            (click)="setCountdownPause(3)"
+            class="pause-chip py-2 rounded-xl font-label-sm text-label-sm font-bold transition-all border-0 cursor-pointer"
+            [ngClass]="countdownPauseSeconds === 3 ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'"
+          >3 ثوانٍ</button>
+          <button
+            type="button"
+            (click)="setCountdownPause(5)"
+            class="pause-chip py-2 rounded-xl font-label-sm text-label-sm font-bold transition-all border-0 cursor-pointer"
+            [ngClass]="countdownPauseSeconds === 5 ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'"
+          >5 ثوانٍ</button>
+        </div>
+      </div>
+
+      <!-- Option 3: Auto-Advance Toggle -->
+      <div class="flex items-center justify-between p-3 rounded-2xl bg-surface-container-low">
+        <div class="flex flex-col">
+          <span class="font-label-lg text-label-lg font-bold text-on-surface">التنقل التلقائي للجملة التالية</span>
+          <span class="font-body-sm text-body-sm text-on-surface-variant">الانتقال فور حفظ التسجيل بنجاح</span>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" [(ngModel)]="autoAdvanceEnabled" class="sr-only peer">
+          <div class="w-11 h-6 bg-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+        </label>
+      </div>
+
+      <!-- Option 4: Auto Show Translation -->
+      <div class="flex items-center justify-between p-3 rounded-2xl bg-surface-container-low">
+        <div class="flex flex-col">
+          <span class="font-label-lg text-label-lg font-bold text-on-surface">إظهار الترجمة افتراضياً</span>
+          <span class="font-body-sm text-body-sm text-on-surface-variant">عرض النص العربي أسفل الجملة مباشرة</span>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" [(ngModel)]="sentenceTranslationVisible" class="sr-only peer">
+          <div class="w-11 h-6 bg-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+        </label>
+      </div>
+
+      <!-- Option 5: Microphone Test -->
+      <div class="p-3 rounded-2xl bg-surface-container-low flex flex-col gap-2">
+        <div class="flex items-center justify-between">
+          <span class="font-label-lg text-label-lg font-bold text-on-surface">اختبار الميكروفون</span>
+          <button
+            type="button"
+            (click)="toggleMicrophoneTest()"
+            class="px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-all border-0 cursor-pointer"
+            [ngClass]="microphoneTestActive ? 'bg-red-500' : 'bg-primary'"
+          >
+            {{ microphoneTestActive ? 'إيقاف الاختبار' : 'اختبر الميكروفون' }}
+          </button>
+        </div>
+        <p class="text-xs text-on-surface-variant">{{ microphoneSettingsLabel }}</p>
+        <div *ngIf="microphoneTestActive" class="mt-1 rounded-xl bg-surface-container-lowest p-2">
+          <div class="flex h-10 items-center justify-center gap-px overflow-hidden" dir="ltr">
+            <span *ngFor="let bar of voiceBars" class="min-w-px flex-1 rounded-full bg-primary transition-[height]" [style.height.px]="bar"></span>
+          </div>
+          <div class="mt-1 flex items-center justify-between text-[10px] font-black">
+            <span>{{ microphoneLevelLabel }}</span>
+            <span>{{ voiceLevel }}%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drawer Footer -->
+    <div class="settings-drawer__footer sticky bottom-0 z-10 shrink-0 bg-surface-container-low border-t border-surface-container-high px-space-md pt-space-md pb-[calc(1rem+env(safe-area-inset-bottom))]">
+      <button
+        type="button"
+        class="w-full py-3 rounded-xl bg-primary text-on-primary font-label-lg text-label-lg font-bold shadow-[0_3px_0_0_#005049] hover:brightness-105 active:translate-y-0.5 transition-all border-0 cursor-pointer"
+        (click)="toggleSettingsDrawer()"
+      >
+        حفظ الإعدادات والعودة للتمرين
+      </button>
+    </div>
+  </aside>
+
+  <!-- MODAL: COMPLETION SHOWCASE -->
+  <div
+    *ngIf="isCompletionModalOpen"
+    class="completion-overlay fixed inset-0 z-50 bg-on-surface/40 backdrop-blur-md flex items-center justify-center p-margin-mobile"
+    id="completion-modal"
+  >
+    <div class="completion-dialog bg-surface-container-lowest max-w-lg w-full rounded-3xl p-space-lg sm:p-space-xl shadow-2xl flex flex-col items-center text-center gap-space-md relative overflow-hidden">
+      <!-- Celebratory Icon Badge -->
+      <div class="completion-badge w-20 h-20 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shadow-md animate-bounce">
+        <span class="material-symbols-outlined text-[44px]">verified</span>
+      </div>
+      <!-- Titles -->
+      <div class="completion-copy flex flex-col gap-1">
+        <h2 class="font-display-lg text-display-lg text-on-surface font-extrabold">برافو عليك 🎉</h2>
+        <p class="font-body-md text-body-md text-on-surface-variant">
+          أنهيت <strong>{{ activeStageTitle }}</strong> بنجاح. تقدمك محفوظ، ويمكنك الانتقال إلى <strong>{{ nextStageLabel }}</strong>.
+        </p>
+      </div>
+      <!-- Stats Summary Bento Box -->
+      <div class="completion-stats grid grid-cols-3 gap-2 w-full my-2">
+        <div class="completion-stat p-3 bg-surface-container-low rounded-2xl flex flex-col items-center">
+          <span class="font-display-lg text-headline-lg font-black text-primary">{{ lesson.segments.length }}/{{ lesson.segments.length }}</span>
+          <span class="font-label-sm text-label-sm text-on-surface-variant">جمل مكتملة</span>
+        </div>
+        <div class="completion-stat p-3 bg-surface-container-low rounded-2xl flex flex-col items-center">
+          <span class="font-display-lg text-headline-lg font-black text-emerald-600">{{ completionMatchScore === null ? '—' : completionMatchScore + '%' }}</span>
+          <span class="font-label-sm text-label-sm text-on-surface-variant">{{ completionMatchScore === null ? 'لم يتوفر قياس نصي' : 'تطابق الكلام · ' + completionQualityLabel }}</span>
+        </div>
+        <div class="completion-stat p-3 bg-surface-container-low rounded-2xl flex flex-col items-center">
+          <span class="font-display-lg text-headline-lg font-black text-tertiary">{{ completionTrainingTimeLabel }}</span>
+          <span class="font-label-sm text-label-sm text-on-surface-variant">وقت التدريب</span>
+        </div>
+      </div>
+      <div
+        *ngIf="completionReportSaving || completionReportSaved || completionReportError"
+        class="completion-sync w-full rounded-2xl px-4 py-3 text-sm"
+        [ngClass]="completionReportError ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-800'"
+        role="status"
+        aria-live="polite"
+      >
+        <span *ngIf="completionReportSaving">جارٍ مزامنة نتيجة التدريب...</span>
+        <span *ngIf="!completionReportSaving && completionReportSaved">تم حفظ تفاصيل التدريب بنجاح.</span>
+        <div *ngIf="!completionReportSaving && completionReportError" class="completion-sync__error flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between">
+          <span>تم حفظ تقدمك، لكن تعذرت مزامنة تفاصيل التدريب الآن. يمكنك إعادة المحاولة.</span>
+          <button type="button" class="completion-sync__retry rounded-xl border border-amber-700/20 bg-white px-3 py-2 text-xs font-bold" (click)="retryCompletionReport()">إعادة المحاولة</button>
+        </div>
+      </div>
+      <!-- Action Buttons -->
+      <div class="completion-actions flex flex-col sm:flex-row gap-2 w-full mt-2">
+        <button
+          type="button"
+          class="flex-1 py-3 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md font-bold transition-all border-0 cursor-pointer"
+          (click)="restartCurrentStage()"
+        >
+          إعادة تدريب المرحلة
+        </button>
+        <button
+          type="button"
+          class="flex-1 py-3 rounded-xl bg-primary text-on-primary font-label-lg text-label-lg font-bold shadow-[0_3px_0_0_#005049] hover:brightness-105 transition-all border-0 cursor-pointer"
+          (click)="continueToNextStage()"
+        >
+          المرحلة التالية ←
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

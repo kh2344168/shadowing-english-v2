@@ -27,7 +27,8 @@ public static class LocalShadowingMedia
         var configured = config["Media:LocalRoot"];
         if (!string.IsNullOrWhiteSpace(configured))
             return Path.IsPathFullyQualified(configured) ? Path.Combine(configured, key) : null;
-        if (key.StartsWith("lesson-", StringComparison.Ordinal))
+        if (key.StartsWith("lesson-", StringComparison.Ordinal) ||
+            key.StartsWith("student-shadowing-", StringComparison.Ordinal))
         {
             var root = UploadRoot(env, config);
             return root is null ? null : Path.Combine(root, key);

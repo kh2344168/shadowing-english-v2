@@ -210,6 +210,7 @@ app.MapAdminGroupsEndpoints();
 app.MapAdminCurriculumsEndpoints();
 app.MapAdminShadowingEndpoints();
 app.MapStudentLearningEndpoints();
+app.MapStudentShadowingReportingEndpoints();
 app.MapStudentAiLearningEndpoints();
 
 app.MapGet("/health", (ILogger<Program> logger) =>

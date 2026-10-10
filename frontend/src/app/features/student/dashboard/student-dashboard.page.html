@@ -8,7 +8,7 @@
     </div>
   } @else if (error()) {
     <section class="state-card state-card--error" role="alert">
-      <span class="state-card__icon" aria-hidden="true">!</span>
+      <span class="state-card__icon material-symbols-outlined" aria-hidden="true">error</span>
       <div>
         <h1 id="student-dashboard-title">تعذر تحميل مسارك</h1>
         <p>تحقق من الاتصال ثم حاول مرة أخرى. لن يتم تغيير أي تقدم عند إعادة المحاولة.</p>
@@ -17,77 +17,138 @@
     </section>
   } @else if (curriculum(); as course) {
     @if (course.curriculumTitle) {
-      <header class="journey-header">
-        <div class="journey-header__main">
-          <span class="journey-header__icon" aria-hidden="true">★</span>
-          <div>
-            <span class="journey-header__eyebrow">{{ course.groupName }}</span>
-            <h1 id="student-dashboard-title">{{ course.curriculumTitle }}</h1>
-            <p>ركّز على الدرس الحالي، واستكمل التدريب بالترتيب.</p>
+      <header class="journey-shell">
+        <div class="journey-header">
+          <div class="journey-header__main">
+            <span class="journey-header__icon material-symbols-outlined" aria-hidden="true">stars</span>
+            <div class="journey-header__copy">
+              <div class="journey-header__level-row">
+                <span class="journey-header__level">{{ course.groupName || 'المسار التعليمي' }}</span>
+                <span class="journey-header__badge">المستوى الحالي</span>
+              </div>
+              <h1 id="student-dashboard-title">{{ course.curriculumTitle }}</h1>
+            </div>
           </div>
-        </div>
-        <div class="journey-header__meta">
-          <span>{{ completedCount() }} من {{ visibleLessons().length }} ظاهر مكتمل</span>
-          <a routerLink="/student/curriculum">عرض المنهج الكامل</a>
+
+          <div class="journey-header__progress" aria-label="تقدم الدروس الظاهرة">
+            <div class="journey-header__progress-label">
+              <span class="material-symbols-outlined" aria-hidden="true">award_star</span>
+              <strong>{{ completedCount() }} / {{ visibleLessons().length }} دروس</strong>
+            </div>
+            <span class="journey-header__progress-track" aria-hidden="true">
+              <i
+                [style.width.%]="visibleLessons().length ? (completedCount() / visibleLessons().length) * 100 : 0"
+              ></i>
+            </span>
+          </div>
         </div>
       </header>
 
       @if (visibleLessons().length) {
         <main class="learning-path-wrap">
-          <ol class="learning-path" aria-label="الدروس المنشورة المتاحة بالترتيب">
-            @for (lesson of visibleLessons(); track lesson.slotId; let i = $index) {
-              <li
-                class="path-lesson"
-                [class.is-completed]="lesson.isComplete"
-                [class.is-current]="lesson.slotId === currentLesson()?.slotId"
-              >
-                @if (lesson.slotId === currentLesson()?.slotId) {
-                  <span class="path-lesson__beacon"><i></i> ابدأ من هنا</span>
-                }
+          <a class="review-link" routerLink="/student/curriculum">
+            <span class="material-symbols-outlined" aria-hidden="true">arrow_upward</span>
+            <span>مراجعة الدروس السابقة</span>
+          </a>
 
-                <a
-                  class="path-lesson__node"
-                  [routerLink]="['/student/lessons', lesson.slotId, 'overview']"
-                  [attr.aria-label]="'فتح الدرس ' + lesson.title"
+          <div class="learning-path-stage">
+            <svg
+              class="learning-path-wire"
+              viewBox="0 0 400 980"
+              preserveAspectRatio="none"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M 200,40 C 260,110 310,130 300,210 C 290,290 100,270 100,380 C 100,490 290,470 290,580 C 290,690 120,680 120,780 C 120,860 190,880 200,940"
+              ></path>
+            </svg>
+
+            <ol class="learning-path" aria-label="الدروس المنشورة المتاحة بالترتيب">
+              @for (lesson of visibleLessons(); track lesson.slotId; let i = $index) {
+                <li
+                  class="path-lesson"
+                  [class.is-completed]="lesson.isComplete"
+                  [class.is-current]="lesson.slotId === currentLesson()?.slotId"
+                  [class.is-upcoming]="!lesson.isComplete && lesson.slotId !== currentLesson()?.slotId"
                 >
-                  {{ lesson.isComplete ? '✓' : i + 1 }}
-                </a>
+                  @if (lesson.slotId === currentLesson()?.slotId) {
+                    <span class="path-lesson__beacon"><i></i> ابدأ من هنا</span>
+                  }
 
-                <div class="path-lesson__meta">
-                  <span>الأسبوع {{ lesson.weekNumber }} · اليوم {{ lesson.dayNumber }}</span>
-                  <h2>{{ lesson.title }}</h2>
-                  <small>
-                    {{
-                      lesson.isComplete
-                        ? 'مكتمل'
-                        : lesson.completedSegments
-                          ? 'لديك تقدم محفوظ'
-                          : 'جاهز للبدء'
-                    }}
-                  </small>
-                </div>
-
-                @if (lesson.slotId === currentLesson()?.slotId) {
-                  <article class="path-action-card">
-                    <span class="path-action-card__label">الدرس الحالي</span>
-                    <h3>{{ lesson.title }}</h3>
-                    <p>
-                      الأسبوع {{ lesson.weekNumber }} · اليوم {{ lesson.dayNumber }} · الدرس
-                      {{ lesson.sortOrder }}
-                    </p>
-                    <a [routerLink]="['/student/lessons', lesson.slotId, 'overview']">
-                      {{ lesson.completedSegments ? 'كمّل من مكانك' : 'ابدأ الدرس' }}
-                      <span aria-hidden="true">←</span>
+                  <div class="path-lesson__node-wrap">
+                    <span class="path-lesson__glow" aria-hidden="true"></span>
+                    <a
+                      class="path-lesson__node"
+                      [routerLink]="['/student/lessons', lesson.slotId, 'overview']"
+                      [attr.aria-label]="'فتح الدرس ' + lesson.title"
+                    >
+                      <span class="material-symbols-outlined" aria-hidden="true">
+                        @if (lesson.isComplete) {
+                          waving_hand
+                        } @else if (lesson.slotId === currentLesson()?.slotId) {
+                          contact_support
+                        } @else {
+                          lock
+                        }
+                      </span>
+                      @if (lesson.isComplete) {
+                        <i class="path-lesson__check material-symbols-outlined" aria-hidden="true">check</i>
+                      }
                     </a>
-                  </article>
-                }
-              </li>
-            }
-          </ol>
+                  </div>
+
+                  <div class="path-lesson__meta">
+                    <h2>الدرس {{ i + 1 }} — {{ lesson.title }}</h2>
+                    <div class="mastery-stars" [attr.aria-label]="lesson.isComplete ? '6 من 6 نجوم' : 'لم يكتمل الدرس بعد'">
+                      @for (star of [1, 2, 3, 4, 5, 6]; track star) {
+                        <span
+                          class="material-symbols-outlined"
+                          [class.is-filled]="lesson.isComplete"
+                          aria-hidden="true"
+                        >star</span>
+                      }
+                    </div>
+
+                    @if (lesson.isComplete) {
+                      <span class="path-lesson__status path-lesson__status--mastered">
+                        <span class="material-symbols-outlined" aria-hidden="true">verified</span>
+                        تم إتقان الدرس
+                      </span>
+                    } @else if (lesson.slotId !== currentLesson()?.slotId) {
+                      <span class="path-lesson__status">يأتي بعد الدرس الحالي</span>
+                    }
+                  </div>
+
+                  @if (lesson.slotId === currentLesson()?.slotId) {
+                    <article class="path-action-card">
+                      <span class="path-action-card__pointer" aria-hidden="true"></span>
+                      <div class="path-action-card__heading">
+                        <div>
+                          <span class="path-action-card__label">الدرس الحالي</span>
+                          <h3>الدرس {{ i + 1 }} — {{ lesson.title }}</h3>
+                        </div>
+                        <span class="path-action-card__icon material-symbols-outlined" aria-hidden="true">graphic_eq</span>
+                      </div>
+                      <p>
+                        الأسبوع {{ lesson.weekNumber }} · اليوم {{ lesson.dayNumber }} · تدرب على الاستماع
+                        والتكرار لتثبيت النطق بثقة وانسيابية.
+                      </p>
+                      <a [routerLink]="['/student/lessons', lesson.slotId, 'overview']">
+                        {{ lesson.completedSegments ? 'كمّل من مكانك' : 'ابدأ الدراسة الأساسية' }}
+                        <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+                      </a>
+                    </article>
+                  }
+                </li>
+              }
+            </ol>
+          </div>
 
           <footer class="path-footer">
+            <span aria-hidden="true"></span>
             @if (currentLesson()) {
-              <p>الدروس هنا تأتي من المنهج المنشور لمجموعتك فقط.</p>
+              <p>الوحدة التالية تُتاح تلقائياً بعد إتمام دروس الوحدة الحالية</p>
             } @else {
               <p>أكملت كل الدروس الظاهرة في هذه الصفحة.</p>
             }
@@ -98,7 +159,7 @@
         </main>
       } @else {
         <section class="state-card" role="status">
-          <span class="state-card__icon" aria-hidden="true">◷</span>
+          <span class="state-card__icon material-symbols-outlined" aria-hidden="true">schedule</span>
           <div>
             <h2>لا توجد دروس متاحة الآن</h2>
             <p>المنهج منشور، لكن لا توجد دروس متاحة لك في الوقت الحالي.</p>
@@ -108,7 +169,7 @@
       }
     } @else {
       <section class="state-card state-card--empty" role="status">
-        <span class="state-card__icon" aria-hidden="true">📚</span>
+        <span class="state-card__icon material-symbols-outlined" aria-hidden="true">auto_stories</span>
         <div>
           <h1 id="student-dashboard-title">المسار لسه بيتجهز</h1>
           <p>
