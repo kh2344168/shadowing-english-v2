@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { AuthoringLesson, ShadowingAuthoringApi } from '../lesson-builder/shadowing-authoring.api';
+import { AuthoringLesson, ShadowingAuthoringApi } from '../shadowing-authoring.api';
 
 @Component({
   selector: 'app-admin-lessons-page',

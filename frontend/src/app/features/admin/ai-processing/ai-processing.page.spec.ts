@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
-import { AuthoringLesson, ShadowingAuthoringApi } from '../lesson-builder/shadowing-authoring.api';
+import { AuthoringLesson, ShadowingAuthoringApi } from '../shadowing-authoring.api';
 import { AdminAIProcessingPage } from './ai-processing.page';
 import { ImportedLesson } from './local-lesson';
 import { LocalProcessorClient } from './local-processor.client';

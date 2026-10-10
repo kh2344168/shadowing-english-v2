@@ -16,7 +16,7 @@ import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
 import { AuthService } from '../../../core/auth/auth.service';
-import { AuthoringLesson, ShadowingAuthoringApi } from '../lesson-builder/shadowing-authoring.api';
+import { AuthoringLesson, ShadowingAuthoringApi } from '../shadowing-authoring.api';
 import { ImportedLesson } from './local-lesson';
 import {
   DEFAULT_PROCESSOR_SETTINGS,

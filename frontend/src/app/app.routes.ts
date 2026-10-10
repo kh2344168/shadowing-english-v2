@@ -37,13 +37,6 @@ export const routes: Routes = [
           import('./features/admin/lessons/ai-review.page').then((m) => m.AdminAiReviewPage),
       },
       {
-        path: 'lesson-builder',
-        loadComponent: () =>
-          import('./features/admin/lesson-builder/lesson-builder.page').then(
-            (m) => m.AdminLessonBuilderPage,
-          ),
-      },
-      {
         path: 'ai-processing',
         loadComponent: () =>
           import('./features/admin/ai-processing/ai-processing.page').then(

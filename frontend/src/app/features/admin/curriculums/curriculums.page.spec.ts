@@ -7,7 +7,7 @@ import {
   CurriculumDraft,
   CurriculumLesson,
   GroupCurriculumState,
-} from '../lesson-builder/shadowing-authoring.api';
+} from '../shadowing-authoring.api';
 import { AdminCurriculumsPage } from './curriculums.page';
 
 const curriculumId = '11111111-1111-4111-8111-111111111111';

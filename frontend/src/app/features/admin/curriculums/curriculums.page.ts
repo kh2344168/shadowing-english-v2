@@ -25,7 +25,7 @@ import {
   CurriculumSummary,
   GroupCurriculumState,
   ShadowingAuthoringApi,
-} from '../lesson-builder/shadowing-authoring.api';
+} from '../shadowing-authoring.api';
 
 @Component({
   selector: 'app-admin-curriculums-page',

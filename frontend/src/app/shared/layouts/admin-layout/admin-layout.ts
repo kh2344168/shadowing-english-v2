@@ -45,7 +45,6 @@ export class AdminLayout {
       label: 'المحتوى',
       items: [
         { label: 'الدروس', icon: 'play_lesson', path: '/admin/lessons' },
-        { label: 'منشئ الدرس', icon: 'edit_note', path: '/admin/lesson-builder' },
         { label: 'إنشاء الدرس بالـAI', icon: 'auto_awesome', path: '/admin/ai-processing' },
         { label: 'المناهج', icon: 'auto_stories', path: '/admin/curriculums' },
       ],
