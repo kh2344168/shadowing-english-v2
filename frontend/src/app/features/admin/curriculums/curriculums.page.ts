@@ -63,8 +63,6 @@ export class AdminCurriculumsPage implements OnInit {
   readonly loadingDraft = signal(false);
   readonly loadingGroup = signal(false);
   readonly loadingLessons = signal(false);
-  readonly loadingCurriculums = signal(false);
-  readonly loadingGroupsList = signal(false);
   readonly curriculumsLoaded = signal(false);
   readonly lessonsLoaded = signal(false);
   readonly busy = signal('');
@@ -74,6 +72,7 @@ export class AdminCurriculumsPage implements OnInit {
   readonly success = signal('');
   readonly createOpen = signal(false);
   readonly pickerOpen = signal(false);
+  readonly publishConfirmationOpen = signal(false);
   readonly search = signal('');
   readonly sort = signal('newest');
   readonly lessonSearch = signal('');
@@ -189,54 +188,39 @@ export class AdminCurriculumsPage implements OnInit {
   }
 
   async loadCurriculums(page = 1): Promise<boolean> {
-    if (this.loadingCurriculums()) return false;
-    this.loadingCurriculums.set(true);
-    try {
-      return await this.read('LoadCurriculums', async () => {
-        const response = await firstValueFrom(this.api.curriculums(page));
-        this.curriculums.update((rows) =>
-          page === 1 ? response.items : this.merge(rows, response.items, (x) => x.id),
-        );
-        this.moreCurriculums.set(response.hasMore);
-        this.curriculumPage = page;
-        this.curriculumsLoaded.set(true);
-      });
-    } finally {
-      this.loadingCurriculums.set(false);
-    }
+    return this.read('Load', async () => {
+      const response = await firstValueFrom(this.api.curriculums(page));
+      this.curriculums.update((rows) =>
+        page === 1 ? response.items : this.merge(rows, response.items, (x) => x.id),
+      );
+      this.moreCurriculums.set(response.hasMore);
+      this.curriculumPage = page;
+      this.curriculumsLoaded.set(true);
+    });
   }
   async loadLessons(page = 1): Promise<boolean> {
-    if (this.loadingLessons()) return false;
     this.loadingLessons.set(true);
-    try {
-      return await this.read('LoadLessons', async () => {
-        const response = await firstValueFrom(this.api.lessons(page));
-        this.lessons.update((rows) =>
-          page === 1 ? response.items : this.merge(rows, response.items, (x) => x.versionId),
-        );
-        this.moreLessons.set(response.hasMore);
-        this.lessonPage = page;
-        this.lessonsLoaded.set(true);
-      });
-    } finally {
-      this.loadingLessons.set(false);
-    }
+    const result = await this.read('Load', async () => {
+      const response = await firstValueFrom(this.api.lessons(page));
+      this.lessons.update((rows) =>
+        page === 1 ? response.items : this.merge(rows, response.items, (x) => x.versionId),
+      );
+      this.moreLessons.set(response.hasMore);
+      this.lessonPage = page;
+      this.lessonsLoaded.set(true);
+    });
+    this.loadingLessons.set(false);
+    return result;
   }
   async loadGroups(page = 1): Promise<boolean> {
-    if (this.loadingGroupsList()) return false;
-    this.loadingGroupsList.set(true);
-    try {
-      return await this.read('LoadGroups', async () => {
-        const response = await firstValueFrom(this.api.groups(page));
-        this.groups.update((rows) =>
-          page === 1 ? response.items : this.merge(rows, response.items, (x) => x.id),
-        );
-        this.moreGroups.set(response.hasMore);
-        this.groupPage = page;
-      });
-    } finally {
-      this.loadingGroupsList.set(false);
-    }
+    return this.read('Load', async () => {
+      const response = await firstValueFrom(this.api.groups(page));
+      this.groups.update((rows) =>
+        page === 1 ? response.items : this.merge(rows, response.items, (x) => x.id),
+      );
+      this.moreGroups.set(response.hasMore);
+      this.groupPage = page;
+    });
   }
 
   async selectCurriculum(id: string): Promise<void> {
@@ -427,6 +411,26 @@ export class AdminCurriculumsPage implements OnInit {
       this.publishAttempt = null;
       this.success.set('تم إسناد المنهج للمجموعة. الطالب يرى النسخة المنشورة فقط حتى تضغط نشر.');
     });
+  }
+  openPublishConfirmation(): void {
+    if (!this.canPublish()) return;
+    this.log('ConfirmPublish', 'Start');
+    this.publishConfirmationOpen.set(true);
+  }
+  cancelPublishConfirmation(): void {
+    if (!this.publishConfirmationOpen() || this.busy()) return;
+    this.publishConfirmationOpen.set(false);
+    this.log('ConfirmPublish', 'Success', Date.now(), { result: 'cancelled' });
+  }
+  async confirmPublishCurriculum(): Promise<void> {
+    if (!this.publishConfirmationOpen() || !this.canPublish()) return;
+    this.publishConfirmationOpen.set(false);
+    const started = Date.now();
+    this.log('ConfirmPublish', 'Start', started);
+    await this.publishCurriculum();
+    const success = this.success().startsWith('تم نشر المنهج');
+    this.log('ConfirmPublish', success ? 'Success' : 'Failed', started,
+      { result: success ? 'published' : 'publish_failed' });
   }
   async publishCurriculum(): Promise<void> {
     if (this.busy() || this.reviewRequired() || (!this.canPublish() && !this.canRetryPublish()))
@@ -731,8 +735,7 @@ export class AdminCurriculumsPage implements OnInit {
     );
   }
   private readonly messages: Record<string, string> = {
-    active_progress_prevents_republish:
-      'يوجد تقدم طلاب بالفعل على النسخة المنشورة. لا يمكن استبدالها بصمت أو إعادة التقدم إلى الصفر.',
+    no_unpublished_changes: 'المنهج مطابق لآخر نسخة منشورة. عدّل المنهج واحفظه قبل النشر من جديد.',
     slot_conflict: 'الدرس أو موضع الأسبوع واليوم والترتيب موجود بالفعل.',
     lesson_audio_missing: 'لا يمكن نشر المنهج لأن ملفات صوت بعض الدروس غير متاحة.',
     curriculum_empty: 'أضف درسًا محفوظًا للمنهج واحفظه قبل النشر.',

@@ -32,7 +32,7 @@ async function siteApi(page: Page, role = 'Admin'): Promise<string[]> {
       expect(request.headers()['content-type']).toContain('multipart/form-data');
       expect(request.postDataBuffer()?.includes(Buffer.from('segment-01.wav'))).toBe(true);
       value = { id: 'test-lesson', versionId: 'test-version', title: 'Browser lesson', description: '', segmentCount: 2 };
-    } else if (url.pathname === '/api/admin/shadowing/publish') value = { groupId: 'test-group', versionId: 'test-published', slotId: 'test-slot' };
+    }
     else if (url.pathname === '/api/student/learning/curriculum') value = { groupName: null, curriculumTitle: null, items: [], hasMore: false };
     else throw new Error('Unexpected site API request: ' + request.method() + ' ' + url.pathname);
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(value) });
@@ -48,7 +48,7 @@ async function connect(page: Page): Promise<void> {
   await expect(page.locator('.tool-status')).toContainText('WhisperX جاهز');
 }
 
-test('local processing, recut, review, transfer, save and publish remain separate', async ({ page, context }) => {
+test('local processing, recut, review and save never publish a lesson automatically', async ({ page, context }) => {
   const writes = await siteApi(page);
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -64,29 +64,22 @@ test('local processing, recut, review, transfer, save and publish remain separat
   await page.getByRole('button', { name: 'ابدأ معالجة Shadowing', exact: true }).click();
   await expect(page.locator('#review-title')).toBeVisible();
   expect(writes).toEqual([]);
-  const transfer = page.getByRole('button', { name: 'اعتماد Shadowing والانتقال للحفظ', exact: true });
-  await expect(transfer).toBeDisabled();
+  const save = page.getByRole('button', { name: 'اعتماد الدرس وحفظه', exact: true });
+  await expect(save).toBeDisabled();
   await page.locator('#clip-end-0').fill('1.5');
-  await expect(page.locator('#processor-reviewed')).toBeDisabled();
   await page.getByRole('button', { name: 'طبّق التعديلات وأعد التقطيع' }).click();
-  await expect(page.locator('#processor-reviewed')).toBeEnabled();
   await page.locator('#processor-reviewed').check();
-  await transfer.click();
-  await expect(page).toHaveURL(/\/admin\/lesson-builder$/);
-  await expect(page.locator('#lesson-title')).toHaveValue('Browser lesson');
-  await expect(page.locator('.segment audio')).toHaveCount(2);
-  expect(writes).toEqual([]);
-  await page.getByRole('button', { name: 'احفظ الدرس', exact: true }).click();
-  await expect(page.locator('.notice.success')).toContainText('اتحفظ الدرس');
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(page.getByText('الدرس محفوظ بالفعل في قائمة الدروس')).toBeVisible();
   expect(writes).toEqual(['/api/admin/shadowing/lessons']);
-  await page.locator('#target-group').selectOption('test-group');
-  await page.getByRole('button', { name: 'انشر الدرس للمجموعة', exact: true }).click();
-  await expect(page.locator('.notice.success')).toContainText('تم نشر');
-  expect(writes).toEqual(['/api/admin/shadowing/lessons', '/api/admin/shadowing/publish']);
+  await page.getByRole('button', { name: 'الانتقال إلى قائمة الدروس' }).click();
+  await expect(page).toHaveURL(/\/admin\/lessons$/);
+  expect(writes).toEqual(['/api/admin/shadowing/lessons']);
   expect(localHeaders.length).toBeGreaterThan(0);
   expect((await Promise.all(localHeaders)).every((headers) => !headers['cookie'] && !headers['x-csrf'] && !headers['x-xsrf-token'])).toBe(true);
   expect(errors).toEqual([]);
-  await page.screenshot({ path: test.info().outputPath('builder.png'), fullPage: true });
+  await page.screenshot({ path: test.info().outputPath('ai-save.png'), fullPage: true });
 });
 
 test('an existing installation can reconnect and downloaded packages contain only local source and pairing', async ({ page }) => {

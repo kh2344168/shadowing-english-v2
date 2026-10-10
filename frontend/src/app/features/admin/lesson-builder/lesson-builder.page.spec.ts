@@ -15,7 +15,6 @@ describe('AdminLessonBuilderPage', () => {
     const page = fixture.componentInstance;
     fixture.detectChanges();
     http.expectOne('/api/admin/shadowing/lessons?page=1').flush({ items: [], hasMore: false });
-    http.expectOne('/api/admin/shadowing/groups?page=1').flush({ items: [], hasMore: false });
     await fixture.whenStable();
     const audio = new File([new Uint8Array(64)], 'reviewed.wav', { type: 'audio/wav' });
     page.title = 'Prepared lesson';
@@ -61,10 +60,6 @@ describe('AdminLessonBuilderPage', () => {
     const page = fixture.componentInstance;
     fixture.detectChanges();
     http.expectOne('/api/admin/shadowing/lessons?page=1').flush({ items: [], hasMore: false });
-    http.expectOne('/api/admin/shadowing/groups?page=1').flush({
-      items: [{ id: 'group-1', name: 'أولى', currentVersionId: null }],
-      hasMore: false,
-    });
     await fixture.whenStable();
     expect(http.match(() => true)).toEqual([]);
 
@@ -96,7 +91,7 @@ describe('AdminLessonBuilderPage', () => {
     expect(page.selectedVersionId).toBe('version-1');
 
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
-    await page.publish();
+    await page.goToCurriculum();
     expect(navigate).toHaveBeenCalledWith(['/admin/curriculums'], {
       queryParams: { lessonVersionId: 'version-1' },
     });

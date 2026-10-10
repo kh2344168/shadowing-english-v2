@@ -1,4 +1,3 @@
-import { Injectable } from '@angular/core';
 import { readArchive } from './local-archive';
 
 export interface LocalClip {
@@ -133,24 +132,5 @@ export async function importLesson(file: File): Promise<ImportedLesson> {
   } catch {
     console.warn('[Admin.LocalProcessor.Import.Failed]', { durationMs: Date.now() - started });
     throw new Error('invalid_result_package');
-  }
-}
-
-@Injectable({ providedIn: 'root' })
-export class LocalDraftTransfer {
-  private pending: { userId: string; lesson: ImportedLesson } | null = null;
-  hasDraft(): boolean {
-    return this.pending !== null;
-  }
-  set(userId: string, lesson: ImportedLesson): void {
-    this.pending = { userId, lesson };
-  }
-  take(userId: string): ImportedLesson | null {
-    const value = this.pending;
-    this.pending = null;
-    return value?.userId === userId ? value.lesson : null;
-  }
-  clear(): void {
-    this.pending = null;
   }
 }

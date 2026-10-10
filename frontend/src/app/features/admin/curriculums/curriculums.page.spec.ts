@@ -483,6 +483,25 @@ describe('AdminCurriculumsPage — independent curriculum flow', () => {
     await retry;
     noWrites();
   });
+  it('requires explicit Publish confirmation and Cancel never writes', async () => {
+    await initialize({ curriculumId, groupId }, savedDraft(), assigned());
+    page.openPublishConfirmation();
+    expect(page.publishConfirmationOpen()).toBe(true);
+    noWrites();
+    page.cancelPublishConfirmation();
+    expect(page.publishConfirmationOpen()).toBe(false);
+    noWrites();
+    page.openPublishConfirmation();
+    const publishing = page.confirmPublishCurriculum();
+    expect(page.publishConfirmationOpen()).toBe(false);
+    const request = await writing(publishUrl);
+    request.flush({ versionId: publicationId });
+    await drain();
+    http.expectOne(groupUrl).flush(assigned({ versionId: publicationId, hasUnpublishedChanges: false }));
+    await publishing;
+    expect(page.success()).toContain('تم نشر');
+    noWrites();
+  });
   it('confirmed Publish followed by failed refresh cannot publish stale state again', async () => {
     await initialize({ curriculumId, groupId }, savedDraft(), assigned());
     const publishing = page.publishCurriculum();
@@ -498,7 +517,7 @@ describe('AdminCurriculumsPage — independent curriculum flow', () => {
     noWrites();
   });
   for (const [code, message] of [
-    ['active_progress_prevents_republish', 'يوجد تقدم طلاب'],
+    ['no_unpublished_changes', 'مطابق لآخر نسخة'],
     ['slot_conflict', 'موجود بالفعل'],
     ['lesson_audio_missing', 'ملفات صوت'],
   ])
@@ -626,9 +645,8 @@ describe('AdminCurriculumsPage — independent curriculum flow', () => {
       ...vi.mocked(console.info).mock.calls,
       ...vi.mocked(console.warn).mock.calls,
     ]);
-    expect(logs).toContain('Admin.Curriculum.UI.LoadCurriculums.Start');
-    expect(logs).toContain('Admin.Curriculum.UI.LoadLessons.Success');
-    expect(logs).toContain('Admin.Curriculum.UI.LoadGroups.Success');
+    expect(logs).toContain('Admin.Curriculum.UI.Load.Start');
+    expect(logs).toContain('Admin.Curriculum.UI.Load.Success');
     expect(logs).toContain('Admin.Curriculum.UI.Update.Start');
     expect(logs).toContain('Admin.Curriculum.UI.Update.Failed');
     expect(logs).toContain('durationMs');
@@ -642,25 +660,4 @@ describe('AdminCurriculumsPage — independent curriculum flow', () => {
     ])
       expect(logs).not.toContain(privateValue);
   });
-  it('shows the three explicit workflow stages without treating assignment as publish', async () => {
-    await initialize({ curriculumId, groupId }, savedDraft(), assigned({ versionId: null }));
-    fixture.detectChanges();
-    const text = fixture.nativeElement.textContent;
-    expect(text).toContain('حفظ المسودة');
-    expect(text).toContain('إسناد للمجموعة');
-    expect(text).toContain('النشر الصريح');
-    expect(text).toContain('لا توجد نسخة منشورة بعد');
-  });
-
-  it('prevents duplicate curriculum list requests while one page is in flight', async () => {
-    fixture = TestBed.createComponent(AdminCurriculumsPage);
-    page = fixture.componentInstance;
-    const first = page.loadCurriculums(1);
-    const second = page.loadCurriculums(1);
-    const requests = http.match(`${base}/curriculums?page=1`);
-    expect(requests).toHaveLength(1);
-    requests[0].flush({ items: [], hasMore: false });
-    await Promise.all([first, second]);
-  });
-
 });

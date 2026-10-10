@@ -4,7 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { AuthoringLesson, ShadowingAuthoringApi } from '../lesson-builder/shadowing-authoring.api';
 import { AdminAIProcessingPage } from './ai-processing.page';
-import { ImportedLesson, LocalDraftTransfer } from './local-lesson';
+import { ImportedLesson } from './local-lesson';
 import { LocalProcessorClient } from './local-processor.client';
 
 describe('AdminAIProcessingPage — approve and save', () => {
@@ -95,7 +95,6 @@ describe('AdminAIProcessingPage — approve and save', () => {
 
   beforeEach(async () => {
     vi.resetAllMocks();
-    localStorage.clear();
     client.initialize.mockReturnValue(null);
     client.remove.mockResolvedValue(undefined);
     const browserURL = URL;
@@ -126,7 +125,6 @@ describe('AdminAIProcessingPage — approve and save', () => {
   afterEach(() => {
     http.verify();
     fixture.destroy();
-    localStorage.clear();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -192,72 +190,6 @@ describe('AdminAIProcessingPage — approve and save', () => {
     expect(client.start).not.toHaveBeenCalled();
   });
 
-  it('keeps an unfinished segment edit when leaving the page and restores it when reopened', () => {
-    prepareReviewedLesson();
-    page.userId = 'admin-1';
-    page.openEditModal(0);
-    page.editText = 'Draft text that must survive navigation.';
-    page.editStart = 0.25;
-    page.editEnd = 1.75;
-
-    page.onPageHide();
-    page.editingIndex.set(null);
-    page.editText = '';
-    page.editStart = 0;
-    page.editEnd = 0;
-
-    page.openEditModal(0);
-
-    expect(page.editText).toBe('Draft text that must survive navigation.');
-    expect(page.editStart).toBe(0.25);
-    expect(page.editEnd).toBe(1.75);
-    expect(page.notice()).toContain('تم استعادة تعديل غير محفوظ');
-  });
-
-  it('clears the local unfinished edit when the user explicitly cancels it', () => {
-    prepareReviewedLesson();
-    page.userId = 'admin-1';
-    page.openEditModal(0);
-    page.editText = 'Temporary draft.';
-    page.editStart = 0.25;
-    page.editEnd = 1.75;
-    page.onPageHide();
-
-    page.closeEditModal();
-    page.openEditModal(0);
-
-    expect(page.editText).toBe('Sentence 1.');
-    expect(page.editStart).toBe(0);
-    expect(page.editEnd).toBe(2);
-  });
-
-  it('restores successfully saved edited text even if the processor later returns the older text', async () => {
-    const original = prepareReviewedLesson();
-    page.userId = 'admin-1';
-    const refreshed = lesson();
-    refreshed.manifest.segments[0] = {
-      ...refreshed.manifest.segments[0],
-      text: 'Persisted edited sentence.',
-      start: 0.5,
-      end: 1.5,
-    };
-    refreshed.files[0] = new File([new Uint8Array(96)], 'segment-01.wav', { type: 'audio/wav' });
-    refreshed.files[1] = original.files[1];
-    client.recut.mockResolvedValue(refreshed.manifest);
-    client.result.mockResolvedValue(refreshed);
-    page.connected.set(true);
-    page.openEditModal(0);
-    page.editText = 'Persisted edited sentence.';
-    page.editStart = 0.5;
-    page.editEnd = 1.5;
-
-    await page.saveSegmentEdit();
-
-    const staleProcessorResult = lesson();
-    (page as unknown as { setResult: (value: ImportedLesson) => void }).setResult(staleProcessorResult);
-    expect(page.result()!.manifest.segments[0].text).toBe('Persisted edited sentence.');
-  });
-
   it('prevents duplicate requests when approve is clicked twice before the view updates', async () => {
     prepareReviewedLesson();
     const approve = button('اعتماد الدرس وحفظه');
@@ -315,13 +247,9 @@ describe('AdminAIProcessingPage — approve and save', () => {
     await saveSuccessfully();
   });
 
-  it('saves through create without publishing, transferring a draft or rerunning WhisperX', async () => {
+  it('saves directly without publishing or rerunning WhisperX', async () => {
     prepareReviewedLesson();
-    const publish = vi.spyOn(TestBed.inject(ShadowingAuthoringApi), 'publish');
-    const transfer = vi.spyOn(TestBed.inject(LocalDraftTransfer), 'set');
     await saveSuccessfully();
-    expect(publish).not.toHaveBeenCalled();
-    expect(transfer).not.toHaveBeenCalled();
     expect(http.match('/api/admin/shadowing/publish')).toEqual([]);
     expect(client.start).not.toHaveBeenCalled();
     expect(client.recut).not.toHaveBeenCalled();

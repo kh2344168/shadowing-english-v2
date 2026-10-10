@@ -1,7 +1,7 @@
 import { Blob as NodeBlob, File as NodeFile } from 'node:buffer';
 import { webcrypto } from 'node:crypto';
 import { archive, readArchive } from './local-archive';
-import { importLesson, LocalDraftTransfer, LocalLesson, validateManifest } from './local-lesson';
+import { importLesson, LocalLesson, validateManifest } from './local-lesson';
 import { DEFAULT_PROCESSOR_SETTINGS, LocalProcessorClient } from './local-processor.client';
 
 const JOB_ID = '11111111-1111-4111-8111-111111111111';
@@ -135,12 +135,7 @@ describe('Local processor contracts', () => {
     ).toThrow();
   });
 
-  it('isolates in-memory drafts and pairing keys between accounts', async () => {
-    const { manifest, bytes } = await lesson();
-    const transfer = new LocalDraftTransfer();
-    transfer.set('admin-1', { manifest, files: [new File([bytes], 'segment-01.wav')] });
-    expect(transfer.take('admin-2')).toBeNull();
-    expect(transfer.take('admin-1')).toBeNull();
+  it('isolates local processor pairing keys between accounts', async () => {
     localStorage.setItem('shadowing.local-processor.admin-1', JSON.stringify(connection()));
     const client = new LocalProcessorClient();
     expect(client.initialize('admin-1')).toBeTruthy();

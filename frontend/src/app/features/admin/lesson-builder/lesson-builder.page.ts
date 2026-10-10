@@ -11,8 +11,8 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
-import { ImportedLesson, LocalDraftTransfer, importLesson } from '../ai-processing/local-lesson';
-import { AuthoringGroup, AuthoringLesson, ShadowingAuthoringApi } from './shadowing-authoring.api';
+import { ImportedLesson, importLesson } from '../ai-processing/local-lesson';
+import { AuthoringLesson, ShadowingAuthoringApi } from './shadowing-authoring.api';
 
 interface DraftSegment {
   id: number;
@@ -31,58 +31,31 @@ interface DraftSegment {
 export class AdminLessonBuilderPage implements OnInit, OnDestroy {
   private readonly api = inject(ShadowingAuthoringApi);
   private readonly auth = inject(AuthService);
-  private readonly transfer = inject(LocalDraftTransfer);
   private destroyed = false;
   private urls: Record<number, string> = {};
   private nextSegmentId = 2;
   private createAttempt: string | null = null;
   private readonly router = inject(Router);
   lessonsPage = 0;
-  groupsPage = 0;
 
   readonly lessons = signal<AuthoringLesson[]>([]);
-  readonly groups = signal<AuthoringGroup[]>([]);
   readonly segments = signal<DraftSegment[]>([{ id: 1, text: '', audio: null }]);
   readonly loading = signal(true);
   readonly moreLessons = signal(false);
-  readonly moreGroups = signal(false);
   readonly saving = signal(false);
   readonly importing = signal(false);
   readonly importedDraft = signal(false);
   readonly audioUrls = signal<Record<number, string>>({});
-  readonly publishing = signal(false);
+  readonly openingCurriculum = signal(false);
   readonly error = signal('');
   readonly success = signal('');
   title = '';
   description = '';
   importedReviewed = false;
   selectedVersionId = '';
-  selectedGroupId = '';
-  weekNumber = 1;
-  dayNumber = 1;
-  sortOrder = 1;
 
   ngOnInit(): void {
-    void Promise.all([this.loadLessons(), this.loadGroups()]).finally(() =>
-      this.loading.set(false),
-    );
-    if (this.transfer.hasDraft()) void this.receiveDraft();
-  }
-
-  private async receiveDraft(): Promise<void> {
-    this.importing.set(true);
-    try {
-      const session = await firstValueFrom(this.auth.session());
-      const lesson = this.transfer.take(
-        session.authenticated && session.roles.includes('Admin') ? (session.userId ?? '') : '',
-      );
-      if (lesson && !this.destroyed) this.applyImported(lesson, true);
-    } catch {
-      this.transfer.clear();
-      this.error.set('تعذر التحقق من الحساب لاستيراد المسودة. أعد تسجيل الدخول.');
-    } finally {
-      this.importing.set(false);
-    }
+    void this.loadLessons().finally(() => this.loading.set(false));
   }
 
   async importResult(event: Event): Promise<void> {
@@ -166,28 +139,6 @@ export class AdminLessonBuilderPage implements OnInit, OnDestroy {
     }
   }
 
-  async loadGroups(page = 1): Promise<void> {
-    const started = Date.now();
-    console.info('[Admin.Shadowing.UI.Groups.Start]', { page });
-    try {
-      const result = await firstValueFrom(this.api.groups(page));
-      this.groups.update((items) => (page === 1 ? result.items : [...items, ...result.items]));
-      this.groupsPage = page;
-      this.moreGroups.set(result.hasMore);
-      console.info('[Admin.Shadowing.UI.Groups.Success]', {
-        page,
-        count: result.items.length,
-        durationMs: Date.now() - started,
-      });
-    } catch (error) {
-      this.error.set(this.describe(error));
-      console.warn('[Admin.Shadowing.UI.Groups.Failed]', {
-        page,
-        status: this.status(error),
-        durationMs: Date.now() - started,
-      });
-    }
-  }
 
   addSegment(): void {
     if (this.segments().length >= 20) return;
@@ -280,7 +231,7 @@ export class AdminLessonBuilderPage implements OnInit, OnDestroy {
       this.importedReviewed = false;
       this.segments.set([{ id: this.nextSegmentId++, text: '', audio: null }]);
       this.createAttempt = null;
-      this.success.set('اتحفظ الدرس بصوته. اختَر مجموعة واضغط نشر ليظهر للطالب.');
+      this.success.set('تم حفظ الدرس في المكتبة. أضفه لمنهج، ثم احفظ المنهج واسنده للمجموعة وانشره من صفحة المناهج.');
       console.info('[Admin.Shadowing.UI.Create.Success]', {
         lessonId: created.id,
         versionId: created.versionId,
@@ -302,10 +253,10 @@ export class AdminLessonBuilderPage implements OnInit, OnDestroy {
     this.clearAudioUrls();
   }
 
-  async publish(): Promise<void> {
-    if (!this.selectedVersionId || this.publishing()) return;
+  async goToCurriculum(): Promise<void> {
+    if (!this.selectedVersionId || this.openingCurriculum()) return;
     const started = Date.now();
-    this.publishing.set(true);
+    this.openingCurriculum.set(true);
     console.info('[Admin.Shadowing.UI.CurriculumNavigation.Start]');
     try {
       const navigated = await this.router.navigate(['/admin/curriculums'], {
@@ -321,7 +272,7 @@ export class AdminLessonBuilderPage implements OnInit, OnDestroy {
         durationMs: Date.now() - started,
       });
     } finally {
-      this.publishing.set(false);
+      this.openingCurriculum.set(false);
     }
   }
 
@@ -341,15 +292,7 @@ export class AdminLessonBuilderPage implements OnInit, OnDestroy {
           return 'خدمة حفظ الصوت غير مهيأة. راجع إعداد التخزين مع مسؤول الموقع.';
         case 'media_storage_unavailable':
           return 'خدمة حفظ الصوت غير متاحة الآن. احتفظ بالمسودة ثم حاول مجددًا.';
-        case 'active_progress_prevents_republish':
-          return 'لهذه المجموعة تقدم طلاب بالفعل. لن نغيّر نسختهم المنشورة أو نعيد تقدمهم للصفر.';
-        case 'slot_conflict':
-          return 'هذا الدرس أو موضع الأسبوع/اليوم/الترتيب موجود بالفعل.';
-        case 'publication_changed':
-        case 'publish_request_conflict':
-          return 'تغير منشور المجموعة. حُدثت القائمة؛ راجعها ثم أعد المحاولة.';
-        case 'lesson_audio_missing':
-          return 'صوت الدرس غير متاح؛ لا يمكن نشره قبل إصلاح الملف.';
+
       }
       if (error.status === 401 || error.status === 403) return 'لا تملك صلاحية لهذه العملية.';
       if (error.status === 429) return 'طلبات كثيرة الآن. حاول بعد دقيقة.';

@@ -69,7 +69,7 @@ test('publication is explicit, CSRF protected, idempotent and preserves progress
   assert.match(curriculums, /csrf\.ValidateRequestAsync\(http\)/);
   assert.match(publish, /IsolationLevel\.Serializable/);
   for (const reason of [
-    'active_progress_prevents_republish',
+    'no_unpublished_changes',
     'publication_changed',
     'publish_request_conflict',
     'lesson_audio_missing',
@@ -79,5 +79,6 @@ test('publication is explicit, CSRF protected, idempotent and preserves progress
   assert.match(publish, /group\.CurriculumAssignmentRevision != request\.ExpectedAssignmentRevision/);
   assert.match(publish, /template\.DraftRevision != request\.ExpectedDraftRevision/);
   assert.match(publish, /StudentStageProgress\.AsNoTracking\(\)/);
+  assert.match(publish, /ProgressCarried\(carriedProgressCount\)/);
   assert.doesNotMatch(publish, /StudentStageProgress\.(?:Remove|Update)|ExecuteDelete|RemoveRange/);
 });

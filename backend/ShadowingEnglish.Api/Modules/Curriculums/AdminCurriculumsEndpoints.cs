@@ -245,17 +245,16 @@ public static class AdminCurriculumsEndpoints
                 var assignment = await db.GroupCurriculumAssignments.SingleOrDefaultAsync(x => x.GroupId == request.GroupId, http.RequestAborted);
                 if (assignment?.PublishedCurriculumVersionId != request.ExpectedVersionId)
                     return op.Fail(409, "publication_changed");
-                if (assignment is not null && await db.StudentStageProgress.AsNoTracking()
-                    .AnyAsync(x => x.PublishedCurriculumVersionId == assignment.PublishedCurriculumVersionId, http.RequestAborted))
-                    return op.Fail(409, "active_progress_prevents_republish");
+                if (assignment is not null)
+                {
+                    var current = await db.PublishedCurriculumVersions.AsNoTracking()
+                        .SingleAsync(x => x.Id == assignment.PublishedCurriculumVersionId, http.RequestAborted);
+                    if (current.CurriculumTemplateId == template.Id && current.SourceDraftRevision == template.DraftRevision)
+                        return op.Fail(409, "no_unpublished_changes");
+                }
+                // Existing progress remains attached to its original immutable published version.
                 var slots = await db.CurriculumDraftLessonSlots.AsNoTracking()
                     .Where(x => x.CurriculumTemplateId == template.Id).ToArrayAsync(http.RequestAborted);
-                var content = await db.LessonAiContents.AsNoTracking()
-                    .Where(x => lessonIds.Contains(x.LessonVersionId) && x.Status == "Approved")
-                    .OrderByDescending(x => x.ApprovedAtUtc).ThenByDescending(x => x.Id)
-                    .Select(x => new { x.Id, x.LessonVersionId }).ToListAsync(http.RequestAborted);
-                var currentContent = content.GroupBy(x => x.LessonVersionId)
-                    .ToDictionary(x => x.Key, x => x.First().Id);
                 var maxNumber = await db.PublishedCurriculumVersions.Where(x => x.GroupId == request.GroupId && x.CurriculumTemplateId == template.Id)
                     .Select(x => (int?)x.VersionNumber).MaxAsync(http.RequestAborted) ?? 0;
                 var now = DateTimeOffset.UtcNow;
@@ -266,18 +265,49 @@ public static class AdminCurriculumsEndpoints
                     VersionNumber = maxNumber + 1, Title = template.Name, PublishedAtUtc = now, AvailableAtUtc = now
                 };
                 db.PublishedCurriculumVersions.Add(version);
-                db.PublishedLessonSlots.AddRange(slots.Select(x => new PublishedLessonSlot
+                var publishedSlots = slots.Select(x => new PublishedLessonSlot
                 {
                     Id = Guid.NewGuid(), PublishedCurriculumVersionId = version.Id, LessonVersionId = x.LessonVersionId,
-                    AiContentId = currentContent.GetValueOrDefault(x.LessonVersionId) is Guid selected && selected != Guid.Empty
-                        ? selected : null,
                     WeekNumber = x.WeekNumber, DayNumber = x.DayNumber, SortOrder = x.SortOrder, AvailableAtUtc = now
-                }));
-                if (assignment is null) db.GroupCurriculumAssignments.Add(new GroupCurriculumAssignment
+                }).ToArray();
+                db.PublishedLessonSlots.AddRange(publishedSlots);
+                var carriedProgressCount = 0;
+                if (assignment is not null)
+                {
+                    // Only unchanged immutable lesson versions and approved AI content carry current progress.
+                    // Removed/replaced lessons retain historical progress on the previous version only.
+                    var previousSlots = await db.PublishedLessonSlots.AsNoTracking()
+                        .Where(x => x.PublishedCurriculumVersionId == assignment.PublishedCurriculumVersionId)
+                        .ToArrayAsync(http.RequestAborted);
+                    var oldToNew = new Dictionary<Guid, Guid>();
+                    foreach (var old in previousSlots)
+                    {
+                        var currentSlot = publishedSlots.SingleOrDefault(x => x.LessonVersionId == old.LessonVersionId);
+                        if (currentSlot is not null) oldToNew.Add(old.Id, currentSlot.Id);
+                    }
+                    if (oldToNew.Count > 0)
+                    {
+                        var previousIds = oldToNew.Keys.ToArray();
+                        var rows = await db.StudentStageProgress.AsNoTracking()
+                            .Where(x => x.PublishedCurriculumVersionId == assignment.PublishedCurriculumVersionId &&
+                                previousIds.Contains(x.SlotId))
+                            .ToArrayAsync(http.RequestAborted);
+                        db.StudentStageProgress.AddRange(rows.Select(x => new StudentStageProgress
+                        {
+                            StudentId = x.StudentId, PublishedCurriculumVersionId = version.Id,
+                            SlotId = oldToNew[x.SlotId], StageKey = x.StageKey,
+                            CompletedSegments = x.CompletedSegments, IsComplete = x.IsComplete,
+                            UpdatedAtUtc = x.UpdatedAtUtc
+                        }));
+                        carriedProgressCount = rows.Length;
+                    }
+                    assignment.PublishedCurriculumVersionId = version.Id;
+                }
+                else db.GroupCurriculumAssignments.Add(new GroupCurriculumAssignment
                     { GroupId = request.GroupId, PublishedCurriculumVersionId = version.Id });
-                else assignment.PublishedCurriculumVersionId = version.Id;
                 await db.SaveChangesAsync(http.RequestAborted);
                 await tx.CommitAsync(http.RequestAborted);
+                op.ProgressCarried(carriedProgressCount);
                 return op.Ok(new Publication(version.Id, version.GroupId, template.Id, template.DraftRevision, version.VersionNumber),
                     status: 201, count: slots.Length);
             }
@@ -382,6 +412,11 @@ public static class AdminCurriculumsEndpoints
             SqlException { Number: 1205 } => Fail(409, "curriculum_changed", ex.GetType().Name),
             _ => Fail(500, "curriculum_operation_failed", ex.GetType().Name)
         };
+        public void ProgressCarried(int count)
+        {
+            log.LogInformation("Admin.Shadowing.Curriculum.Publish.ProgressCarried CurriculumId={CurriculumId} GroupId={GroupId} Count={Count} DurationMs={DurationMs}",
+                curriculumId, groupId, count, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+        }
         public void Slots(string result, int added, int removed, int reordered)
         {
             if (result == "Start") slotCounts = (added, removed, reordered);

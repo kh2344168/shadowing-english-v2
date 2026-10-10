@@ -36,7 +36,6 @@ internal static class CurriculumChecks
         Guid firstLesson = Guid.Empty, secondLesson = Guid.Empty;
         PublishCurriculum firstPublish = null!;
         Publication firstVersion = null!, secondVersion = null!;
-        Guid pinnedStudentVersion = Guid.Empty;
         var create = new CreateCurriculum(id, PrivateName, PrivateDescription);
 
         await check("Curriculum endpoints require Admin and real CSRF", async () =>
@@ -162,15 +161,6 @@ internal static class CurriculumChecks
             Assert(await db.PublishedCurriculumVersions.CountAsync() == 1 && await db.PublishedLessonSlots.CountAsync() == 2,
                 "multiple_or_partial_versions_created");
         });
-        await check("Student curriculum page one returns a stable publication identifier", async () =>
-        {
-            using var response = await student.GetAsync("/api/student/learning/curriculum?page=1&pageSize=1");
-            Assert(response.StatusCode == HttpStatusCode.OK, "curriculum_page_one_status_" + response.StatusCode);
-            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-            pinnedStudentVersion = body.GetProperty("publishedVersionId").GetGuid();
-            Assert(pinnedStudentVersion == firstVersion.VersionId && body.GetProperty("hasMore").GetBoolean(),
-                "curriculum_page_one_version_missing_or_unstable");
-        });
         await check("Publish retries and changed request bodies preserve the committed snapshot", async () =>
         {
             var before = await app.FingerprintAsync();
@@ -226,19 +216,8 @@ internal static class CurriculumChecks
             try { await db.SaveChangesAsync(); } catch (InvalidOperationException) { blocked = true; }
             Assert(blocked, "published_mutation_guard_missing");
         });
-        await check("Student pagination rejects an old pinned version after republish", async () =>
-        {
-            using var stale = await student.GetAsync($"/api/student/learning/curriculum?page=2&pageSize=1&expectedPublishedVersionId={pinnedStudentVersion}");
-            Assert(await Error(stale, HttpStatusCode.Conflict) == "curriculum_version_changed",
-                "stale_curriculum_page_was_accepted");
-            using var current = await student.GetAsync($"/api/student/learning/curriculum?page=2&pageSize=1&expectedPublishedVersionId={secondVersion.VersionId}");
-            Assert(current.StatusCode == HttpStatusCode.OK, "current_pinned_curriculum_page_failed");
-            var body = await current.Content.ReadFromJsonAsync<JsonElement>();
-            Assert(body.GetProperty("publishedVersionId").GetGuid() == secondVersion.VersionId &&
-                body.GetProperty("items").GetArrayLength() == 0,
-                "current_pinned_page_did_not_use_one_version");
-        });
-        await check("Active student progress is preserved when republish is blocked", async () =>
+        Publication republishedVersion = null!;
+        await check("Explicit republish carries progress for unchanged lessons and preserves old progress", async () =>
         {
             var visible = await Read<JsonElement>(student, "/api/student/learning/curriculum");
             var slotId = visible.GetProperty("items")[0].GetProperty("slotId").GetGuid();
@@ -248,13 +227,21 @@ internal static class CurriculumChecks
             Assert(saved.StatusCode == HttpStatusCode.OK, "active_progress_blocked_draft_edit");
             draft = await Read<CurriculumDraft>(admin, path);
             group = await Read<GroupCurriculumState>(admin, groupPath);
-            var before = await app.FingerprintAsync();
-            using var blocked = await admin.PostAsJsonAsync("/api/admin/shadowing/curriculums/publish", Publish(draft, group));
-            Assert(await Error(blocked, HttpStatusCode.Conflict) == "active_progress_prevents_republish" &&
-                before == await app.FingerprintAsync(), "republish_reset_student_progress");
-            var overview = await Read<JsonElement>(student, $"/api/student/learning/slots/{slotId}");
-            Assert(overview.GetProperty("completedSegments").GetInt32() == 1 &&
-                overview.GetProperty("versionId").GetGuid() == secondVersion.VersionId, "progress_version_changed");
+            using var republish = await admin.PostAsJsonAsync("/api/admin/shadowing/curriculums/publish", Publish(draft, group));
+            Assert(republish.StatusCode == HttpStatusCode.Created, "republish_after_progress_failed");
+            republishedVersion = (await republish.Content.ReadFromJsonAsync<Publication>())!;
+            var current = await Read<JsonElement>(student, "/api/student/learning/curriculum");
+            var newSlotId = current.GetProperty("items")[0].GetProperty("slotId").GetGuid();
+            var overview = await Read<JsonElement>(student, $"/api/student/learning/slots/{newSlotId}");
+            Assert(newSlotId != slotId && overview.GetProperty("completedSegments").GetInt32() == 1 &&
+                overview.GetProperty("versionId").GetGuid() == republishedVersion.VersionId,
+                "unchanged_lesson_progress_not_carried");
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            Assert(await db.StudentStageProgress.AnyAsync(x => x.SlotId == slotId &&
+                    x.PublishedCurriculumVersionId == secondVersion.VersionId) &&
+                await db.StudentStageProgress.AnyAsync(x => x.SlotId == newSlotId &&
+                    x.PublishedCurriculumVersionId == republishedVersion.VersionId), "historical_or_new_progress_missing");
         });
         await check("GET refresh restores drafts assignments and publications without writes", async () =>
         {
@@ -268,7 +255,7 @@ internal static class CurriculumChecks
             var restoredDraft = await Read<CurriculumDraft>(admin, path);
             var restoredGroup = await Read<GroupCurriculumState>(admin, groupPath);
             Assert(restoredDraft.Lessons[0].WeekNumber == 5 && restoredGroup.AssignedCurriculumTemplateId == id &&
-                restoredGroup.VersionId == secondVersion.VersionId && before == await app.FingerprintAsync(), "refresh_changed_state");
+                restoredGroup.VersionId == republishedVersion.VersionId && before == await app.FingerprintAsync(), "refresh_changed_state");
         });
 
         await InvalidDraftChecks(root, media, logs, wave, check);

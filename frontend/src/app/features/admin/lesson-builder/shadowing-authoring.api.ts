@@ -21,12 +21,6 @@ export interface Page<T> {
   hasMore: boolean;
 }
 
-export interface Publication {
-  groupId: string;
-  versionId: string;
-  slotId: string;
-}
-
 export interface CurriculumPosition {
   lessonVersionId: string;
   weekNumber: number;
@@ -184,16 +178,5 @@ export class ShadowingAuthoringApi {
     return this.http.post<AuthoringLesson>(`${this.base}/lessons`, body);
   }
 
-  /** @deprecated New publications use publishCurriculum; this route only confirms historical receipts. */
-  publish(request: {
-    requestId: string;
-    groupId: string;
-    lessonVersionId: string;
-    expectedVersionId: string | null;
-    weekNumber: number;
-    dayNumber: number;
-    sortOrder: number;
-  }): Observable<Publication> {
-    return this.http.post<Publication>(`${this.base}/publish`, request);
-  }
+
 }

@@ -157,10 +157,10 @@
       <button
         type="button"
         class="primary"
-        [disabled]="publishing() || !selectedVersionId"
-        (click)="publish()"
+        [disabled]="openingCurriculum() || !selectedVersionId"
+        (click)="goToCurriculum()"
       >
-        {{ publishing() ? 'جارٍ فتح المناهج...' : 'إضافة الدرس إلى منهج' }}
+        {{ openingCurriculum() ? 'جارٍ فتح المناهج...' : 'إضافة الدرس إلى منهج' }}
       </button>
       <p class="limit">
         لن يظهر الدرس للطلاب حتى يُحفظ داخل منهج ويُسند المنهج إلى مجموعة ويُنشر صراحة.
