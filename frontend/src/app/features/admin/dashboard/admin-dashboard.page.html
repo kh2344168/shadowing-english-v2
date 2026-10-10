@@ -1,83 +1,177 @@
-<section dir="rtl" class="mx-auto max-w-[1500px]">
-  <header class="mb-7 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+<section dir="rtl" class="mx-auto max-w-[1500px] space-y-6">
+  <!-- Page header: the shared AdminLayout already renders the global header and sidebar. -->
+  <header class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
     <div>
-      <span class="text-xs font-black uppercase tracking-[.18em] text-[#2B78E4]"
-        >Admin Dashboard</span
-      >
-      <h1 class="mt-2 text-3xl font-black text-[#0B2A56] sm:text-4xl">نظرة كاملة على النظام</h1>
-      <p class="mt-2 max-w-2xl text-sm font-bold leading-7 text-[#64748B]">
-        إدارة الحسابات والمجموعات ومتابعة العمل من مكان واحد.
+      <span class="text-[11px] font-extrabold uppercase tracking-[.15em] text-[#008A7E]">
+        Admin Dashboard
+      </span>
+      <h1 class="mt-2 text-2xl font-extrabold leading-tight text-[#0B192C] sm:text-3xl">
+        نظرة كاملة على النظام
+      </h1>
+      <p class="mt-2 max-w-2xl text-xs font-medium leading-6 text-[#64748B] sm:text-sm">
+        إدارة الحسابات والمجموعات وبنك الدروس الصوتي ومتابعة المنظومة من مكان واحد.
       </p>
     </div>
-    <span class="w-fit rounded-2xl bg-white px-4 py-3 text-xs font-black text-[#64748B] shadow-sm">
-      لوحة الإدارة
-    </span>
-  </header>
-
-  <section
-    class="mb-6 rounded-[28px] border border-[#BFE7E3] bg-[linear-gradient(135deg,#F1FBFA,#FFFFFF)] p-5 shadow-sm"
-  >
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <span class="text-xs font-black text-[#0F766E]">المسار السريع</span>
-        <h2 class="mt-1 text-xl font-black text-[#0B2A56]">أنشئ مجموعة واسند إليها الطلاب</h2>
-        <p class="mt-1 text-xs font-bold leading-6 text-[#64748B]">
-          افتح إدارة المجموعات لإنشاء مجموعة، ثم ابحث عن الطلاب وانقلهم إليها.
-        </p>
-      </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="rounded-xl border border-[#DCE5E9] bg-white px-4 py-2.5 text-xs font-bold text-[#475569] shadow-sm">
+        لوحة الإدارة
+      </span>
       <a
         routerLink="/admin/groups"
-        class="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[#17B3A6] px-5 text-sm font-black text-white no-underline"
+        class="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#00685F] px-4 py-2.5 text-xs font-bold text-white no-underline shadow-sm transition-colors hover:bg-[#00544D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00685F]"
       >
+        <span class="material-symbols-outlined text-[19px]" aria-hidden="true">group_add</span>
         إدارة المجموعات
       </a>
     </div>
-    <div class="mt-4 grid gap-3 sm:grid-cols-2">
-      <a
-        routerLink="/admin/accounts"
-        class="rounded-2xl border border-[#D7E5E3] bg-white p-4 text-[#0B2A56] no-underline transition hover:border-[#17B3A6]"
-      >
-        <span class="text-xs font-black text-[#0F766E]">1</span>
-        <strong class="mr-2 text-sm font-black">راجع حسابات الإدارة وصلاحياتها</strong>
-      </a>
+  </header>
+
+  <section aria-labelledby="admin-units-title" class="space-y-4">
+    <div class="flex flex-col gap-1 px-1 sm:flex-row sm:items-center sm:justify-between">
+      <h2 id="admin-units-title" class="text-base font-extrabold text-[#1E293B]">
+        الوحدات التشغيلية المباشرة
+      </h2>
+      <p class="text-xs font-medium text-[#94A3B8]">اختصارات للصفحات الفعلية داخل الإدارة</p>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <!-- 1. Groups -->
       <a
         routerLink="/admin/groups"
-        class="rounded-2xl border border-[#D7E5E3] bg-white p-4 text-[#0B2A56] no-underline transition hover:border-[#17B3A6]"
+        class="group flex min-h-[206px] flex-col justify-between rounded-2xl border border-[#E2E8F0] bg-white p-5 text-[#0F172A] no-underline shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#99D6CF] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00685F]"
       >
-        <span class="text-xs font-black text-[#0F766E]">2</span>
-        <strong class="mr-2 text-sm font-black">أنشئ مجموعة واسند إليها الطلاب</strong>
+        <div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#CCEFE9] bg-[#E6F7F5] text-[#00685F]">
+              <span class="material-symbols-outlined text-[23px]" aria-hidden="true">group_work</span>
+            </span>
+            <span class="rounded-full bg-[#F1F5F9] px-2.5 py-1 text-[11px] font-bold text-[#475569]">إدارة الطلاب</span>
+          </div>
+          <h3 class="mt-4 text-base font-extrabold">إدارة المجموعات</h3>
+          <p class="mt-1.5 text-xs leading-6 text-[#64748B]">
+            إنشاء المجموعات، إسناد الطلاب، ومراجعة سجل نقلهم بين المجموعات.
+          </p>
+        </div>
+        <span class="mt-4 flex items-center justify-between border-t border-[#F1F5F9] pt-3 text-xs font-bold text-[#00685F]">
+          فتح الوحدة
+          <span class="material-symbols-outlined text-[18px] transition-transform group-hover:-translate-x-1" aria-hidden="true">arrow_back</span>
+        </span>
+      </a>
+
+      <!-- 2. Admin accounts -->
+      <a
+        routerLink="/admin/accounts"
+        class="group flex min-h-[206px] flex-col justify-between rounded-2xl border border-[#E2E8F0] bg-white p-5 text-[#0F172A] no-underline shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#99D6CF] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00685F]"
+      >
+        <div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#DBEAFE] bg-[#EFF6FF] text-[#2563EB]">
+              <span class="material-symbols-outlined text-[23px]" aria-hidden="true">admin_panel_settings</span>
+            </span>
+            <span class="rounded-full bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-bold text-[#1D4ED8]">الصلاحيات</span>
+          </div>
+          <h3 class="mt-4 text-base font-extrabold">حسابات الإدارة</h3>
+          <p class="mt-1.5 text-xs leading-6 text-[#64748B]">
+            إضافة حساب أدمن ومراجعة الصلاحيات المتاحة لحسابك.
+          </p>
+        </div>
+        <span class="mt-4 flex items-center justify-between border-t border-[#F1F5F9] pt-3 text-xs font-bold text-[#00685F]">
+          إدارة الحسابات
+          <span class="material-symbols-outlined text-[18px] transition-transform group-hover:-translate-x-1" aria-hidden="true">arrow_back</span>
+        </span>
+      </a>
+
+      <!-- 3. Students -->
+      <a
+        routerLink="/admin/students"
+        class="group flex min-h-[206px] flex-col justify-between rounded-2xl border border-[#E2E8F0] bg-white p-5 text-[#0F172A] no-underline shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#99D6CF] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00685F]"
+      >
+        <div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#FDE68A] bg-[#FFFBEB] text-[#B45309]">
+              <span class="material-symbols-outlined text-[23px]" aria-hidden="true">school</span>
+            </span>
+            <span class="rounded-full bg-[#F1F5F9] px-2.5 py-1 text-[11px] font-bold text-[#475569]">الطلاب</span>
+          </div>
+          <h3 class="mt-4 text-base font-extrabold">إدارة الطلاب</h3>
+          <p class="mt-1.5 text-xs leading-6 text-[#64748B]">
+            البحث عن الطلاب، عرض بياناتهم ومراجعة عضوية المجموعة الحالية.
+          </p>
+        </div>
+        <span class="mt-4 flex items-center justify-between border-t border-[#F1F5F9] pt-3 text-xs font-bold text-[#00685F]">
+          سجل الطلاب
+          <span class="material-symbols-outlined text-[18px] transition-transform group-hover:-translate-x-1" aria-hidden="true">arrow_back</span>
+        </span>
+      </a>
+
+      <!-- 4. Curriculums and lessons -->
+      <a
+        routerLink="/admin/curriculums"
+        class="group flex min-h-[206px] flex-col justify-between rounded-2xl border border-[#E2E8F0] bg-white p-5 text-[#0F172A] no-underline shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#99D6CF] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00685F]"
+      >
+        <div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#E9D5FF] bg-[#FAF5FF] text-[#7E22CE]">
+              <span class="material-symbols-outlined text-[23px]" aria-hidden="true">menu_book</span>
+            </span>
+            <span class="rounded-full bg-[#FAF5FF] px-2.5 py-1 text-[11px] font-bold text-[#7E22CE]">المحتوى</span>
+          </div>
+          <h3 class="mt-4 text-base font-extrabold">المناهج وبنك الدروس</h3>
+          <p class="mt-1.5 text-xs leading-6 text-[#64748B]">
+            ترتيب الدروس داخل المناهج، إسناد المنهج للمجموعة ونشره للطلاب.
+          </p>
+        </div>
+        <span class="mt-4 flex items-center justify-between border-t border-[#F1F5F9] pt-3 text-xs font-bold text-[#00685F]">
+          استعراض المناهج
+          <span class="material-symbols-outlined text-[18px] transition-transform group-hover:-translate-x-1" aria-hidden="true">arrow_back</span>
+        </span>
+      </a>
+
+      <!-- 5. Local audio processor; do not assert a live connection without checking health. -->
+      <a
+        routerLink="/admin/ai-processing"
+        class="group flex min-h-[206px] flex-col justify-between rounded-2xl border border-[#E2E8F0] bg-white p-5 text-[#0F172A] no-underline shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#99D6CF] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00685F]"
+      >
+        <div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D]">
+              <span class="material-symbols-outlined text-[23px]" aria-hidden="true">graphic_eq</span>
+            </span>
+            <span class="rounded-full bg-[#F0FDF4] px-2.5 py-1 text-[11px] font-bold text-[#15803D]">WhisperX</span>
+          </div>
+          <h3 class="mt-4 text-base font-extrabold">معالجة الذكاء الاصطناعي الصوتي</h3>
+          <p class="mt-1.5 text-xs leading-6 text-[#64748B]">
+            تشغيل المعالجة المحلية، مراجعة المقاطع الصوتية والتحقق من جاهزية المعالج.
+          </p>
+        </div>
+        <span class="mt-4 flex items-center justify-between border-t border-[#F1F5F9] pt-3 text-xs font-bold text-[#00685F]">
+          فتح المعالجة الصوتية
+          <span class="material-symbols-outlined text-[18px] transition-transform group-hover:-translate-x-1" aria-hidden="true">arrow_back</span>
+        </span>
+      </a>
+
+      <!-- 6. Manual lesson builder; actual flow saves a lesson before curriculum publication. -->
+      <a
+        routerLink="/admin/lesson-builder"
+        class="group flex min-h-[206px] flex-col justify-between rounded-2xl border border-[#E2E8F0] bg-white p-5 text-[#0F172A] no-underline shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#99D6CF] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00685F]"
+      >
+        <div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#C7D2FE] bg-[#EEF2FF] text-[#4338CA]">
+              <span class="material-symbols-outlined text-[23px]" aria-hidden="true">edit_note</span>
+            </span>
+            <span class="rounded-full bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-bold text-[#4338CA]">إنشاء الدروس</span>
+          </div>
+          <h3 class="mt-4 text-base font-extrabold">منشئ الدروس التفاعلي</h3>
+          <p class="mt-1.5 text-xs leading-6 text-[#64748B]">
+            إنشاء الدرس يدويًا أو استيراد ملف المعالجة، ثم حفظه قبل إضافته للمنهج.
+          </p>
+        </div>
+        <span class="mt-4 flex items-center justify-between border-t border-[#F1F5F9] pt-3 text-xs font-bold text-[#00685F]">
+          فتح منشئ الدرس
+          <span class="material-symbols-outlined text-[18px] transition-transform group-hover:-translate-x-1" aria-hidden="true">arrow_back</span>
+        </span>
       </a>
     </div>
   </section>
-
-  <div class="grid gap-4 sm:grid-cols-2">
-    <a
-      routerLink="/admin/groups"
-      class="rounded-[24px] border border-[#DCE5F2] bg-white p-5 text-[#0B2A56] no-underline shadow-[0_14px_40px_rgba(11,42,86,.06)] transition hover:shadow-lg"
-    >
-      <span
-        class="material-symbols-outlined mb-3 rounded-xl bg-[#EFF4FF] p-2 text-[#00685F]"
-        aria-hidden="true"
-        >group_work</span
-      >
-      <strong class="block text-lg font-black">المجموعات</strong>
-      <p class="mb-0 mt-2 text-sm leading-6 text-[#64748B]">
-        إنشاء المجموعات، إسناد الطلاب، ومراجعة سجل نقلهم.
-      </p>
-    </a>
-    <a
-      routerLink="/admin/accounts"
-      class="rounded-[24px] border border-[#DCE5F2] bg-white p-5 text-[#0B2A56] no-underline shadow-[0_14px_40px_rgba(11,42,86,.06)] transition hover:shadow-lg"
-    >
-      <span
-        class="material-symbols-outlined mb-3 rounded-xl bg-[#EFF4FF] p-2 text-[#00685F]"
-        aria-hidden="true"
-        >admin_panel_settings</span
-      >
-      <strong class="block text-lg font-black">حسابات الإدارة</strong>
-      <p class="mb-0 mt-2 text-sm leading-6 text-[#64748B]">
-        إضافة أدمن ومراجعة الصلاحيات المتاحة لحسابك.
-      </p>
-    </a>
-  </div>
 </section>
