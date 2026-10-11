@@ -1,53 +1,142 @@
-<section class="learning-page ai-stage" dir="rtl" aria-labelledby="dictation-title">
-  <a
-    class="learning-back"
-    [routerLink]="['/student/lessons', slotId, material()?.shadowingReviewEnabled ? 'shadowing-review' : 'vocabulary']"
-    >← المرحلة السابقة</a
-  >
-  <h1 id="dictation-title" class="page-title">استمع واكتب</h1>
+<section class="dictation-page" dir="rtl" aria-labelledby="dictation-title">
+  <header class="stage-header">
+    <div class="stage-header__row">
+      <a
+        class="back-link"
+        [routerLink]="['/student/lessons', slotId, material()?.shadowingReviewEnabled ? 'shadowing-review' : 'vocabulary']"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+        <span>المرحلة السابقة</span>
+      </a>
+      <div class="stage-heading">
+        <span>المرحلة 3</span>
+        <h1 id="dictation-title">استمع واكتب</h1>
+      </div>
+      <a
+        class="close-link"
+        [routerLink]="['/student/lessons', slotId, 'overview']"
+        aria-label="إغلاق والعودة إلى نظرة الدرس"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">close</span>
+      </a>
+    </div>
+    @if (material(); as data) { @if (completed() < data.dictation.length) {
+    <div class="progress-row">
+      <div
+        class="progress-track"
+        role="progressbar"
+        [attr.aria-valuenow]="completed() + 1"
+        aria-valuemin="1"
+        [attr.aria-valuemax]="data.dictation.length"
+      >
+        <span [style.width.%]="progressPercent()"></span>
+      </div>
+      <strong>الجملة {{ completed() + 1 }} من {{ data.dictation.length }}</strong>
+    </div>
+    } }
+  </header>
+
   @if (loading()) {
   <p role="status" class="learning-status">جاري تحميل التدريب...</p>
   } @else if (material(); as data) { @if (completed() < data.dictation.length) {
-  <article class="learning-card">
-    <span class="learning-eyebrow"
-      >الجملة {{ completed() + 1 }} من {{ data.dictation.length }}</span
-    >
-    <p>اضغط تشغيل ثم اكتب الجملة الإنجليزية التي سمعتها.</p>
+  <main class="practice-shell">
+    <article class="dictation-card">
+      <section class="listen-section" aria-labelledby="listen-instruction">
+        <p id="listen-instruction">استمع إلى الجملة، ثم اكتب ما سمعته بالإنجليزية.</p>
+        <button
+          type="button"
+          class="play-button"
+          [class.is-playing]="playing()"
+          (click)="play()"
+          [attr.aria-label]="playing() ? 'إعادة تشغيل الجملة' : 'تشغيل الجملة'"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">
+            {{ playing() ? 'graphic_eq' : 'volume_up' }}
+          </span>
+        </button>
+        <div class="audio-actions">
+          <button type="button" (click)="play()">
+            <span class="material-symbols-outlined" aria-hidden="true">replay</span>
+            إعادة الاستماع
+          </button>
+          <button type="button" [class.is-active]="slowPlayback()" (click)="toggleSpeed()">
+            <span class="material-symbols-outlined" aria-hidden="true">slow_motion_video</span>
+            {{ slowPlayback() ? '0.75x بطيء' : '1x السرعة' }}
+          </button>
+        </div>
+        <audio
+          #teacher
+          preload="none"
+          aria-label="صوت الجملة"
+          (ended)="onAudioStopped()"
+          (pause)="onAudioStopped()"
+        ></audio>
+      </section>
+
+      <section class="answer-section">
+        <div class="answer-label">
+          <label for="heard">اكتب ما تسمعه</label>
+          <small>بالإنجليزية</small>
+        </div>
     @if (data.dictation[completed()].hint) {
-    <p>تلميح: {{ data.dictation[completed()].hint }}</p>
+        <p class="hint"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span> {{ data.dictation[completed()].hint }}</p>
     }
-    <audio #teacher controls preload="none" aria-label="صوت الجملة"></audio>
-    <button type="button" class="learning-button subtle" (click)="play()">تشغيل الجملة</button>
-    <label for="heard">ماذا سمعت؟</label>
-    <input id="heard" dir="ltr" [(ngModel)]="answer" maxlength="600" autocomplete="off" />
-    <button
-      type="button"
-      class="learning-button"
-      [disabled]="busy() || !answer.trim()"
-      (click)="submit()"
-    >
-      {{ busy() ? 'جاري التحقق...' : 'تحقق من الإجابة' }}
-    </button>
-  </article>
+        <textarea
+          id="heard"
+          dir="ltr"
+          [(ngModel)]="answer"
+          maxlength="600"
+          rows="3"
+          autocomplete="off"
+          placeholder="Write what you hear..."
+          (keydown.enter)="submit(); $event.preventDefault()"
+        ></textarea>
+        <div class="submit-row">
+          <span><kbd>Space</kbd> استماع · <kbd>Enter</kbd> تحقق</span>
+          <button
+            type="button"
+            class="check-button"
+            [disabled]="busy() || !answer.trim()"
+            (click)="submit()"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>
+            {{ busy() ? 'جاري التحقق...' : 'تحقق من الإجابة' }}
+          </button>
+        </div>
+      </section>
+
+      @if (feedback(); as result) {
+      <section class="feedback" [class.feedback--error]="!result.correct" role="status">
+        <div class="feedback__heading">
+          <span class="material-symbols-outlined" aria-hidden="true">
+            {{ result.correct ? 'verified' : 'error' }}
+          </span>
+          <strong>{{ result.correct ? 'إجابة صحيحة! أحسنت.' : 'راجع الكلمات الملوّنة وحاول مرة أخرى.' }}</strong>
+        </div>
+        @if (!result.correct) {
+        <p class="word-review" lang="en" dir="ltr" aria-label="الجملة الصحيحة مع تمييز الكلمات التي تحتاج مراجعة">
+          @for (word of reviewWords(result.expected); track $index) {
+          <span [class.missed-word]="result.wrongPositions.includes($index)">{{ word }}</span>
+          }
+        </p>
+        <button type="button" class="retry-audio" (click)="play()">
+          <span class="material-symbols-outlined" aria-hidden="true">volume_up</span>
+          اسمع مرة أخرى
+        </button>
+        }
+      </section>
+      }
+    </article>
+  </main>
   } @else {
-  <section class="learning-card" role="status">
+  <section class="completion-card" role="status">
+    <span class="material-symbols-outlined completion-card__icon" aria-hidden="true">verified</span>
     <h2>أنهيت الاستماع والكتابة</h2>
-    <a class="learning-button" [routerLink]="['/student/lessons', slotId, 'quiz']"
+    <p>أحسنت، أصبحت جاهزًا لاختبار الدرس.</p>
+    <a class="check-button" [routerLink]="['/student/lessons', slotId, 'quiz']"
       >ابدأ الاختبار ←</a
     >
   </section>
-  } @if (feedback(); as result) {
-  <div class="result" [class.error]="!result.correct" role="status">
-    <strong>{{ result.correct ? 'إجابة صحيحة!' : 'راجع الكلمات واكتب الجملة مرة أخرى.' }}</strong>
-    @if (!result.correct) {
-    <p>الكلمات التي تحتاج مراجعة:</p>
-    <p lang="en" dir="ltr">
-      @for (word of reviewWords(result.expected); track $index) {
-      <span [class.missed-word]="result.wrongPositions.includes($index)">{{ word }} </span>
-      }
-    </p>
-    }
-  </div>
   } } @if (error()) {
   <p role="alert" class="learning-status error">
     {{ error() }}

@@ -1,7 +1,7 @@
 <video
   #mediaPlayer
   class="fixed h-px w-px opacity-0 pointer-events-none"
-  preload="metadata"
+  preload="auto"
   crossorigin="use-credentials"
   playsinline
   (loadedmetadata)="onMediaMetadataLoaded()"
@@ -192,12 +192,12 @@
       </div>
 
       <div class="mobile-controls-row">
-        <button type="button" class="mobile-control-square mobile-control-square--replay" (click)="replayCurrentSegment()" title="إعادة الجملة" aria-label="إعادة الجملة">
+        <button type="button" class="mobile-control-square mobile-control-square--replay" (click)="replayCurrentSegment()" [disabled]="navigationBusy" title="إعادة الجملة" aria-label="إعادة الجملة">
           <span class="material-symbols-outlined">replay</span>
         </button>
 
         <div class="mobile-main-controls">
-          <button type="button" class="mobile-control-circle" (click)="previousSegment()" [disabled]="!hasPreviousSegment || segmentNavigationInProgress" title="الجملة السابقة" aria-label="الجملة السابقة">
+          <button type="button" class="mobile-control-circle" (click)="previousSegment()" [disabled]="!hasPreviousSegment || navigationBusy" title="الجملة السابقة" aria-label="الجملة السابقة">
             <span class="material-symbols-outlined rtl:rotate-180">skip_next</span>
           </button>
 
@@ -212,7 +212,7 @@
             <span class="material-symbols-outlined">{{ state === 'teacher' || state === 'student' ? 'pause' : 'play_arrow' }}</span>
           </button>
 
-          <button type="button" class="mobile-control-circle" (click)="nextSegment()" [disabled]="!hasNextSegment || segmentNavigationInProgress" title="الجملة التالية" aria-label="الجملة التالية">
+          <button type="button" class="mobile-control-circle" (click)="nextSegment()" [disabled]="!hasNextSegment || navigationBusy" title="الجملة التالية" aria-label="الجملة التالية">
             <span class="material-symbols-outlined rtl:rotate-180">skip_previous</span>
           </button>
         </div>
@@ -626,6 +626,7 @@
             <button
               type="button"
               (click)="replayCurrentSegment()"
+              [disabled]="navigationBusy"
               class="w-10 h-10 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface flex items-center justify-center transition-all active:scale-95 border-0 cursor-pointer"
               id="btn-replay"
               title="إعادة الجملة"
@@ -637,7 +638,7 @@
             <button
               type="button"
               (click)="previousSegment()"
-              [disabled]="!hasPreviousSegment || segmentNavigationInProgress"
+              [disabled]="!hasPreviousSegment || navigationBusy"
               class="w-10 h-10 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface flex items-center justify-center transition-all active:scale-95 border-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               id="btn-prev-sentence"
               title="الجملة السابقة"
@@ -663,7 +664,7 @@
             <button
               type="button"
               (click)="nextSegment()"
-              [disabled]="!hasNextSegment || segmentNavigationInProgress"
+              [disabled]="!hasNextSegment || navigationBusy"
               class="w-10 h-10 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface flex items-center justify-center transition-all active:scale-95 border-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               id="btn-next-sentence"
               title="الجملة التالية"

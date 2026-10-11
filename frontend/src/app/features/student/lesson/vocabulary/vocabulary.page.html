@@ -1,35 +1,138 @@
-<section class="learning-page ai-stage" dir="rtl" aria-labelledby="vocabulary-title">
-  <a class="learning-back" [routerLink]="['/student/lessons', slotId, 'overview']">← نظرة الدرس</a>
-  <h1 id="vocabulary-title" class="page-title">كلمات وعبارات الدرس</h1>
+<section class="vocabulary-page" dir="rtl" aria-labelledby="vocabulary-title">
+  <header class="stage-header">
+    <div class="stage-header__row">
+      <a class="learning-back" [routerLink]="['/student/lessons', slotId, 'overview']">
+        <span aria-hidden="true">→</span>
+        <span>العودة إلى مراحل الدرس</span>
+      </a>
+      <div class="stage-title">
+        <h1 id="vocabulary-title">كلمات وعبارات الدرس</h1>
+        <span>المرحلة 2: الكلمات</span>
+      </div>
+    </div>
+    @if (material(); as data) { @if (completed() < data.vocabulary.length) {
+    <div class="progress-row" aria-label="تقدم بطاقات الكلمات">
+      <strong>البطاقة {{ completed() + 1 }} من {{ data.vocabulary.length }}</strong>
+      <div
+        class="progress-track"
+        role="progressbar"
+        [attr.aria-valuenow]="completed() + 1"
+        aria-valuemin="1"
+        [attr.aria-valuemax]="data.vocabulary.length"
+      >
+        <span [style.width.%]="progressPercent()"></span>
+      </div>
+      <span>{{ progressPercent() }}%</span>
+    </div>
+    } }
+  </header>
+
   @if (loading()) {
   <p role="status" class="learning-status">جاري تحميل الكلمات...</p>
   } @else if (material(); as data) { @if (completed() < data.vocabulary.length) {
-  <article class="learning-card" dir="auto">
-    <span class="learning-eyebrow"
-      >{{ data.vocabulary[completed()].kind === 'chunk' ? 'العبارة' : 'الكلمة' }} {{ completed() + 1
-      }} من {{ data.vocabulary.length }}</span
-    >
-    <h2 lang="en">{{ data.vocabulary[completed()].word }}</h2>
-    <p>{{ data.vocabulary[completed()].meaningAr }}</p>
-    <blockquote lang="en">{{ data.vocabulary[completed()].exampleEn }}</blockquote>
-    <p>{{ data.vocabulary[completed()].exampleAr }}</p>
-    @if (data.vocabulary[completed()].explanation) {
-    <p lang="en" dir="ltr">{{ data.vocabulary[completed()].explanation }}</p>
-    } @if (data.vocabulary[completed()].extraExample) {
-    <blockquote lang="en" dir="ltr">{{ data.vocabulary[completed()].extraExample }}</blockquote>
-    } @if (data.vocabulary[completed()].usageNote) {
-    <p>{{ data.vocabulary[completed()].usageNote }}</p>
-    }
-    <button type="button" class="learning-button" [disabled]="busy()" (click)="next()">
-      {{ busy() ? 'جاري الحفظ...' : 'عرفت الكلمة، التالي ←' }}
-    </button>
-  </article>
+  <main class="card-arena">
+    <div class="ambient" aria-hidden="true"></div>
+    <div class="card-stack">
+      <div class="stack-card stack-card--back" aria-hidden="true"></div>
+      <div class="stack-card stack-card--middle" aria-hidden="true"></div>
+      <article
+        class="flashcard"
+        [class.is-flipped]="flipped()"
+        [class.is-leaving]="leaving()"
+        [attr.aria-label]="(data.vocabulary[completed()].kind === 'chunk' ? 'عبارة ' : 'كلمة ') + (completed() + 1)"
+      >
+        <section class="card-face card-face--front">
+          <div class="image-placeholder" aria-label="مكان صورة الكلمة التي ستُضاف لاحقًا">
+            <span class="material-symbols-outlined" aria-hidden="true">image</span>
+            <strong>صورة الكلمة</strong>
+            <small>ستُضاف من إعدادات الدرس لاحقًا</small>
+          </div>
+          <div class="word-row" dir="ltr">
+            <h2 lang="en">{{ data.vocabulary[completed()].word }}</h2>
+            <button
+              type="button"
+              class="audio-button"
+              [class.is-speaking]="speaking() === 'word'"
+              [disabled]="!speechSupported"
+              (click)="speak('word')"
+              aria-label="استمع إلى نطق الكلمة"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">
+                {{ speaking() === 'word' ? 'graphic_eq' : 'volume_up' }}
+              </span>
+            </button>
+          </div>
+          @if (!speechSupported) {
+          <small class="speech-warning">المتصفح الحالي لا يدعم النطق الصوتي.</small>
+          }
+        </section>
+
+        <section class="card-face card-face--back">
+          <div class="back-toolbar">
+            <span>مضافة للمراجعة 🔁</span>
+            <button
+              type="button"
+              class="audio-button audio-button--small"
+              [class.is-speaking]="speaking() === 'example'"
+              [disabled]="!speechSupported"
+              (click)="speak('example')"
+              aria-label="استمع إلى جملة المثال"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">
+                {{ speaking() === 'example' ? 'graphic_eq' : 'volume_up' }}
+              </span>
+            </button>
+          </div>
+          <div class="meaning-content">
+            <span lang="en" dir="ltr">{{ data.vocabulary[completed()].word }}</span>
+            <h2>{{ data.vocabulary[completed()].meaningAr }}</h2>
+            <blockquote lang="en" dir="ltr">{{ data.vocabulary[completed()].exampleEn }}</blockquote>
+            <p>{{ data.vocabulary[completed()].exampleAr }}</p>
+            @if (data.vocabulary[completed()].explanation) {
+            <p class="detail" lang="en" dir="ltr">{{ data.vocabulary[completed()].explanation }}</p>
+            } @if (data.vocabulary[completed()].extraExample) {
+            <p class="detail" lang="en" dir="ltr">{{ data.vocabulary[completed()].extraExample }}</p>
+            } @if (data.vocabulary[completed()].usageNote) {
+            <p class="detail">{{ data.vocabulary[completed()].usageNote }}</p>
+            }
+          </div>
+          <button
+            type="button"
+            class="primary-action"
+            data-testid="back-next-button"
+            [disabled]="busy()"
+            (click)="next()"
+          >
+            {{ busy() ? 'جاري الحفظ...' : 'التالي ←' }}
+          </button>
+        </section>
+      </article>
+    </div>
+
+    <div class="action-bar" [class.is-hidden]="flipped()">
+      <button type="button" class="secondary-action" [disabled]="busy()" (click)="revealMeaning()">
+        <span class="material-symbols-outlined" aria-hidden="true">help_outline</span>
+        مش عارف
+      </button>
+      <button
+        type="button"
+        class="primary-action"
+        data-testid="known-button"
+        [disabled]="busy()"
+        (click)="next()"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>
+        {{ busy() ? 'جاري الحفظ...' : 'عارف' }}
+      </button>
+    </div>
+    <p class="keyboard-hint"><kbd>مسافة</kbd> استماع <span>•</span> <kbd>Enter</kbd> عارف</p>
+  </main>
   } @else {
-  <section class="learning-card" role="status">
+  <section class="completion-card" role="status">
     <h2>أنهيت الكلمات</h2>
     <p>يمكنك الرجوع للكلمات أو بدء المرحلة التالية.</p>
     <a
-      class="learning-button"
+      class="primary-action completion-card__action"
       [routerLink]="['/student/lessons', slotId, data.shadowingReviewEnabled ? 'shadowing-review' : 'listen-type']"
       >{{ data.shadowingReviewEnabled ? 'أعد الشادوينج بعد فهم الكلمات' : 'ابدأ استمع واكتب' }} ←</a
     >

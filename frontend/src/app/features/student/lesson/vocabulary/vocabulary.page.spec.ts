@@ -31,12 +31,15 @@ describe('StudentVocabularyPage', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('hello');
-    (fixture.nativeElement.querySelector('button') as HTMLButtonElement).click();
+    (
+      fixture.nativeElement.querySelector('[data-testid="known-button"]') as HTMLButtonElement
+    ).click();
     await Promise.resolve();
     const write = http.expectOne('/api/student/learning/slots/s1/vocabulary/progress');
     expect(write.request.method).toBe('PUT');
     expect(write.request.body).toEqual({ position: 1 });
     write.flush({ completed: 1, isComplete: true });
+    await new Promise((resolve) => setTimeout(resolve, 300));
     await fixture.whenStable();
     fixture.detectChanges();
     expect(

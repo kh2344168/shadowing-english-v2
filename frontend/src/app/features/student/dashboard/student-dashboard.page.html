@@ -100,11 +100,11 @@
 
                   <div class="path-lesson__meta">
                     <h2>الدرس {{ i + 1 }} — {{ lesson.title }}</h2>
-                    <div class="mastery-stars" [attr.aria-label]="lesson.isComplete ? '6 من 6 نجوم' : 'لم يكتمل الدرس بعد'">
-                      @for (star of [1, 2, 3, 4, 5, 6]; track star) {
+                    <div class="mastery-stars" [attr.aria-label]="lesson.completedStages + ' من ' + lesson.totalStages + ' نجوم'">
+                      @for (star of stageStars(lesson); track star) {
                         <span
                           class="material-symbols-outlined"
-                          [class.is-filled]="lesson.isComplete"
+                          [class.is-filled]="star <= lesson.completedStages"
                           aria-hidden="true"
                         >star</span>
                       }

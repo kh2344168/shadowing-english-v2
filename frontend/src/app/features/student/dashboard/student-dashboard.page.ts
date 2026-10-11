@@ -27,6 +27,10 @@ export class StudentDashboardPage implements OnInit {
     () => this.visibleLessons().filter((lesson) => lesson.isComplete).length,
   );
 
+  stageStars(lesson: LessonCard): number[] {
+    return Array.from({ length: Math.max(1, lesson.totalStages) }, (_, index) => index + 1);
+  }
+
   ngOnInit(): void {
     void this.load();
   }

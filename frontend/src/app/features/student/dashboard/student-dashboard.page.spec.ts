@@ -59,6 +59,8 @@ describe('StudentDashboardPage', () => {
           sortOrder: 2,
           isComplete: false,
           completedSegments: 1,
+          completedStages: 1,
+          totalStages: 5,
         },
         {
           slotId: 'slot-1',
@@ -68,6 +70,8 @@ describe('StudentDashboardPage', () => {
           sortOrder: 1,
           isComplete: true,
           completedSegments: 2,
+          completedStages: 5,
+          totalStages: 5,
         },
       ],
       hasMore: true,
@@ -85,6 +89,9 @@ describe('StudentDashboardPage', () => {
     const current = fixture.nativeElement.querySelector('.path-lesson.is-current');
     expect(current?.textContent).toContain('الدرس الثاني');
     expect(current?.textContent).toContain('كمّل من مكانك');
+    expect(current?.querySelectorAll('.mastery-stars .is-filled').length).toBe(1);
+    expect(current?.querySelector('.mastery-stars')?.getAttribute('aria-label')).toBe('1 من 5 نجوم');
+    expect(current?.textContent).not.toContain('تم إتقان الدرس');
     expect(fixture.nativeElement.textContent).toContain('عرض باقي الدروس');
     http.verify();
   });

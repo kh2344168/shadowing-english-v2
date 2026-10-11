@@ -217,6 +217,8 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
   private stageComplete = false;
   private mediaLoadGeneration = 0;
   private csrfReady = false;
+  private csrfRequest: Promise<void> | null = null;
+  private micStreamRequest: Promise<boolean> | null = null;
   private destroyed = false;
   private readonly prefetchedSegments = new Map<number, ShadowingSegment>();
   private nextAudioPreloader: HTMLAudioElement | null = null;
@@ -319,6 +321,9 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
       await this.restoreLocalRecordings();
       this.state = 'ready';
       await this.checkMicrophonePermission();
+      void this.ensureCsrf().catch((error) => {
+        this.logError('Session.Csrf.Prewarm.Failed', error, { slotId: this.slotId });
+      });
 
       this.log('Load.Success', {
         slotId: this.slotId,
@@ -595,16 +600,12 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
       targetRepetitions: this.sessionTargetRepetitions,
     });
 
-    const micReady = await this.ensureMicStream();
-    if (!micReady) return;
-
-    try {
-      await this.ensureCsrf();
-    } catch (error) {
-      this.error = 'تعذر تجهيز جلسة الحفظ. حدّث الصفحة ثم حاول مرة أخرى.';
-      this.logError('Session.Csrf.Failed', error, { slotId: this.slotId });
-      return;
-    }
+    // Teacher audio should start immediately. Microphone and CSRF preparation continue
+    // in parallel and are awaited only when the student/save phases actually need them.
+    void this.ensureMicStream();
+    void this.ensureCsrf().catch((error) => {
+      this.logError('Session.Csrf.Prewarm.Failed', error, { slotId: this.slotId });
+    });
 
     this.sessionTargetForThisRun = Math.max(1, this.sessionTargetRepetitions);
     this.sessionCompletedInThisRun = 0;
@@ -689,12 +690,12 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
   }
 
   async previousSegment(): Promise<void> {
-    if (this.segmentNavigationInProgress || !this.hasPreviousSegment || this.state === 'saving' || this.state === 'between') return;
+    if (this.navigationBusy || !this.hasPreviousSegment) return;
     await this.selectSegment(this.currentSegmentIndex - 1);
   }
 
   async nextSegment(): Promise<void> {
-    if (this.segmentNavigationInProgress || !this.lesson || this.state === 'saving' || this.state === 'between') return;
+    if (this.navigationBusy || !this.lesson) return;
     if (this.state === 'student') {
       await this.goToNextSegmentOrFinish();
       return;
@@ -704,7 +705,7 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
   }
 
   async replayCurrentSegment(): Promise<void> {
-    if (!this.currentSegment || this.state === 'saving' || this.state === 'between') return;
+    if (!this.currentSegment || this.navigationBusy) return;
     if (this.state === 'teacher' || this.state === 'student') {
       await this.selectSegment(this.currentSegmentIndex, true);
       return;
@@ -901,6 +902,10 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
     this.isCompletionModalOpen = false;
     if (this.reviewMode) {
       await this.router.navigate(['/student/lessons', this.slotId, 'listen-type']);
+      return;
+    }
+    if (!this.stageComplete) {
+      await this.router.navigate(['/student/lessons', this.slotId, 'overview']);
       return;
     }
     if (this.lesson?.hasAiContent) {
@@ -1404,14 +1409,14 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
       this.prefetchedSegments.set(position, view);
       this.releaseNextAudioPreloader();
       const preloader = new Audio();
-      preloader.preload = 'metadata';
+      preloader.preload = 'auto';
       preloader.src = segment.audioUrl;
       preloader.load();
       this.nextAudioPreloader = preloader;
       this.log('Segment.Prefetch.Success', {
         slotId: this.slotId,
         position,
-        mode: 'metadata-only',
+        mode: 'audio-buffer',
         durationMs: this.elapsed(started),
       });
     } catch (error) {
@@ -1474,13 +1479,25 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
 
   private async ensureCsrf(): Promise<void> {
     if (this.csrfReady) return;
-    await firstValueFrom(this.auth.csrf());
-    this.csrfReady = true;
+    if (!this.csrfRequest) {
+      this.csrfRequest = firstValueFrom(this.auth.csrf())
+        .then(() => { this.csrfReady = true; })
+        .finally(() => { this.csrfRequest = null; });
+    }
+    await this.csrfRequest;
   }
 
   private async ensureMicStream(reportError = true): Promise<boolean> {
+    if (this.micStream?.active) return true;
+    if (!this.micStreamRequest) {
+      this.micStreamRequest = this.openMicStream(reportError)
+        .finally(() => { this.micStreamRequest = null; });
+    }
+    return this.micStreamRequest;
+  }
+
+  private async openMicStream(reportError: boolean): Promise<boolean> {
     try {
-      if (this.micStream?.active) return true;
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error('media_devices_unavailable');
       }
@@ -2328,6 +2345,11 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
     this.nextAudioPreloader.removeAttribute('src');
     this.nextAudioPreloader.load();
     this.nextAudioPreloader = null;
+  }
+
+  get navigationBusy(): boolean {
+    return this.segmentNavigationInProgress || this.studentAdvanceInFlight ||
+      this.state === 'saving' || this.state === 'between';
   }
 
   formatDurationSeconds(totalSeconds: number): string {

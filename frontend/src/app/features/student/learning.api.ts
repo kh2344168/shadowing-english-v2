@@ -9,6 +9,8 @@ export interface LessonCard {
   dayNumber: number;
   sortOrder: number;
   completedSegments: number;
+  completedStages: number;
+  totalStages: number;
   isComplete: boolean;
 }
 export interface Curriculum {

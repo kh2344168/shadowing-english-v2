@@ -1,6 +1,7 @@
 using System.Data;
 using System.Diagnostics;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Antiforgery;
@@ -13,6 +14,7 @@ using ShadowingEnglish.Core.Learning;
 using ShadowingEnglish.Infrastructure.Database;
 using ShadowingEnglish.Infrastructure.Identity;
 using ShadowingEnglish.Api.Modules.Media;
+using ShadowingEnglish.Api.Modules.AI;
 
 namespace ShadowingEnglish.Api.Modules.Student;
 
@@ -67,17 +69,36 @@ public static class StudentLearningEndpoints
                     join lesson in db.LessonVersions.AsNoTracking() on slot.LessonVersionId equals lesson.Id
                     where slot.PublishedCurriculumVersionId == assigned.Id && slot.AvailableAtUtc <= now
                     orderby slot.WeekNumber, slot.DayNumber, slot.SortOrder, slot.Id
-                    select new { slot.Id, slot.WeekNumber, slot.DayNumber, slot.SortOrder, lesson.Title })
+                    select new { slot.Id, slot.LessonVersionId, slot.AiContentId, slot.WeekNumber,
+                        slot.DayNumber, slot.SortOrder, lesson.Title })
                     .Skip(((page ?? 1) - 1) * limit).Take(limit + 1).ToListAsync();
                 var ids = visible.Take(limit).Select(x => x.Id).ToArray();
                 var progress = await db.StudentStageProgress.AsNoTracking()
                     .Where(x => x.StudentId == student.Value && x.PublishedCurriculumVersionId == assigned.Id &&
-                        x.StageKey == "shadowing" && ids.Contains(x.SlotId))
-                    .Select(x => new { x.SlotId, x.CompletedSegments, x.IsComplete }).ToListAsync();
-                var bySlot = progress.ToDictionary(x => x.SlotId);
-                var cards = visible.Take(limit).Select(x => new LessonCard(x.Id, x.Title, x.WeekNumber,
-                    x.DayNumber, x.SortOrder, bySlot.TryGetValue(x.Id, out var p) ? p.CompletedSegments : 0,
-                    bySlot.TryGetValue(x.Id, out p) && p.IsComplete)).ToArray();
+                        ids.Contains(x.SlotId))
+                    .Select(x => new { x.SlotId, x.StageKey, x.CompletedSegments, x.IsComplete }).ToListAsync();
+                var progressBySlot = progress.ToLookup(x => x.SlotId);
+                var aiContentIds = visible.Take(limit).Where(x => x.AiContentId.HasValue)
+                    .Select(x => x.AiContentId!.Value).Distinct().ToArray();
+                var approvedContent = await db.LessonAiContents.AsNoTracking()
+                    .Where(x => aiContentIds.Contains(x.Id) && x.Status == "Approved")
+                    .Select(x => new { x.Id, x.LessonVersionId, x.PayloadJson }).ToListAsync();
+                var contentById = approvedContent.ToDictionary(x => x.Id);
+                var cards = visible.Take(limit).Select(x =>
+                {
+                    var slotProgress = progressBySlot[x.Id];
+                    var shadowing = slotProgress.FirstOrDefault(p => p.StageKey == "shadowing");
+                    LessonMaterial? material = null;
+                    if (x.AiContentId is Guid contentId && contentById.TryGetValue(contentId, out var content) &&
+                        content.LessonVersionId == x.LessonVersionId)
+                        material = ReadMaterial(content.PayloadJson);
+                    var stages = RequiredStages(material, x.AiContentId.HasValue);
+                    var completedStages = stages.Count(stage =>
+                        slotProgress.Any(p => p.StageKey == stage && p.IsComplete));
+                    return new LessonCard(x.Id, x.Title, x.WeekNumber, x.DayNumber, x.SortOrder,
+                        shadowing?.CompletedSegments ?? 0, completedStages, stages.Length,
+                        completedStages == stages.Length);
+                }).ToArray();
                 http.Response.Headers.CacheControl = "no-store";
                 log.LogInformation("Student.Curriculum.Success StudentId={StudentId} VersionId={VersionId} Count={Count} DurationMs={DurationMs}",
                     student, assigned.Id, cards.Length, Ms(clock));
@@ -101,11 +122,18 @@ public static class StudentLearningEndpoints
                 var progress = await db.StudentStageProgress.AsNoTracking().SingleOrDefaultAsync(x =>
                     x.StudentId == student.Value && x.PublishedCurriculumVersionId == slot.VersionId &&
                     x.SlotId == slotId && x.StageKey == "shadowing");
+                string? aiContentPayload = null;
+                if (slot.AiContentId is Guid aiContentId)
+                    aiContentPayload = await db.LessonAiContents.AsNoTracking()
+                        .Where(x => x.Id == aiContentId && x.LessonVersionId == slot.LessonVersionId &&
+                            x.Status == "Approved")
+                        .Select(x => x.PayloadJson).SingleOrDefaultAsync();
+                var hasAiContent = ReadMaterial(aiContentPayload) is not null;
                 http.Response.Headers.CacheControl = "no-store";
                 log.LogInformation("Student.Overview.Success StudentId={StudentId} SlotId={SlotId} DurationMs={DurationMs}", student, slotId, Ms(clock));
                 return Results.Ok(new OverviewDto(slotId, slot.VersionId, slot.Title, slot.Description,
                     slot.WeekNumber, slot.DayNumber, slot.SortOrder, count,
-                    progress?.CompletedSegments ?? 0, progress?.IsComplete ?? false, slot.AiContentId is not null));
+                    progress?.CompletedSegments ?? 0, progress?.IsComplete ?? false, hasAiContent));
             }
             catch (Exception ex) { return Fail(log, ex, "Overview", student.Value, clock); }
         });
@@ -159,7 +187,9 @@ public static class StudentLearningEndpoints
                 var audio = await media.OpenAsync(key, http.RequestAborted);
                 if (audio is null) return MediaUnavailable(log, student.Value, clock, "lesson_audio_missing");
                 // Revalidate through authorization on each visit; a matching private ETag avoids retransmitting audio.
-                http.Response.Headers.CacheControl = "private, no-cache";
+                // Audio keys are immutable. A short private cache makes replay and the rolling
+                // next-sentence buffer local to this browser without exposing shared-cache data.
+                http.Response.Headers.CacheControl = "private, max-age=300";
                 var tag = new EntityTagHeaderValue(audio.ETag);
                 log.LogInformation("Student.Audio.Success StudentId={StudentId} SlotId={SlotId} Position={Position} DurationMs={DurationMs}", student, slotId, position, Ms(clock));
                 return Results.Stream(audio.Content, "audio/wav", lastModified: audio.LastModified,
@@ -253,6 +283,19 @@ public static class StudentLearningEndpoints
     }
 
     private static double Ms(long start) => Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+    private static LessonMaterial? ReadMaterial(string? payload)
+    {
+        if (payload is null) return null;
+        try { return JsonSerializer.Deserialize<LessonMaterial>(payload, LessonMaterialRules.Json); }
+        catch (JsonException) { return null; }
+    }
+    private static string[] RequiredStages(LessonMaterial? material, bool expectsAiContent) => material switch
+    {
+        null when !expectsAiContent => ["shadowing"],
+        { ShadowingReviewEnabled: true } =>
+            ["shadowing", "vocabulary", "shadowing-review", "listen-type", "quiz", "conversation"],
+        _ => ["shadowing", "vocabulary", "listen-type", "quiz", "conversation"]
+    };
     private static IResult MediaUnavailable(ILogger log, Guid studentId, long started, string reason)
     {
         log.LogWarning("Student.Audio.Unavailable StudentId={StudentId} Reason={Reason} DurationMs={DurationMs}",
@@ -273,7 +316,7 @@ public static class StudentLearningEndpoints
     private sealed record ScopedLesson(Guid VersionId, Guid LessonVersionId, string Title, string Description,
         int WeekNumber, int DayNumber, int SortOrder, Guid? AiContentId);
     private sealed record LessonCard(Guid SlotId, string Title, int WeekNumber, int DayNumber, int SortOrder,
-        int CompletedSegments, bool IsComplete);
+        int CompletedSegments, int CompletedStages, int TotalStages, bool IsComplete);
     private sealed record CurriculumDto(string? GroupName, Guid? PublishedVersionId, string? CurriculumTitle,
         LessonCard[] Items, bool HasMore);
     private sealed record OverviewDto(Guid SlotId, Guid VersionId, string Title, string Description,

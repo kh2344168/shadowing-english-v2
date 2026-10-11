@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, provideRouter, Router } from '@angular/router';
 import { vi } from 'vitest';
 import { StudentShadowingPage } from './shadowing.page';
 
@@ -28,8 +28,9 @@ describe('StudentShadowingPage V1 parity on V2 contracts', () => {
 
     const fixture = TestBed.createComponent(StudentShadowingPage);
     const http = TestBed.inject(HttpTestingController);
+    const router = TestBed.inject(Router);
     fixture.detectChanges();
-    return { fixture, http };
+    return { fixture, http, router };
   }
 
 
@@ -303,6 +304,27 @@ describe('StudentShadowingPage V1 parity on V2 contracts', () => {
 
     expect(page.state).toBe('finished');
     expect(page.isCompletionModalOpen).toBe(true);
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('does not open vocabulary before shadowing is fully complete', async () => {
+    const { fixture, http, router } = await setup();
+    http.expectOne('/api/student/learning/slots/slot-1').flush({
+      slotId: 'slot-1', versionId: 'version-1', title: 'Test', description: '',
+      weekNumber: 1, dayNumber: 1, sortOrder: 1, segmentCount: 16,
+      completedSegments: 2, isComplete: false, hasAiContent: true,
+    });
+    await Promise.resolve();
+    http.expectOne('/api/student/learning/slots/slot-1/segments/3').flush({
+      position: 3, text: 'Sentence three', audioUrl: '/audio/3',
+    });
+    await fixture.whenStable();
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    await fixture.componentInstance.continueToNextStage();
+
+    expect(navigate).toHaveBeenCalledWith(['/student/lessons', 'slot-1', 'overview']);
     http.verify();
     fixture.destroy();
   });
