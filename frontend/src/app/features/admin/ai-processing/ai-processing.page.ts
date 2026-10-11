@@ -4,7 +4,6 @@ import {
   ChangeDetectorRef,
   Component,
   ElementRef,
-  HostListener,
   OnDestroy,
   OnInit,
   ViewChild,
@@ -12,11 +11,12 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
 import { AuthService } from '../../../core/auth/auth.service';
-import { AuthoringLesson, ShadowingAuthoringApi } from '../shadowing-authoring.api';
+import { AdminLessonWorkflowPage } from '../lessons/lesson-workflow.page';
+import { ShadowingAuthoringApi } from '../shadowing-authoring.api';
 import { ImportedLesson } from './local-lesson';
 import {
   DEFAULT_PROCESSOR_SETTINGS,
@@ -25,31 +25,10 @@ import {
   ProcessorJob,
 } from './local-processor.client';
 
-interface PersistedSegmentEditDraft {
-  text: string;
-  start: number;
-  end: number;
-  savedAtUtc: string;
-}
-
-interface PersistedSegmentTextSnapshot {
-  texts: string[];
-  savedAtUtc: string;
-}
-
-interface CachedSourceMedia {
-  key: string;
-  name: string;
-  type: string;
-  lastModified: number;
-  bytes: number;
-  blob: Blob;
-}
-
 @Component({
   selector: 'app-admin-ai-processing-page',
   standalone: true,
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, AdminLessonWorkflowPage],
   templateUrl: './ai-processing.page.html',
   styleUrl: './ai-processing.page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -59,7 +38,9 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly client = inject(LocalProcessorClient);
   private readonly authoringApi = inject(ShadowingAuthoringApi);
+  private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly routedVersionId = this.route.snapshot.paramMap.get('versionId') ?? '';
 
   private controller: AbortController | null = null;
   private activeAudio: HTMLAudioElement | null = null;
@@ -81,10 +62,6 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   private attempt: string | null = null;
   private urls: string[] = [];
   private destroyed = false;
-  private readonly editDraftStoragePrefix = 'shadowing-v2.ai-processing.edit-draft.v1';
-  private readonly textSnapshotStoragePrefix = 'shadowing-v2.ai-processing.text-snapshot.v1';
-  private readonly sourceMediaDatabaseName = 'shadowing-v2-ai-processing';
-  private readonly sourceMediaStoreName = 'source-media';
 
   @ViewChild('mediaInput') private mediaFileInput?: ElementRef<HTMLInputElement>;
   @ViewChild('transcriptInput') private transcriptFileInput?: ElementRef<HTMLInputElement>;
@@ -112,14 +89,14 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
   readonly job = signal<ProcessorJob | null>(null);
   readonly result = signal<ImportedLesson | null>(null);
+  // IDs are stable by segment slot/order across WhisperX recut.
+  readonly selectedSegmentIndices = signal<ReadonlySet<number>>(new Set<number>());
   readonly previewUrls = signal<string[]>([]);
 
   readonly editingIndex = signal<number | null>(null);
   readonly segmentSaving = signal(false);
   readonly newLessonBusy = signal(false);
   readonly lessonSaving = signal(false);
-  readonly savedLesson = signal<AuthoringLesson | null>(null);
-  readonly saveChoicePending = signal(false);
   readonly playingIndex = signal<number | null>(null);
   readonly editPreviewSourceUrl = signal('');
   readonly editMediaDuration = signal<number | null>(null);
@@ -133,6 +110,10 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
   readonly error = signal('');
   readonly notice = signal('');
+  readonly activeVersionId = signal(this.routedVersionId);
+  readonly activeCreationTab = signal<'shadowing' | 'activities'>(
+    this.routedVersionId ? 'activities' : 'shadowing',
+  );
 
   async ngOnInit(): Promise<void> {
     try {
@@ -142,16 +123,18 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
         return;
       }
 
-      if (
-        !session.authenticated ||
-        !session.roles.includes('Admin') ||
-        !session.userId
-      ) {
+      if (!session.authenticated || !session.roles.includes('Admin') || !session.userId) {
         this.error.set('إنشاء الدروس متاح لحساب Admin فقط.');
         return;
       }
 
       this.userId = session.userId;
+
+      // An existing lesson opens directly on the workflow tab. It does not need
+      // the local AI processor and must not restore an unrelated creation draft.
+      if (this.routedVersionId) {
+        return;
+      }
 
       const link = this.client.initialize(session.userId);
 
@@ -185,9 +168,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       this.connected.set(status.linked);
 
       if (!status.linked) {
-        this.notice.set(
-          'الأداة تعمل، لكن الربط بهذا الحساب غير مكتمل. افتح صفحة تثبيت أدوات AI.',
-        );
+        this.notice.set('الأداة تعمل، لكن الربط بهذا الحساب غير مكتمل. افتح صفحة تثبيت أدوات AI.');
         return;
       }
 
@@ -195,8 +176,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
       const savedJobId = status.activeJobId ?? this.client.savedJob();
 
-      if (savedJobId && !this.busy() && !this.lessonSaving() && !this.savedLesson()) {
-        await this.restoreSourceMedia(savedJobId);
+      if (savedJobId && !this.routedVersionId && !this.busy() && !this.lessonSaving()) {
         await this.resume(savedJobId);
       }
     } catch (error) {
@@ -208,7 +188,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   }
 
   chooseMedia(event: Event): void {
-    if (this.lessonSaving() || this.savedLesson() || this.newLessonBusy()) return;
+    if (this.lessonSaving() || this.newLessonBusy()) return;
     const started = performance.now();
     const input = event.target as HTMLInputElement;
     const file = input.files?.item(0) ?? null;
@@ -228,9 +208,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       this.media = null;
       input.value = '';
 
-      this.error.set(
-        'اختر ملف صوت أو فيديو صالحًا بحجم لا يتجاوز 100 MB.',
-      );
+      this.error.set('اختر ملف صوت أو فيديو صالحًا بحجم لا يتجاوز 100 MB.');
 
       console.warn('[Admin.AILesson.Media.Select.Failed]', {
         bytes: file.size,
@@ -250,7 +228,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   }
 
   async chooseTranscript(event: Event): Promise<void> {
-    if (this.lessonSaving() || this.savedLesson() || this.newLessonBusy()) return;
+    if (this.lessonSaving() || this.newLessonBusy()) return;
     const started = performance.now();
     const input = event.target as HTMLInputElement;
     const file = input.files?.item(0) ?? null;
@@ -268,11 +246,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     }
 
     try {
-      if (
-        file.size <= 0 ||
-        file.size > 150_000 ||
-        !file.name.toLowerCase().endsWith('.txt')
-      ) {
+      if (file.size <= 0 || file.size > 150_000 || !file.name.toLowerCase().endsWith('.txt')) {
         throw new Error('invalid_transcript');
       }
 
@@ -283,11 +257,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
         .map((line) => line.trim())
         .filter(Boolean);
 
-      if (
-        lines.length < 1 ||
-        lines.length > 20 ||
-        lines.some((line) => line.length > 1000)
-      ) {
+      if (lines.length < 1 || lines.length > 20 || lines.some((line) => line.length > 1000)) {
         throw new Error('invalid_transcript');
       }
 
@@ -319,14 +289,14 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   }
 
   clearMedia(input: HTMLInputElement): void {
-    if (this.lessonSaving() || this.savedLesson() || this.newLessonBusy()) return;
+    if (this.lessonSaving() || this.newLessonBusy()) return;
     this.media = null;
     input.value = '';
     this.attempt = null;
   }
 
   clearTranscript(input: HTMLInputElement): void {
-    if (this.lessonSaving() || this.savedLesson() || this.newLessonBusy()) return;
+    if (this.lessonSaving() || this.newLessonBusy()) return;
     this.transcriptFile = null;
     this.script = '';
     input.value = '';
@@ -337,7 +307,6 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     return (
       !this.busy() &&
       !this.lessonSaving() &&
-      !this.savedLesson() &&
       !this.newLessonBusy() &&
       this.connected() &&
       !!this.media &&
@@ -353,13 +322,8 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
     const currentJob = this.job();
 
-    if (
-      currentJob?.state === 'awaiting_upload' ||
-      currentJob?.state === 'running'
-    ) {
-      this.error.set(
-        'هناك معالجة جارية بالفعل. أكملها أو ألغها قبل بدء درس جديد.',
-      );
+    if (currentJob?.state === 'awaiting_upload' || currentJob?.state === 'running') {
+      this.error.set('هناك معالجة جارية بالفعل. أكملها أو ألغها قبل بدء درس جديد.');
       return;
     }
 
@@ -423,12 +387,8 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
       this.job.set(createdJob);
       this.sourceMediaJobId = createdJob.jobId;
-      void this.cacheSourceMedia(createdJob.jobId, this.sourceMedia);
 
-      await this.waitForResult(
-        createdJob.jobId,
-        this.controller.signal,
-      );
+      await this.waitForResult(createdJob.jobId, this.controller.signal);
 
       console.info('[Admin.AILesson.Process.Success]', {
         jobId: createdJob.jobId,
@@ -439,10 +399,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       this.error.set(this.describe(error));
 
       console.warn('[Admin.AILesson.Process.Failed]', {
-        code:
-          error instanceof ProcessorError
-            ? error.code
-            : 'unknown',
+        code: error instanceof ProcessorError ? error.code : 'unknown',
         durationMs: Math.round(performance.now() - started),
       });
     } finally {
@@ -451,20 +408,14 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   }
 
   async resume(jobId: string): Promise<void> {
-    if (this.lessonSaving() || this.savedLesson() || this.newLessonBusy()) return;
+    if (this.lessonSaving() || this.newLessonBusy()) return;
     this.controller = new AbortController();
     this.busy.set(true);
 
     try {
-      await this.waitForResult(
-        jobId,
-        this.controller.signal,
-      );
+      await this.waitForResult(jobId, this.controller.signal);
     } catch (error) {
-      if (
-        error instanceof ProcessorError &&
-        error.code === 'not_found'
-      ) {
+      if (error instanceof ProcessorError && error.code === 'not_found') {
         this.client.forgetJob();
       } else {
         this.error.set(this.describe(error));
@@ -474,60 +425,41 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     }
   }
 
-  private async waitForResult(
-    jobId: string,
-    signal: AbortSignal,
-  ): Promise<void> {
+  private async waitForResult(jobId: string, signal: AbortSignal): Promise<void> {
     while (!signal.aborted && !this.destroyed) {
       const status = await this.client.job(jobId, signal);
 
       this.job.set(status);
 
       if (status.state === 'complete') {
-        const lesson = await this.client.result(
-          jobId,
-          signal,
-        );
+        const lesson = await this.client.result(jobId, signal);
 
         this.setResult(lesson);
 
-        this.notice.set(
-          'اكتملت معالجة الشادوينج. راجع المقاطع قبل اعتماد الدرس.',
-        );
+        this.notice.set('اكتملت معالجة الشادوينج. راجع المقاطع قبل اعتماد الدرس.');
 
         return;
       }
 
-      if (
-        status.state === 'failed' ||
-        status.state === 'cancelled'
-      ) {
+      if (status.state === 'failed' || status.state === 'cancelled') {
         this.attempt = null;
         this.client.forgetJob();
 
         throw new ProcessorError(
-          status.state === 'failed'
-            ? status.error ?? 'engine_failed'
-            : 'cancelled',
+          status.state === 'failed' ? (status.error ?? 'engine_failed') : 'cancelled',
         );
       }
 
       if (status.state === 'awaiting_upload') {
-        this.notice.set(
-          'الأداة تنتظر وصول ملف الصوت أو الفيديو.',
-        );
+        this.notice.set('الأداة تنتظر وصول ملف الصوت أو الفيديو.');
       }
 
-      await new Promise<void>((resolve) =>
-        setTimeout(resolve, 1000),
-      );
+      await new Promise<void>((resolve) => setTimeout(resolve, 1000));
     }
   }
 
   async cancel(): Promise<void> {
-    const jobId =
-      this.job()?.jobId ??
-      this.client.savedJob();
+    const jobId = this.job()?.jobId ?? this.client.savedJob();
 
     this.controller?.abort();
 
@@ -541,7 +473,6 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       this.job.set(status);
       this.client.forgetJob();
       this.attempt = null;
-      await this.clearLocalJobCache(jobId);
 
       this.notice.set('تم إلغاء المعالجة.');
     } catch (error) {
@@ -552,18 +483,15 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   openEditModal(index: number): void {
     const lesson = this.result();
     const clip = lesson?.manifest.segments[index];
-    if (!lesson || !clip || this.lessonSaving() || this.savedLesson() || this.newLessonBusy() || this.segmentSaving()) return;
+    if (!lesson || !clip || this.lessonSaving() || this.newLessonBusy() || this.segmentSaving())
+      return;
 
     this.releaseEditPreview();
     this.stopAudio();
     this.editingIndex.set(index);
-    const draft = this.readEditDraft(lesson.manifest.jobId, index, lesson.manifest.duration);
-    this.editText = draft?.text ?? clip.text;
-    this.editStart = draft?.start ?? clip.start;
-    this.editEnd = draft?.end ?? clip.end;
-    if (draft) {
-      this.notice.set(`تم استعادة تعديل غير محفوظ للمقطع ${index + 1}. راجعه ثم اضغط حفظ التعديل.`);
-    }
+    this.editText = clip.text;
+    this.editStart = clip.start;
+    this.editEnd = clip.end;
     this.activeEditRangeHandle = null;
     this.configureEditWaveformWindow(lesson.manifest.duration, false);
     this.editPreviewPositionSelected = false;
@@ -572,13 +500,14 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     this.editWaveformError.set('');
     this.error.set('');
 
-    const originalMedia =
-      this.sourceMediaJobId === lesson.manifest.jobId ? this.sourceMedia : null;
+    const originalMedia = this.sourceMediaJobId === lesson.manifest.jobId ? this.sourceMedia : null;
     if (originalMedia) {
       this.editPreviewSourceUrl.set(URL.createObjectURL(originalMedia));
       void this.loadEditWaveform(originalMedia, index);
     } else {
-      this.editPreviewError.set('اختر ملف المصدر نفسه لإظهار الموجة ومعاينة الكلمات قبل المقطع وبعده.');
+      this.editPreviewError.set(
+        'اختر ملف المصدر نفسه لإظهار الموجة ومعاينة الكلمات قبل المقطع وبعده.',
+      );
     }
 
     console.info('[Admin.AILesson.SegmentEdit.Open]', {
@@ -591,11 +520,6 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
   closeEditModal(): void {
     if (this.segmentSaving()) return;
-    const lesson = this.result();
-    const index = this.editingIndex();
-    if (lesson && index !== null) {
-      this.clearEditDraft(lesson.manifest.jobId, index, 'cancel');
-    }
     this.releaseEditPreview();
     this.stopAudio();
     this.editingIndex.set(null);
@@ -640,7 +564,9 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
     const validExtension = /\.(wav|mp3|m4a|mp4|ogg|webm)$/i.test(file.name);
     if (!validExtension || file.size <= 0 || file.size > 100_000_000) {
-      this.editPreviewError.set('اختر ملف المصدر نفسه بصيغة صوت أو فيديو صالح وبحجم لا يتجاوز 100 MB.');
+      this.editPreviewError.set(
+        'اختر ملف المصدر نفسه بصيغة صوت أو فيديو صالح وبحجم لا يتجاوز 100 MB.',
+      );
       console.warn('[Admin.AILesson.SegmentEdit.SourceMedia.Failed]', {
         ...context,
         code: 'invalid_source_media',
@@ -654,7 +580,6 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     this.editWaveformSourceFile = null;
     this.sourceMedia = file;
     this.sourceMediaJobId = lesson.manifest.jobId;
-    void this.cacheSourceMedia(lesson.manifest.jobId, file);
     this.editPreviewSourceUrl.set(URL.createObjectURL(file));
     this.editPreviewError.set('');
     this.editWaveformError.set('');
@@ -682,7 +607,8 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       !this.isEditRangeValid() ||
       this.editWaveformLoading() ||
       this.editWaveformPeaks().length === 0
-    ) return;
+    )
+      return;
 
     const target = event.currentTarget as HTMLElement;
     this.activeEditRangeHandle = { handle, pointerId: event.pointerId };
@@ -790,9 +716,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   editStartMinimum(): number {
     const lesson = this.result();
     const index = this.editingIndex();
-    return lesson && index !== null && index > 0
-      ? lesson.manifest.segments[index - 1].start
-      : 0;
+    return lesson && index !== null && index > 0 ? lesson.manifest.segments[index - 1].start : 0;
   }
 
   editStartMaximum(): number {
@@ -813,7 +737,10 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   }
 
   editEndHandleMaximum(): number {
-    return Math.min(this.editMediaDuration() ?? this.editWaveformWindowEnd, this.editWaveformWindowEnd);
+    return Math.min(
+      this.editMediaDuration() ?? this.editWaveformWindowEnd,
+      this.editWaveformWindowEnd,
+    );
   }
 
   editWaveformViewStart(): number {
@@ -854,12 +781,8 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     const selectedEnd = Number.isFinite(this.editEnd) ? this.editEnd : clip.end;
     const start = Math.max(0, Math.min(clip.start, selectedStart) - padding);
     const end = Math.min(duration, Math.max(clip.end, selectedEnd) + padding);
-    this.editWaveformWindowStart = expand
-      ? Math.min(this.editWaveformWindowStart, start)
-      : start;
-    this.editWaveformWindowEnd = expand
-      ? Math.max(this.editWaveformWindowEnd, end)
-      : end;
+    this.editWaveformWindowStart = expand ? Math.min(this.editWaveformWindowStart, start) : start;
+    this.editWaveformWindowEnd = expand ? Math.max(this.editWaveformWindowEnd, end) : end;
   }
 
   isEditRangeValid(): boolean {
@@ -882,7 +805,8 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       (index > 0 && start < lesson.manifest.segments[index - 1].start) ||
       (index < lesson.manifest.segments.length - 1 &&
         start > lesson.manifest.segments[index + 1].start)
-    ) return null;
+    )
+      return null;
 
     if (this.editPreviewSourceUrl()) {
       const mediaDuration = this.editMediaDuration();
@@ -918,10 +842,12 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     try {
       audio.pause();
       const currentPosition = audio.currentTime;
-      const startAt = this.editPreviewPositionSelected &&
-        currentPosition >= range.start && currentPosition < range.end
-        ? currentPosition
-        : range.start;
+      const startAt =
+        this.editPreviewPositionSelected &&
+        currentPosition >= range.start &&
+        currentPosition < range.end
+          ? currentPosition
+          : range.start;
       audio.currentTime = startAt;
       this.editPreviewPositionSelected = false;
       this.editPreviewPosition.set(startAt);
@@ -938,8 +864,11 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       this.checkEditPreviewEnd();
     } catch (error) {
       if (attempt !== this.editPreviewAttempt) return;
-      this.failEditPreview(error instanceof Error && error.message === 'seek_timeout'
-        ? 'seek_timeout' : 'playback_failed');
+      this.failEditPreview(
+        error instanceof Error && error.message === 'seek_timeout'
+          ? 'seek_timeout'
+          : 'playback_failed',
+      );
     }
   }
 
@@ -981,7 +910,8 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       this.editWaveformLoading() ||
       this.editWaveformPeaks().length === 0 ||
       !this.editMediaDuration()
-    ) return;
+    )
+      return;
     const range = this.currentEditRange();
     const track = event.currentTarget as HTMLElement;
     const bounds = track.getBoundingClientRect();
@@ -1007,10 +937,12 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     const range = this.currentEditRange();
     if (!range || this.editWaveformLoading() || this.editWaveformPeaks().length === 0) return;
 
-    const current = Number.isFinite(audio.currentTime) &&
-      audio.currentTime >= range.start && audio.currentTime <= range.end
-      ? audio.currentTime
-      : range.start;
+    const current =
+      Number.isFinite(audio.currentTime) &&
+      audio.currentTime >= range.start &&
+      audio.currentTime <= range.end
+        ? audio.currentTime
+        : range.start;
     const step = event.shiftKey ? 1 : 0.1;
     let position = current;
     switch (event.key) {
@@ -1045,10 +977,12 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     const range = this.currentEditRange();
     if (!range) return;
 
-    const currentPosition = Number.isFinite(audio.currentTime) &&
-      audio.currentTime >= range.start && audio.currentTime <= range.end
-      ? audio.currentTime
-      : range.start;
+    const currentPosition =
+      Number.isFinite(audio.currentTime) &&
+      audio.currentTime >= range.start &&
+      audio.currentTime <= range.end
+        ? audio.currentTime
+        : range.start;
     const position = Math.max(range.start, Math.min(range.end, currentPosition + offsetSeconds));
     this.editPreviewRange = range;
     this.editPreviewAudio = audio;
@@ -1064,9 +998,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   editWaveformElapsed(): number {
     const range = this.currentEditRange();
     if (!range) return 0;
-    return Math.max(0, Math.min(range.end - range.start,
-      this.editPreviewPosition() - range.start,
-    ));
+    return Math.max(0, Math.min(range.end - range.start, this.editPreviewPosition() - range.start));
   }
 
   editRangeDuration(): number {
@@ -1165,7 +1097,10 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     );
     const peaks = Array.from({ length: barCount }, (_, barIndex) => {
       const start = firstSample + Math.floor((sampleCount * barIndex) / barCount);
-      const end = Math.min(lastSample, firstSample + Math.ceil((sampleCount * (barIndex + 1)) / barCount));
+      const end = Math.min(
+        lastSample,
+        firstSample + Math.ceil((sampleCount * (barIndex + 1)) / barCount),
+      );
       let peak = 0;
       for (const channel of channels) {
         for (let sample = start; sample < end; sample += 1) {
@@ -1186,7 +1121,8 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       audio &&
       range &&
       (audio.currentTime >= range.end || audio.ended)
-    ) this.stopEditPreview('range_end');
+    )
+      this.stopEditPreview('range_end');
   }
 
   stopEditPreview(reason: string = 'manual'): void {
@@ -1218,7 +1154,8 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   private failEditPreview(code: string): void {
     const index = this.editingIndex();
     const durationMs = this.editPreviewStartedAt
-      ? Math.round(performance.now() - this.editPreviewStartedAt) : 0;
+      ? Math.round(performance.now() - this.editPreviewStartedAt)
+      : 0;
     this.stopEditPreview('failed');
     this.editPreviewError.set('تعذر تشغيل التوقيت المحدد. راجع الملف والبداية والنهاية.');
     console.warn('[Admin.AILesson.SegmentPreview.Failed]', {
@@ -1247,7 +1184,14 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   async saveSegmentEdit(): Promise<void> {
     const lesson = this.result();
     const index = this.editingIndex();
-    if (!lesson || index === null || this.segmentSaving() || this.lessonSaving() || this.savedLesson() || this.newLessonBusy()) return;
+    if (
+      !lesson ||
+      index === null ||
+      this.segmentSaving() ||
+      this.lessonSaving() ||
+      this.newLessonBusy()
+    )
+      return;
 
     const started = performance.now();
     const text = this.editText.trim();
@@ -1261,21 +1205,26 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     if (!range || text.length < 1 || text.length > 1000) {
       this.error.set('راجع نص المقطع ووقت البداية والنهاية قبل الحفظ.');
       console.warn('[Admin.AILesson.SegmentEdit.Save.Failed]', {
-        ...context, code: 'invalid_edit', durationMs: Math.round(performance.now() - started),
+        ...context,
+        code: 'invalid_edit',
+        durationMs: Math.round(performance.now() - started),
       });
       return;
     }
     if (!this.connected()) {
       this.error.set('أداة المعالجة غير متصلة. لا يمكن إعادة قص المقطع الآن.');
       console.warn('[Admin.AILesson.SegmentEdit.Save.Failed]', {
-        ...context, code: 'processor_disconnected', durationMs: Math.round(performance.now() - started),
+        ...context,
+        code: 'processor_disconnected',
+        durationMs: Math.round(performance.now() - started),
       });
       return;
     }
 
     this.stopEditPreview('save');
     const segments = lesson.manifest.segments.map((clip, clipIndex) =>
-      clipIndex === index ? { text, start: range.start, end: range.end }
+      clipIndex === index
+        ? { text, start: range.start, end: range.end }
         : { text: clip.text, start: clip.start, end: clip.end },
     );
     this.segmentSaving.set(true);
@@ -1289,10 +1238,8 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     try {
       await this.client.recut(lesson.manifest.jobId, segments);
       const refreshed = await this.client.result(lesson.manifest.jobId);
-      this.persistTextSnapshot(refreshed);
-      this.clearEditDraft(lesson.manifest.jobId, index, 'saved');
       this.releaseEditPreview();
-      this.setResult(refreshed);
+      this.setResult(refreshed, true);
       this.reviewed = false;
       this.notice.set(`تم حفظ تعديل المقطع ${index + 1} وإعادة تجهيز صوته.`);
       console.info('[Admin.AILesson.SegmentEdit.Save.Success]', {
@@ -1335,54 +1282,37 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     this.activeAudio = audio;
     this.playingIndex.set(index);
 
-    console.info(
-      '[Admin.AILesson.SegmentPlay.Start]',
-      {
-        segment: index + 1,
-      },
-    );
+    console.info('[Admin.AILesson.SegmentPlay.Start]', {
+      segment: index + 1,
+    });
 
     audio.onended = () => {
       this.activeAudio = null;
       this.playingIndex.set(null);
 
-      console.info(
-        '[Admin.AILesson.SegmentPlay.Success]',
-        {
-          segment: index + 1,
-          durationMs: Math.round(
-            performance.now() - started,
-          ),
-        },
-      );
+      console.info('[Admin.AILesson.SegmentPlay.Success]', {
+        segment: index + 1,
+        durationMs: Math.round(performance.now() - started),
+      });
     };
 
     audio.onerror = () => {
       this.activeAudio = null;
       this.playingIndex.set(null);
 
-      this.error.set(
-        'تعذر تشغيل هذا المقطع الصوتي.',
-      );
+      this.error.set('تعذر تشغيل هذا المقطع الصوتي.');
 
-      console.warn(
-        '[Admin.AILesson.SegmentPlay.Failed]',
-        {
-          segment: index + 1,
-          durationMs: Math.round(
-            performance.now() - started,
-          ),
-        },
-      );
+      console.warn('[Admin.AILesson.SegmentPlay.Failed]', {
+        segment: index + 1,
+        durationMs: Math.round(performance.now() - started),
+      });
     };
 
     void audio.play().catch(() => {
       this.activeAudio = null;
       this.playingIndex.set(null);
 
-      this.error.set(
-        'المتصفح منع تشغيل المقطع. اضغط تشغيل مرة أخرى.',
-      );
+      this.error.set('المتصفح منع تشغيل المقطع. اضغط تشغيل مرة أخرى.');
     });
   }
 
@@ -1396,16 +1326,80 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     this.playingIndex.set(null);
   }
 
+  selectedSegmentCount(): number {
+    return (
+      this.result()?.manifest.segments.filter((_, index) =>
+        this.selectedSegmentIndices().has(index),
+      ).length ?? 0
+    );
+  }
+
+  allSegmentsSelected(): boolean {
+    const count = this.result()?.manifest.segments.length ?? 0;
+    return count > 0 && this.selectedSegmentCount() === count;
+  }
+
+  someSegmentsSelected(): boolean {
+    const selected = this.selectedSegmentCount();
+    return selected > 0 && !this.allSegmentsSelected();
+  }
+
+  isSegmentSelected(index: number): boolean {
+    return this.selectedSegmentIndices().has(index);
+  }
+
+  selectAllSegments(checked: boolean): void {
+    if (!this.canChangeSelection()) return;
+    const count = this.result()?.manifest.segments.length ?? 0;
+    this.selectedSegmentIndices.set(
+      new Set(checked ? Array.from({ length: count }, (_, i) => i) : []),
+    );
+    this.reviewed = false;
+    console.info('[Admin.AILesson.Selection.All]', {
+      selectedCount: this.selectedSegmentCount(),
+      totalCount: count,
+    });
+  }
+
+  toggleSegmentSelection(index: number, checked: boolean): void {
+    if (
+      !this.canChangeSelection() ||
+      index < 0 ||
+      index >= (this.result()?.manifest.segments.length ?? 0)
+    )
+      return;
+    const selected = new Set(this.selectedSegmentIndices());
+    if (checked) selected.add(index);
+    else selected.delete(index);
+    this.selectedSegmentIndices.set(selected);
+    this.reviewed = false;
+    console.info('[Admin.AILesson.Selection.Change]', {
+      segmentIndex: index,
+      included: checked,
+      selectedCount: selected.size,
+    });
+  }
+
+  canChangeSelection(): boolean {
+    return (
+      !this.busy() &&
+      !this.segmentSaving() &&
+      !this.lessonSaving() &&
+      !this.newLessonBusy() &&
+      this.editingIndex() === null
+    );
+  }
+
   canSaveLesson(): boolean {
     return (
       !!this.result() &&
       this.reviewed &&
+      this.selectedSegmentCount() > 0 &&
       !!this.userId &&
       !this.busy() &&
       !this.segmentSaving() &&
       !this.newLessonBusy() &&
       !this.lessonSaving() &&
-      !this.savedLesson() &&
       this.editingIndex() === null
     );
   }
@@ -1419,10 +1413,11 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     const requestId = lesson.manifest.jobId;
     const title = this.title.trim();
     const description = this.description.trim();
-    const segments = lesson.manifest.segments.map((clip, index) => ({
-      text: clip.text.trim(),
-      audio: lesson.files[index],
-    }));
+    const segments = lesson.manifest.segments.flatMap((clip, index) =>
+      this.selectedSegmentIndices().has(index)
+        ? [{ text: clip.text.trim(), audio: lesson.files[index] }]
+        : [],
+    );
     const started = performance.now();
     this.lessonSaving.set(true);
     this.error.set('');
@@ -1430,17 +1425,25 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       requestId,
       jobId: lesson.manifest.jobId,
       segmentCount: segments.length,
+      totalCount: lesson.manifest.segments.length,
     });
 
     try {
       if (
-        title.length < 2 || title.length > 160 || description.length > 1000 ||
-        segments.length < 1 || segments.length > 20 ||
-        lesson.files.length !== segments.length ||
-        segments.some((segment) =>
-          !segment.text || segment.text.length > 1000 ||
-          !segment.audio || segment.audio.size <= 12 || segment.audio.size > 2_000_000 ||
-          !segment.audio.name.toLowerCase().endsWith('.wav'),
+        title.length < 2 ||
+        title.length > 160 ||
+        description.length > 1000 ||
+        segments.length < 1 ||
+        segments.length > 20 ||
+        lesson.files.length !== lesson.manifest.segments.length ||
+        segments.some(
+          (segment) =>
+            !segment.text ||
+            segment.text.length > 1000 ||
+            !segment.audio ||
+            segment.audio.size <= 12 ||
+            segment.audio.size > 2_000_000 ||
+            !segment.audio.name.toLowerCase().endsWith('.wav'),
         )
       ) {
         throw new Error('invalid_lesson');
@@ -1450,14 +1453,20 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       const created = await firstValueFrom(
         this.authoringApi.create(requestId, title, description, segments),
       );
-      this.savedLesson.set(created);
-      this.saveChoicePending.set(true);
-      this.notice.set('تم اعتماد الدرس وحفظه في قائمة الدروس. اختر الانتقال إلى القائمة أو البقاء هنا.');
+      this.activeVersionId.set(created.versionId);
       console.info('[Admin.AILesson.Save.Success]', {
         lessonId: created.id,
         versionId: created.versionId,
         durationMs: Math.round(performance.now() - started),
       });
+      await this.clearSavedShadowingDraft(requestId);
+      const navigated = await this.router.navigate(
+        ['/admin/lessons', created.versionId, 'workflow'],
+        { replaceUrl: true },
+      );
+      if (!navigated) {
+        this.activeCreationTab.set('activities');
+      }
     } catch (error) {
       const status = error instanceof HttpErrorResponse ? error.status : null;
       const code = this.lessonSaveErrorCode(error);
@@ -1466,9 +1475,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
         requestId,
         status,
         code,
-        durationMs: Math.round(
-          performance.now() - started,
-        ),
+        durationMs: Math.round(performance.now() - started),
       });
     } finally {
       this.lessonSaving.set(false);
@@ -1476,25 +1483,31 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     }
   }
 
-  goToLessons(): void {
-    if (!this.savedLesson() || this.lessonSaving() || this.newLessonBusy()) return;
-    this.stopAudio();
-    void this.router.navigate(['/admin/lessons']);
+  shadowingComplete(): boolean {
+    return !!this.activeVersionId();
   }
 
-  stayOnAIProcessing(): void {
-    if (!this.savedLesson()) return;
-    this.saveChoicePending.set(false);
-    this.notice.set('الدرس محفوظ بالفعل في قائمة الدروس. يمكنك بدء درس جديد عندما تكون جاهزًا.');
+  selectCreationTab(tab: 'shadowing' | 'activities'): void {
+    if (tab === 'activities' && !this.shadowingComplete()) return;
+    this.activeCreationTab.set(tab);
+    this.error.set('');
   }
 
   private lessonSaveErrorCode(error: unknown): string {
-    const code = error instanceof HttpErrorResponse
-      ? error.error?.error
-      : error instanceof Error ? error.message : null;
+    const code =
+      error instanceof HttpErrorResponse
+        ? error.error?.error
+        : error instanceof Error
+          ? error.message
+          : null;
     const knownCodes = [
-      'invalid_lesson', 'invalid_segments', 'invalid_upload', 'invalid_wav_audio',
-      'invalid_csrf', 'media_storage_not_configured', 'media_storage_unavailable',
+      'invalid_lesson',
+      'invalid_segments',
+      'invalid_upload',
+      'invalid_wav_audio',
+      'invalid_csrf',
+      'media_storage_not_configured',
+      'media_storage_unavailable',
       'lesson_request_conflict',
     ];
     return typeof code === 'string' && knownCodes.includes(code) ? code : 'request_failed';
@@ -1516,8 +1529,10 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       case 'invalid_csrf':
         return 'تعذر التحقق من جلسة الحفظ. بيانات الدرس ما زالت هنا؛ حاول الحفظ مجددًا.';
     }
-    if (status === 401 || status === 403) return 'تعذر حفظ الدرس بسبب صلاحيات الحساب أو انتهاء الجلسة. بيانات الدرس ما زالت هنا.';
-    if (status === 429) return 'طلبات الحفظ كثيرة الآن. انتظر قليلًا ثم حاول مجددًا؛ بيانات الدرس ما زالت هنا.';
+    if (status === 401 || status === 403)
+      return 'تعذر حفظ الدرس بسبب صلاحيات الحساب أو انتهاء الجلسة. بيانات الدرس ما زالت هنا.';
+    if (status === 429)
+      return 'طلبات الحفظ كثيرة الآن. انتظر قليلًا ثم حاول مجددًا؛ بيانات الدرس ما زالت هنا.';
     return 'تعذر حفظ الدرس. تحقق من اتصال API ثم حاول مجددًا؛ لم يتم مسح بيانات الدرس أو تعديلاته.';
   }
 
@@ -1559,31 +1574,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
         cleanupResult = 'already_absent';
       }
 
-      await this.clearLocalJobCache(currentJob.jobId);
-      this.clearResult();
-      this.job.set(null);
-      this.editingIndex.set(null);
-      this.sourceMedia = null;
-      this.sourceMediaJobId = null;
-      this.editWaveformBuffer = null;
-      this.editWaveformSourceFile = null;
-      this.media = null;
-      this.transcriptFile = null;
-      this.script = '';
-      this.title = '';
-      this.description = '';
-      this.editText = '';
-      this.editStart = 0;
-      this.editEnd = 0;
-      this.editPreviewPositionSelected = false;
-      this.attempt = null;
-
-      if (this.mediaFileInput) {
-        this.mediaFileInput.nativeElement.value = '';
-      }
-      if (this.transcriptFileInput) {
-        this.transcriptFileInput.nativeElement.value = '';
-      }
+      this.resetLessonDraft();
 
       this.notice.set('تم تنظيف ملفات الدرس السابق. أضف بيانات الدرس الجديد.');
 
@@ -1631,23 +1622,16 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
         return 'اكتملت المعالجة.';
 
       default:
-        return this.busy()
-          ? 'جاري تجهيز الدرس...'
-          : 'جاهز للمعالجة';
+        return this.busy() ? 'جاري تجهيز الدرس...' : 'جاهز للمعالجة';
     }
   }
 
   formatBytes(bytes: number): string {
     if (bytes < 1_000_000) {
-      return `${Math.max(
-        1,
-        Math.round(bytes / 1000),
-      )} KB`;
+      return `${Math.max(1, Math.round(bytes / 1000))} KB`;
     }
 
-    return `${(
-      bytes / 1_000_000
-    ).toFixed(1)} MB`;
+    return `${(bytes / 1_000_000).toFixed(1)} MB`;
   }
 
   formatTime(seconds: number): string {
@@ -1659,393 +1643,107 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     const minutes = Math.floor(safe / 60);
     const remainder = safe - minutes * 60;
 
-    return `${String(minutes).padStart(
-      2,
-      '0',
-    )}:${remainder.toFixed(1).padStart(4, '0')}`;
+    return `${String(minutes).padStart(2, '0')}:${remainder.toFixed(1).padStart(4, '0')}`;
   }
 
-  segmentDuration(
-    start: number,
-    end: number,
-  ): string {
-    return Math.max(
-      0,
-      end - start,
-    ).toFixed(1);
+  segmentDuration(start: number, end: number): string {
+    return Math.max(0, end - start).toFixed(1);
   }
 
   editingPreviewUrl(): string {
     return this.editPreviewSourceUrl();
   }
 
-  private setResult(
-    result: ImportedLesson,
-  ): void {
+  private setResult(result: ImportedLesson, preserveSelection = false): void {
     if (this.destroyed) {
       return;
     }
 
-    const restored = this.applyPersistedTextSnapshot(result);
-    const isNewLesson = this.result()?.manifest.jobId !== restored.manifest.jobId;
+    const isNewLesson = this.result()?.manifest.jobId !== result.manifest.jobId;
+    const preserved =
+      preserveSelection && !isNewLesson ? new Set(this.selectedSegmentIndices()) : null;
     this.clearResult();
 
     if (isNewLesson) {
-      this.title = restored.manifest.title;
-      this.description = restored.manifest.description;
+      this.title = result.manifest.title;
+      this.description = result.manifest.description;
     }
 
-    this.result.set(restored);
-
-    this.urls = restored.files.map((file) =>
-      URL.createObjectURL(file),
+    this.result.set(result);
+    const indexes = result.manifest.segments.map((_, index) => index);
+    this.selectedSegmentIndices.set(
+      new Set(preserved ? indexes.filter((index) => preserved.has(index)) : indexes),
     );
+
+    this.urls = result.files.map((file) => URL.createObjectURL(file));
 
     this.previewUrls.set(this.urls);
 
     this.reviewed = false;
   }
 
-  private editDraftKey(jobId: string, index: number): string {
-    return `${this.editDraftStoragePrefix}.${this.userId}.${jobId}.${index}`;
-  }
-
-  private textSnapshotKey(jobId: string): string {
-    return `${this.textSnapshotStoragePrefix}.${this.userId}.${jobId}`;
-  }
-
-  private persistOpenEditDraft(reason: 'navigation' | 'pagehide' = 'navigation'): void {
-    const lesson = this.result();
-    const index = this.editingIndex();
-    if (!lesson || index === null || !this.userId) return;
-
-    const text = this.editText.trim();
-    const start = Number(this.editStart);
-    const end = Number(this.editEnd);
-    if (
-      !text || text.length > 1000 || !Number.isFinite(start) || !Number.isFinite(end) ||
-      start < 0 || end <= start || end > lesson.manifest.duration
-    ) return;
-
-    const started = performance.now();
-    console.info('[Admin.AILesson.EditDraft.Save.Start]', {
-      jobId: lesson.manifest.jobId,
-      segmentIndex: index,
-      reason,
-    });
-
+  private async clearSavedShadowingDraft(jobId: string): Promise<void> {
     try {
-      const draft: PersistedSegmentEditDraft = {
-        text,
-        start,
-        end,
-        savedAtUtc: new Date().toISOString(),
-      };
-      localStorage.setItem(this.editDraftKey(lesson.manifest.jobId, index), JSON.stringify(draft));
-      console.info('[Admin.AILesson.EditDraft.Save.Success]', {
-        jobId: lesson.manifest.jobId,
-        segmentIndex: index,
-        reason,
-        durationMs: Math.round(performance.now() - started),
-      });
-    } catch {
-      console.warn('[Admin.AILesson.EditDraft.Save.Failed]', {
-        jobId: lesson.manifest.jobId,
-        segmentIndex: index,
-        reason,
-        code: 'browser_storage_unavailable',
-        durationMs: Math.round(performance.now() - started),
-      });
-    }
-  }
-
-  private readEditDraft(
-    jobId: string,
-    index: number,
-    duration: number,
-  ): PersistedSegmentEditDraft | null {
-    if (!this.userId) return null;
-    const started = performance.now();
-    try {
-      const raw = localStorage.getItem(this.editDraftKey(jobId, index));
-      if (!raw) return null;
-      const value = JSON.parse(raw) as Partial<PersistedSegmentEditDraft>;
-      if (
-        typeof value.text !== 'string' || !value.text.trim() || value.text.length > 1000 ||
-        typeof value.start !== 'number' || !Number.isFinite(value.start) || value.start < 0 ||
-        typeof value.end !== 'number' || !Number.isFinite(value.end) ||
-        value.end <= value.start || value.end > duration
-      ) {
-        localStorage.removeItem(this.editDraftKey(jobId, index));
-        return null;
-      }
-      console.info('[Admin.AILesson.EditDraft.Restore.Success]', {
+      await this.client.remove(jobId);
+    } catch (error) {
+      console.warn('[Admin.AILesson.LocalCleanup.Failed]', {
         jobId,
-        segmentIndex: index,
-        durationMs: Math.round(performance.now() - started),
+        code: error instanceof ProcessorError ? error.code : 'unknown',
       });
-      return {
-        text: value.text,
-        start: value.start,
-        end: value.end,
-        savedAtUtc: typeof value.savedAtUtc === 'string' ? value.savedAtUtc : '',
-      };
-    } catch {
-      console.warn('[Admin.AILesson.EditDraft.Restore.Failed]', {
-        jobId,
-        segmentIndex: index,
-        code: 'browser_storage_unavailable',
-        durationMs: Math.round(performance.now() - started),
-      });
-      return null;
+    } finally {
+      this.client.forgetJob();
+      this.resetLessonDraft(true);
     }
   }
 
-  private clearEditDraft(
-    jobId: string,
-    index: number,
-    reason: 'cancel' | 'saved' | 'cleanup',
-  ): void {
-    if (!this.userId) return;
-    try {
-      localStorage.removeItem(this.editDraftKey(jobId, index));
-      console.info('[Admin.AILesson.EditDraft.Clear.Success]', { jobId, segmentIndex: index, reason });
-    } catch {
-      console.warn('[Admin.AILesson.EditDraft.Clear.Failed]', {
-        jobId,
-        segmentIndex: index,
-        reason,
-        code: 'browser_storage_unavailable',
-      });
+  private resetLessonDraft(preserveWorkflow = false): void {
+    this.clearResult(preserveWorkflow);
+    this.job.set(null);
+    this.editingIndex.set(null);
+    this.sourceMedia = null;
+    this.sourceMediaJobId = null;
+    this.editWaveformBuffer = null;
+    this.editWaveformSourceFile = null;
+    this.media = null;
+    this.transcriptFile = null;
+    this.script = '';
+    this.title = '';
+    this.description = '';
+    this.editText = '';
+    this.editStart = 0;
+    this.editEnd = 0;
+    this.editPreviewPositionSelected = false;
+    this.attempt = null;
+
+    if (this.mediaFileInput) {
+      this.mediaFileInput.nativeElement.value = '';
+    }
+    if (this.transcriptFileInput) {
+      this.transcriptFileInput.nativeElement.value = '';
     }
   }
 
-  private persistTextSnapshot(lesson: ImportedLesson): void {
-    if (!this.userId) return;
-    const started = performance.now();
-    console.info('[Admin.AILesson.TextSnapshot.Save.Start]', {
-      jobId: lesson.manifest.jobId,
-      segmentCount: lesson.manifest.segments.length,
-    });
-    try {
-      const snapshot: PersistedSegmentTextSnapshot = {
-        texts: lesson.manifest.segments.map((segment) => segment.text),
-        savedAtUtc: new Date().toISOString(),
-      };
-      localStorage.setItem(this.textSnapshotKey(lesson.manifest.jobId), JSON.stringify(snapshot));
-      console.info('[Admin.AILesson.TextSnapshot.Save.Success]', {
-        jobId: lesson.manifest.jobId,
-        segmentCount: snapshot.texts.length,
-        durationMs: Math.round(performance.now() - started),
-      });
-    } catch {
-      console.warn('[Admin.AILesson.TextSnapshot.Save.Failed]', {
-        jobId: lesson.manifest.jobId,
-        segmentCount: lesson.manifest.segments.length,
-        code: 'browser_storage_unavailable',
-        durationMs: Math.round(performance.now() - started),
-      });
-    }
-  }
-
-  private applyPersistedTextSnapshot(lesson: ImportedLesson): ImportedLesson {
-    if (!this.userId) return lesson;
-    const started = performance.now();
-    try {
-      const raw = localStorage.getItem(this.textSnapshotKey(lesson.manifest.jobId));
-      if (!raw) return lesson;
-      const snapshot = JSON.parse(raw) as Partial<PersistedSegmentTextSnapshot>;
-      if (
-        !Array.isArray(snapshot.texts) ||
-        snapshot.texts.length !== lesson.manifest.segments.length ||
-        snapshot.texts.some((text) => typeof text !== 'string' || !text.trim() || text.length > 1000)
-      ) {
-        localStorage.removeItem(this.textSnapshotKey(lesson.manifest.jobId));
-        return lesson;
-      }
-      const restored: ImportedLesson = {
-        ...lesson,
-        manifest: {
-          ...lesson.manifest,
-          segments: lesson.manifest.segments.map((segment, index) => ({
-            ...segment,
-            text: snapshot.texts![index],
-          })),
-        },
-      };
-      console.info('[Admin.AILesson.TextSnapshot.Restore.Success]', {
-        jobId: lesson.manifest.jobId,
-        segmentCount: restored.manifest.segments.length,
-        durationMs: Math.round(performance.now() - started),
-      });
-      return restored;
-    } catch {
-      console.warn('[Admin.AILesson.TextSnapshot.Restore.Failed]', {
-        jobId: lesson.manifest.jobId,
-        code: 'browser_storage_unavailable',
-        durationMs: Math.round(performance.now() - started),
-      });
-      return lesson;
-    }
-  }
-
-  private async openSourceMediaDatabase(): Promise<IDBDatabase | null> {
-    if (typeof indexedDB === 'undefined') return null;
-    return await new Promise<IDBDatabase | null>((resolve) => {
-      const request = indexedDB.open(this.sourceMediaDatabaseName, 1);
-      request.onupgradeneeded = () => {
-        const database = request.result;
-        if (!database.objectStoreNames.contains(this.sourceMediaStoreName)) {
-          database.createObjectStore(this.sourceMediaStoreName, { keyPath: 'key' });
-        }
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => resolve(null);
-      request.onblocked = () => resolve(null);
-    });
-  }
-
-  private sourceMediaKey(jobId: string): string {
-    return `${this.userId}:${jobId}`;
-  }
-
-  private async cacheSourceMedia(jobId: string, file: File | null): Promise<void> {
-    if (!file || !this.userId) return;
-    const started = performance.now();
-    console.info('[Admin.AILesson.SourceCache.Save.Start]', { jobId, bytes: file.size });
-    try {
-      const database = await this.openSourceMediaDatabase();
-      if (!database) throw new Error('indexeddb_unavailable');
-      const record: CachedSourceMedia = {
-        key: this.sourceMediaKey(jobId),
-        name: file.name,
-        type: file.type,
-        lastModified: file.lastModified,
-        bytes: file.size,
-        blob: file,
-      };
-      await new Promise<void>((resolve, reject) => {
-        const transaction = database.transaction(this.sourceMediaStoreName, 'readwrite');
-        transaction.objectStore(this.sourceMediaStoreName).put(record);
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error);
-        transaction.onabort = () => reject(transaction.error);
-      });
-      database.close();
-      console.info('[Admin.AILesson.SourceCache.Save.Success]', {
-        jobId,
-        bytes: file.size,
-        durationMs: Math.round(performance.now() - started),
-      });
-    } catch {
-      console.warn('[Admin.AILesson.SourceCache.Save.Failed]', {
-        jobId,
-        bytes: file.size,
-        code: 'browser_storage_unavailable',
-        durationMs: Math.round(performance.now() - started),
-      });
-    }
-  }
-
-  private async restoreSourceMedia(jobId: string): Promise<void> {
-    if (!this.userId || (this.sourceMediaJobId === jobId && this.sourceMedia)) return;
-    const started = performance.now();
-    console.info('[Admin.AILesson.SourceCache.Restore.Start]', { jobId });
-    try {
-      const database = await this.openSourceMediaDatabase();
-      if (!database) throw new Error('indexeddb_unavailable');
-      const record = await new Promise<CachedSourceMedia | null>((resolve, reject) => {
-        const transaction = database.transaction(this.sourceMediaStoreName, 'readonly');
-        const request = transaction.objectStore(this.sourceMediaStoreName).get(this.sourceMediaKey(jobId));
-        request.onsuccess = () => resolve((request.result as CachedSourceMedia | undefined) ?? null);
-        request.onerror = () => reject(request.error);
-      });
-      database.close();
-      if (!record) {
-        console.info('[Admin.AILesson.SourceCache.Restore.Success]', {
-          jobId,
-          result: 'not_found',
-          durationMs: Math.round(performance.now() - started),
-        });
-        return;
-      }
-      if (!(record.blob instanceof Blob) || record.bytes <= 0 || record.bytes > 100_000_000) {
-        await this.deleteSourceMedia(jobId);
-        return;
-      }
-      this.sourceMedia = new File([record.blob], record.name || 'source-media', {
-        type: record.type || record.blob.type,
-        lastModified: Number.isFinite(record.lastModified) ? record.lastModified : Date.now(),
-      });
-      this.sourceMediaJobId = jobId;
-      console.info('[Admin.AILesson.SourceCache.Restore.Success]', {
-        jobId,
-        result: 'restored',
-        bytes: this.sourceMedia.size,
-        durationMs: Math.round(performance.now() - started),
-      });
-    } catch {
-      console.warn('[Admin.AILesson.SourceCache.Restore.Failed]', {
-        jobId,
-        code: 'browser_storage_unavailable',
-        durationMs: Math.round(performance.now() - started),
-      });
-    }
-  }
-
-  private async deleteSourceMedia(jobId: string): Promise<void> {
-    if (!this.userId || typeof indexedDB === 'undefined') return;
-    try {
-      const database = await this.openSourceMediaDatabase();
-      if (!database) return;
-      await new Promise<void>((resolve) => {
-        const transaction = database.transaction(this.sourceMediaStoreName, 'readwrite');
-        transaction.objectStore(this.sourceMediaStoreName).delete(this.sourceMediaKey(jobId));
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => resolve();
-        transaction.onabort = () => resolve();
-      });
-      database.close();
-    } catch {
-      // Best-effort local cleanup only; never block lesson cleanup because browser cache failed.
-    }
-  }
-
-  private async clearLocalJobCache(jobId: string): Promise<void> {
-    for (let index = 0; index < 20; index += 1) {
-      this.clearEditDraft(jobId, index, 'cleanup');
-    }
-    try {
-      localStorage.removeItem(this.textSnapshotKey(jobId));
-    } catch {
-      // Best-effort cleanup only.
-    }
-    await this.deleteSourceMedia(jobId);
-  }
-
-  private clearResult(): void {
+  private clearResult(preserveWorkflow = false): void {
     this.releaseEditPreview();
     this.stopAudio();
 
-    this.urls.forEach((url) =>
-      URL.revokeObjectURL(url),
-    );
+    this.urls.forEach((url) => URL.revokeObjectURL(url));
 
     this.urls = [];
 
     this.previewUrls.set([]);
     this.result.set(null);
-    this.savedLesson.set(null);
-    this.saveChoicePending.set(false);
+    this.selectedSegmentIndices.set(new Set<number>());
+    if (!preserveWorkflow) {
+      this.activeVersionId.set('');
+      this.activeCreationTab.set('shadowing');
+    }
 
     this.reviewed = false;
   }
 
   private describe(error: unknown): string {
-    const code =
-      error instanceof ProcessorError
-        ? error.code
-        : 'invalid_result';
+    const code = error instanceof ProcessorError ? error.code : 'invalid_result';
 
     switch (code) {
       case 'local_connection_unavailable':
@@ -2091,29 +1789,17 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     }
   }
 
-  @HostListener('window:pagehide')
-  onPageHide(): void {
-    this.persistOpenEditDraft('pagehide');
-  }
-
   ngOnDestroy(): void {
-    this.persistOpenEditDraft('navigation');
     this.destroyed = true;
 
     this.controller?.abort();
 
-    this.clearResult();
+    this.releaseEditPreview();
+    this.stopAudio();
 
-    this.sourceMedia = null;
-    this.sourceMediaJobId = null;
-    this.media = null;
-    this.transcriptFile = null;
-    this.script = '';
-    this.title = '';
-    this.description = '';
-    this.editText = '';
-    this.editStart = 0;
-    this.editEnd = 0;
+    this.urls.forEach((url) => URL.revokeObjectURL(url));
+
+    this.urls = [];
     this.editWaveformBuffer = null;
     this.editWaveformSourceFile = null;
     this.editWaveformAttempt += 1;

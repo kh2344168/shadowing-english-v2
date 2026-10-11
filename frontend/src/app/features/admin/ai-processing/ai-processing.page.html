@@ -1,21 +1,12 @@
-<section
-  class="ai-lesson-page"
-  dir="rtl"
-  aria-labelledby="ai-lesson-title"
->
+<section class="ai-lesson-page" dir="rtl" aria-labelledby="ai-lesson-title">
+  @if (activeCreationTab() === 'shadowing') {
   <header class="page-header">
     <div>
-      <p class="eyebrow">
-        إنشاء الدروس
-      </p>
+      <p class="eyebrow">إنشاء الدروس</p>
 
-      <h1 id="ai-lesson-title">
-        إنشاء درس الشادوينج
-      </h1>
+      <h1 id="ai-lesson-title">إنشاء درس الشادوينج</h1>
 
-      <p>
-        ارفع الصوت والنص، ابدأ المعالجة، ثم راجع كل مقطع قبل اعتماد الدرس.
-      </p>
+      <p>ارفع الصوت والنص، ابدأ المعالجة، ثم راجع كل مقطع قبل اعتماد الدرس.</p>
     </div>
 
     <div
@@ -26,368 +17,254 @@
       <span class="status-dot"></span>
 
       <span>
-        {{
-          checking()
-            ? 'جاري التحقق...'
-            : connected()
-              ? 'أداة AI جاهزة'
-              : 'أداة AI غير متصلة'
-        }}
+        {{ checking() ? 'جاري التحقق...' : connected() ? 'أداة AI جاهزة' : 'أداة AI غير متصلة' }}
       </span>
 
       @if (!connected()) {
-        <a routerLink="/admin/ai-tools">
-          إصلاح الاتصال
-        </a>
+      <a routerLink="/admin/ai-tools"> إصلاح الاتصال </a>
       }
     </div>
   </header>
+  } @if (error()) {
+  <div class="message error-message" role="alert">
+    <span>!</span>
 
-  @if (error()) {
-    <div
-      class="message error-message"
-      role="alert"
-    >
-      <span>!</span>
-
-      <p>
-        {{ error() }}
-      </p>
-    </div>
-  }
-
-  @if (notice()) {
-    <div
-      class="message success-message"
-      role="status"
-    >
-      <span>✓</span>
-
-      <p>
-        {{ notice() }}
-      </p>
-    </div>
-  }
-
-  <div class="workflow-steps">
-    <div class="workflow-step active">
-      <span class="step-number">
-        1
-      </span>
-
-      <div>
-        <small>
-          المرحلة الحالية
-        </small>
-
-        <strong>
-          معالجة الشادوينج
-        </strong>
-      </div>
-    </div>
-
-    <div
-      class="workflow-step"
-      [class.ready]="!!result() && reviewed"
-    >
-      <span class="step-number">
-        @if (result() && reviewed) {
-          ✓
-        } @else {
-          🔒
-        }
-      </span>
-
-      <div>
-        <small>
-          {{
-            result() && reviewed
-              ? 'جاهزة بعد اعتماد الشادوينج'
-              : 'مقفلة حتى انتهاء الشادوينج'
-          }}
-        </small>
-
-        <strong>
-          معالجة كلمات الدرس
-        </strong>
-      </div>
-    </div>
+    <p>{{ error() }}</p>
   </div>
+  } @if (notice()) {
+  <div class="message success-message" role="status">
+    <span>✓</span>
 
-  <section class="setup-section">
-    <div class="upload-grid">
-      <article
-        class="upload-card"
-        [class.complete]="media"
-      >
-        <div class="card-title">
-          <span class="number">
-            1
-          </span>
+    <p>{{ notice() }}</p>
+  </div>
+  }
 
-          <div>
-            <strong>
-              ملف الصوت أو الفيديو
-            </strong>
+  <nav class="workflow-steps" aria-label="مراحل إنشاء الدرس">
+    <button
+      type="button"
+      class="workflow-step"
+      [class.active]="activeCreationTab() === 'shadowing'"
+      (click)="selectCreationTab('shadowing')"
+    >
+      <span class="step-number"> {{ shadowingComplete() ? '✓' : '1' }} </span>
 
-            <small>
-              MP3 · WAV · M4A · MP4 · OGG · WEBM
-            </small>
-          </div>
+      <div>
+        <small> {{ shadowingComplete() ? 'مكتملة ومحفوظة' : 'المرحلة الأولى' }} </small>
 
-          @if (media) {
-            <span class="done-badge">
-              ✓ تم الرفع
-            </span>
-          }
-        </div>
+        <strong> معالجة الشادوينج </strong>
+      </div>
+    </button>
 
-        @if (!media) {
-          <label
-            class="drop-zone"
-            for="lesson-media"
-          >
-            <span class="upload-icon">
-              ↑
-            </span>
+    <button
+      type="button"
+      class="workflow-step"
+      [class.active]="activeCreationTab() === 'activities'"
+      [class.ready]="shadowingComplete()"
+      [class.unlocking]="shadowingComplete()"
+      [disabled]="!shadowingComplete()"
+      (click)="selectCreationTab('activities')"
+    >
+      <span class="step-number"> @if (shadowingComplete()) { 2 } @else { 🔒 } </span>
 
-            <strong>
-              اختر ملف الصوت أو الفيديو
-            </strong>
+      <div>
+        <small>
+          {{ shadowingComplete() ? 'مفتوحة — اضغط للانتقال' : 'مقفلة حتى انتهاء الشادوينج' }}
+        </small>
 
-            <small>
-              الحد الأقصى 100 MB
-            </small>
-          </label>
-        } @else {
-          <div class="selected-file">
-            <span class="file-icon">
-              ♪
-            </span>
+        <strong> معالجة كلمات الدرس </strong>
+      </div>
+      @if (shadowingComplete()) {
+      <span class="unlocked-badge">تم الفتح</span>
+      }
+    </button>
+  </nav>
+
+  @if (activeCreationTab() === 'shadowing') {
+  <div class="tab-workspace tab-workspace--shadowing">
+    <section class="setup-section">
+      <div class="upload-grid">
+        <article class="upload-card" [class.complete]="media">
+          <div class="card-title">
+            <span class="number"> 1 </span>
 
             <div>
-              <strong dir="ltr">
-                {{ media.name }}
-              </strong>
+              <strong> ملف الصوت أو الفيديو </strong>
 
-              <small>
-                {{ formatBytes(media.size) }}
-              </small>
+              <small> MP3 · WAV · M4A · MP4 · OGG · WEBM </small>
+            </div>
+
+            @if (media) {
+            <span class="done-badge"> ✓ تم الرفع </span>
+            }
+          </div>
+
+          @if (!media) {
+          <label class="drop-zone" for="lesson-media">
+            <span class="upload-icon"> ↑ </span>
+
+            <strong> اختر ملف الصوت أو الفيديو </strong>
+
+            <small> الحد الأقصى 100 MB </small>
+          </label>
+          } @else {
+          <div class="selected-file">
+            <span class="file-icon"> ♪ </span>
+
+            <div>
+              <strong dir="ltr"> {{ media.name }} </strong>
+
+              <small> {{ formatBytes(media.size) }} </small>
             </div>
           </div>
-        }
+          }
 
-        <input
-          #mediaInput
-          id="lesson-media"
-          type="file"
-          accept=".wav,.mp3,.m4a,.mp4,.ogg,.webm"
-          (change)="chooseMedia($event)"
-          [disabled]="busy() || lessonSaving() || !!savedLesson() || newLessonBusy()"
-          hidden
-        />
+          <input
+            #mediaInput
+            id="lesson-media"
+            type="file"
+            accept=".wav,.mp3,.m4a,.mp4,.ogg,.webm"
+            (change)="chooseMedia($event)"
+            [disabled]="busy() || lessonSaving() || newLessonBusy()"
+            hidden
+          />
 
-        @if (media) {
+          @if (media) {
           <div class="card-actions">
-            <label
-              for="lesson-media"
-              class="text-action"
-            >
-              استبدال الملف
-            </label>
+            <label for="lesson-media" class="text-action"> استبدال الملف </label>
 
             <button
               type="button"
               class="danger-action"
               (click)="clearMedia(mediaInput)"
-              [disabled]="busy() || lessonSaving() || !!savedLesson() || newLessonBusy()"
+              [disabled]="busy() || lessonSaving() || newLessonBusy()"
             >
               حذف
             </button>
           </div>
-        }
-      </article>
-
-      <article
-        class="upload-card"
-        [class.complete]="transcriptFile"
-      >
-        <div class="card-title">
-          <span class="number">
-            2
-          </span>
-
-          <div>
-            <strong>
-              ملف نص الدرس
-            </strong>
-
-            <small>
-              كل سطر = مقطع واحد
-            </small>
-          </div>
-
-          @if (transcriptFile) {
-            <span class="done-badge">
-              ✓ تم الرفع
-            </span>
           }
-        </div>
+        </article>
 
-        @if (!transcriptFile) {
-          <label
-            class="drop-zone"
-            for="lesson-transcript"
-          >
-            <span class="upload-icon">
-              ↑
-            </span>
-
-            <strong>
-              اختر ملف TXT
-            </strong>
-
-            <small>
-              النص المطابق للصوت
-            </small>
-          </label>
-        } @else {
-          <div class="selected-file">
-            <span class="file-icon">
-              T
-            </span>
+        <article class="upload-card" [class.complete]="transcriptFile">
+          <div class="card-title">
+            <span class="number"> 2 </span>
 
             <div>
-              <strong dir="ltr">
-                {{ transcriptFile.name }}
-              </strong>
+              <strong> ملف نص الدرس </strong>
 
-              <small>
-                {{ transcriptLineCount() }}
-                مقطع
-              </small>
+              <small> كل سطر = مقطع واحد </small>
+            </div>
+
+            @if (transcriptFile) {
+            <span class="done-badge"> ✓ تم الرفع </span>
+            }
+          </div>
+
+          @if (!transcriptFile) {
+          <label class="drop-zone" for="lesson-transcript">
+            <span class="upload-icon"> ↑ </span>
+
+            <strong> اختر ملف TXT </strong>
+
+            <small> النص المطابق للصوت </small>
+          </label>
+          } @else {
+          <div class="selected-file">
+            <span class="file-icon"> T </span>
+
+            <div>
+              <strong dir="ltr"> {{ transcriptFile.name }} </strong>
+
+              <small> {{ transcriptLineCount() }} مقطع </small>
             </div>
           </div>
-        }
+          }
 
-        <input
-          #transcriptInput
-          id="lesson-transcript"
-          type="file"
-          accept=".txt,text/plain"
-          (change)="chooseTranscript($event)"
-          [disabled]="busy() || lessonSaving() || !!savedLesson() || newLessonBusy()"
-          hidden
-        />
+          <input
+            #transcriptInput
+            id="lesson-transcript"
+            type="file"
+            accept=".txt,text/plain"
+            (change)="chooseTranscript($event)"
+            [disabled]="busy() || lessonSaving() || newLessonBusy()"
+            hidden
+          />
 
-        @if (transcriptFile) {
+          @if (transcriptFile) {
           <div class="card-actions">
-            <label
-              for="lesson-transcript"
-              class="text-action"
-            >
-              استبدال النص
-            </label>
+            <label for="lesson-transcript" class="text-action"> استبدال النص </label>
 
             <button
               type="button"
               class="danger-action"
               (click)="clearTranscript(transcriptInput)"
-              [disabled]="busy() || lessonSaving() || !!savedLesson() || newLessonBusy()"
+              [disabled]="busy() || lessonSaving() || newLessonBusy()"
             >
               حذف
             </button>
           </div>
-        }
+          }
+        </article>
+      </div>
+
+      <article class="lesson-info-card">
+        <div class="section-title">
+          <span class="number"> 3 </span>
+
+          <div>
+            <strong> معلومات الدرس </strong>
+
+            <small> بيانات بسيطة تظهر في قائمة الدروس </small>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            <span> عنوان الدرس </span>
+
+            <input
+              type="text"
+              maxlength="160"
+              [(ngModel)]="title"
+              [disabled]="busy() || lessonSaving() || newLessonBusy()"
+              placeholder="مثال: Asking for Directions"
+            />
+          </label>
+
+          <label>
+            <span> وصف مختصر </span>
+
+            <input
+              type="text"
+              maxlength="1000"
+              [(ngModel)]="description"
+              [disabled]="busy() || lessonSaving() || newLessonBusy()"
+              placeholder="اختياري"
+            />
+          </label>
+        </div>
       </article>
-    </div>
 
-    <article class="lesson-info-card">
-      <div class="section-title">
-        <span class="number">
-          3
-        </span>
-
+      <article class="process-card">
+        @if (!busy() && !result()) {
         <div>
-          <strong>
-            معلومات الدرس
-          </strong>
+          <strong> جاهز لمعالجة الشادوينج </strong>
 
-          <small>
-            بيانات بسيطة تظهر في قائمة الدروس
-          </small>
-        </div>
-      </div>
-
-      <div class="form-grid">
-        <label>
-          <span>
-            عنوان الدرس
-          </span>
-
-          <input
-            type="text"
-            maxlength="160"
-            [(ngModel)]="title"
-            [disabled]="busy() || lessonSaving() || !!savedLesson() || newLessonBusy()"
-            placeholder="مثال: Asking for Directions"
-          />
-        </label>
-
-        <label>
-          <span>
-            وصف مختصر
-          </span>
-
-          <input
-            type="text"
-            maxlength="1000"
-            [(ngModel)]="description"
-            [disabled]="busy() || lessonSaving() || !!savedLesson() || newLessonBusy()"
-            placeholder="اختياري"
-          />
-        </label>
-      </div>
-    </article>
-
-    <article class="process-card">
-      @if (!busy() && !result()) {
-        <div>
-          <strong>
-            جاهز لمعالجة الشادوينج
-          </strong>
-
-          <p>
-            سيتم تنفيذ WhisperX على جهازك فقط.
-          </p>
+          <p>سيتم تنفيذ WhisperX على جهازك فقط.</p>
         </div>
 
-        <button
-          type="button"
-          class="primary-button"
-          (click)="process()"
-          [disabled]="!canProcess()"
-        >
+        <button type="button" class="primary-button" (click)="process()" [disabled]="!canProcess()">
           ابدأ معالجة الشادوينج
         </button>
-      }
-
-      @if (busy()) {
+        } @if (busy()) {
         <div class="processing-block">
           <div class="processing-head">
             <div>
-              <strong>
-                {{ phaseLabel() }}
-              </strong>
+              <strong> {{ phaseLabel() }} </strong>
 
-              <small>
-                لا تغلق الأداة أثناء المعالجة.
-              </small>
+              <small> لا تغلق الأداة أثناء المعالجة. </small>
             </div>
 
-            <strong class="percentage">
-              {{ job()?.percent ?? 0 }}%
-            </strong>
+            <strong class="percentage"> {{ job()?.percent ?? 0 }}% </strong>
           </div>
 
           <progress
@@ -396,510 +273,445 @@
             aria-label="تقدم معالجة الدرس"
           ></progress>
 
-          <button
-            type="button"
-            class="cancel-button"
-            (click)="cancel()"
-          >
-            إلغاء المعالجة
-          </button>
+          <button type="button" class="cancel-button" (click)="cancel()">إلغاء المعالجة</button>
         </div>
-      }
-
-      @if (result(); as lesson) {
+        } @if (result(); as lesson) {
         <div class="process-success">
-          <span class="success-icon">
-            ✓
-          </span>
+          <span class="success-icon"> ✓ </span>
 
           <div>
-            <strong>
-              تم تجهيز الشادوينج بنجاح
-            </strong>
+            <strong> تم تجهيز الشادوينج بنجاح </strong>
 
-            <p>
-              {{ lesson.manifest.segments.length }}
-              مقطعًا جاهزًا للمراجعة
-            </p>
+            <p>{{ lesson.manifest.segments.length }} مقطعًا جاهزًا للمراجعة</p>
           </div>
         </div>
-      }
-    </article>
-  </section>
+        }
+      </article>
+    </section>
 
-  @if (result(); as lesson) {
-    <section
-      class="segments-section"
-      aria-labelledby="segments-title"
-    >
+    @if (result(); as lesson) {
+    <section class="segments-section" aria-labelledby="segments-title">
       <div class="segments-header">
         <div>
-          <p class="eyebrow">
-            المرحلة 4
-          </p>
+          <p class="eyebrow">المرحلة 4</p>
 
-          <h2 id="segments-title">
-            مراجعة المقاطع
-          </h2>
+          <h2 id="segments-title">مراجعة المقاطع</h2>
 
-          <p>
-            اسمع كل مقطع. لو فيه خطأ اضغط تعديل، وعدّل هذا المقطع فقط.
-          </p>
+          <p>اسمع كل مقطع. لو فيه خطأ اضغط تعديل، وعدّل هذا المقطع فقط.</p>
         </div>
 
-        <span class="segments-count">
-          {{ lesson.manifest.segments.length }}
-          مقطع
+        <span class="segments-count"> {{ lesson.manifest.segments.length }} مقطع </span>
+      </div>
+
+      <div class="segment-selection-toolbar" role="group" aria-label="تحديد مقاطع الدرس">
+        <label class="segment-selection-all">
+          <input
+            #selectAllCheckbox
+            type="checkbox"
+            [checked]="allSegmentsSelected()"
+            [indeterminate]="someSegmentsSelected()"
+            [disabled]="!canChangeSelection()"
+            (change)="selectAllSegments(selectAllCheckbox.checked)"
+          />
+          <span>تحديد كل المقاطع</span>
+        </label>
+        <span class="segment-selection-count" role="status" aria-live="polite">
+          المقاطع المختارة للدرس: {{ selectedSegmentCount() }} من {{ lesson.manifest.segments.length
+          }}
         </span>
+        <div class="segment-selection-buttons">
+          <button
+            type="button"
+            (click)="selectAllSegments(true)"
+            [disabled]="!canChangeSelection()"
+          >
+            اعتماد الكل
+          </button>
+          <button
+            type="button"
+            (click)="selectAllSegments(false)"
+            [disabled]="!canChangeSelection()"
+          >
+            استبعاد الكل
+          </button>
+        </div>
       </div>
 
       <div class="segments-list">
-        @for (
-          clip of lesson.manifest.segments;
-          track clip.audioFile;
-          let index = $index
-        ) {
-          <article class="segment-row">
-            <span class="segment-number">
-              {{ index + 1 }}
+        @for ( clip of lesson.manifest.segments; track clip.audioFile; let index = $index ) {
+        <article class="segment-row" [class.segment-row-excluded]="!isSegmentSelected(index)">
+          <label class="segment-selection-single">
+            <input
+              type="checkbox"
+              [checked]="isSegmentSelected(index)"
+              [disabled]="!canChangeSelection()"
+              [attr.aria-label]="'تضمين المقطع ' + (index + 1)"
+              (change)="toggleSegmentSelection(index, $any($event.target).checked)"
+            />
+          </label>
+          <span class="segment-number"> {{ index + 1 }} </span>
+
+          <div class="segment-content">
+            <strong dir="ltr"> {{ clip.text }} </strong>
+
+            <small dir="ltr">
+              {{ formatTime(clip.start) }} → {{ formatTime(clip.end) }} · {{
+              segmentDuration(clip.start, clip.end) }}s
+            </small>
+          </div>
+
+          <div class="segment-actions">
+            <span class="segment-selection-badge" [class.excluded]="!isSegmentSelected(index)">
+              {{ isSegmentSelected(index) ? 'معتمد للدرس' : 'مستبعد من الدرس' }}
             </span>
+            <button type="button" class="segment-button" (click)="playSegment(index)">
+              @if (playingIndex() === index) { ■ إيقاف } @else { ▶ تشغيل }
+            </button>
 
-            <div class="segment-content">
-              <strong dir="ltr">
-                {{ clip.text }}
-              </strong>
-
-              <small dir="ltr">
-                {{ formatTime(clip.start) }}
-                →
-                {{ formatTime(clip.end) }}
-                ·
-                {{ segmentDuration(clip.start, clip.end) }}s
-              </small>
-            </div>
-
-            <div class="segment-actions">
-              <button
-                type="button"
-                class="segment-button"
-                (click)="playSegment(index)"
-              >
-                @if (playingIndex() === index) {
-                  ■ إيقاف
-                } @else {
-                  ▶ تشغيل
-                }
-              </button>
-
-              <button
-                type="button"
-                class="segment-button edit"
-                (click)="openEditModal(index)"
-                [disabled]="lessonSaving() || !!savedLesson() || segmentSaving() || newLessonBusy()"
-              >
-                ✎ تعديل
-              </button>
-            </div>
-          </article>
+            <button
+              type="button"
+              class="segment-button edit"
+              (click)="openEditModal(index)"
+              [disabled]="lessonSaving() || segmentSaving() || newLessonBusy()"
+            >
+              ✎ تعديل
+            </button>
+          </div>
+        </article>
         }
       </div>
 
+      @if (selectedSegmentCount() === 0) {
+      <p class="selection-validation" role="alert">اختر مقطعًا واحدًا على الأقل قبل حفظ الدرس.</p>
+      }
       <div class="review-confirmation">
         <label>
           <input
             type="checkbox"
             [(ngModel)]="reviewed"
-            [disabled]="busy() || segmentSaving() || lessonSaving() || !!savedLesson() || newLessonBusy() || editingIndex() !== null"
+            [disabled]="busy() || segmentSaving() || lessonSaving() || newLessonBusy() || editingIndex() !== null"
           />
 
-          <span>
-            راجعت النص والصوت وتوقيت المقاطع
-          </span>
+          <span> راجعت النص والصوت للمقاطع المختارة ({{ selectedSegmentCount() }}) </span>
         </label>
       </div>
 
       <div class="final-action">
         <div role="status" aria-live="polite">
-          <strong>
-            {{ savedLesson() ? 'الدرس محفوظ بالفعل في قائمة الدروس' : 'الشادوينج جاهز؟' }}
-          </strong>
+          <strong>الشادوينج جاهز؟</strong>
 
           <p>
-            @if (savedLesson()) {
-              تم حفظ النص والصوت المعتمدين. النشر للطلاب خطوة مستقلة لاحقًا.
-            } @else {
-              اعتمد الدرس لحفظ النص والصوت الحاليين في قائمة الدروس.
-            }
+            سيتم حفظ {{ selectedSegmentCount() }} مقطعًا مختارًا في قاعدة البيانات. بعد نجاح الحفظ
+            ستُفرّغ الحقول وتنتقل تلقائيًا إلى مراحل الدرس، ولن يُنشر الدرس تلقائيًا.
           </p>
         </div>
 
         <div class="final-action-actions">
-          @if (!savedLesson() || !saveChoicePending()) {
-            <button
-              type="button"
-              class="secondary-button"
-              (click)="createNewLesson()"
-              [disabled]="newLessonBusy() || busy() || segmentSaving() || lessonSaving()"
-            >
-              @if (newLessonBusy()) {
-                جاري تنظيف الدرس السابق...
-              } @else {
-                إنشاء درس جديد
-              }
-            </button>
-          }
-
-          @if (savedLesson()) {
-            <a class="primary-button" [routerLink]="['/admin/lessons', savedLesson()!.versionId, 'ai']">مراجعة الكلمات والتمارين</a>
-            <button
-              type="button"
-              class="primary-button"
-              (click)="goToLessons()"
-              [disabled]="newLessonBusy()"
-            >
-              الانتقال إلى قائمة الدروس
-            </button>
-
-            @if (saveChoicePending()) {
-              <button
-                type="button"
-                class="secondary-button"
-                (click)="stayOnAIProcessing()"
-              >
-                البقاء في الصفحة
-              </button>
-            }
-          } @else {
-            <button
-              type="button"
-              class="primary-button"
-              (click)="approveAndSaveLesson()"
-              [disabled]="!canSaveLesson()"
-            >
-              {{ lessonSaving() ? 'جاري حفظ الدرس...' : 'اعتماد الدرس وحفظه' }}
-            </button>
-          }
-        </div>
-      </div>
-
-      <article class="next-stage-card">
-        <div class="next-stage-icon">
-          🔒
-        </div>
-
-        <div>
-          <strong>
-            معالجة كلمات الدرس
-          </strong>
-
-          <p>
-            تبدأ تلقائيًا بعد حفظ الدرس. افتح مراجعة الكلمات والتمارين لاعتمادها قبل نشر المنهج.
-          </p>
-        </div>
-      </article>
-    </section>
-  }
-
-  @if (editingIndex() !== null && result(); as lesson) {
-    <div
-      class="modal-backdrop"
-      role="presentation"
-      (click)="closeEditModal()"
-    >
-      <section
-        class="edit-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-modal-title"
-        (click)="$event.stopPropagation()"
-        (keydown)="$event.stopPropagation()"
-      >
-        <header class="modal-header">
-          <div>
-            <span class="segment-number large">
-              {{ (editingIndex() ?? 0) + 1 }}
-            </span>
-
-            <div>
-              <h2 id="edit-modal-title">
-                تعديل المقطع
-                {{ (editingIndex() ?? 0) + 1 }}
-              </h2>
-
-              <small dir="ltr">
-                {{ formatTime(editStart) }}
-                →
-                {{ formatTime(editEnd) }}
-              </small>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            class="close-button"
-            (click)="closeEditModal()"
-            [disabled]="segmentSaving()"
-            aria-label="إغلاق"
-          >
-            ×
-          </button>
-        </header>
-
-        <div class="modal-body">
-          <audio
-            #editAudio
-            hidden
-            preload="metadata"
-            [src]="editingPreviewUrl()"
-            (loadedmetadata)="onEditPreviewMetadata($event)"
-            (timeupdate)="onEditPreviewTimeUpdate($event)"
-            (ended)="stopEditPreview('source_ended')"
-            (error)="onEditPreviewError()"
-          ></audio>
-
-          <section class="waveform-editor" aria-label="معاينة التموجات الصوتية للمقطع">
-            <div class="waveform-heading">
-              <strong>
-                <span aria-hidden="true">≋</span>
-                محرر التموجات الصوتية
-              </strong>
-
-              <span class="waveform-clock" dir="ltr">
-                {{ formatTime(editWaveformElapsed()) }}
-                /
-                {{ formatTime(editRangeDuration()) }}
-              </span>
-            </div>
-
-            <div class="waveform-scale" dir="ltr">
-              <span>{{ formatTime(editWaveformViewStart()) }}</span>
-              <span>{{ formatTime(editWaveformViewMidpoint()) }}</span>
-              <span>{{ formatTime(editWaveformViewEnd()) }}</span>
-            </div>
-
-            <div
-              #waveformTrack
-              class="waveform-track"
-              role="group"
-              tabindex="0"
-              aria-label="موجة الصوت ومقبضا بداية المقطع ونهايته"
-              dir="ltr"
-              [class.disabled]="!editMediaDuration() || !isEditRangeValid() || editWaveformLoading() || editWaveformPeaks().length === 0"
-              [attr.aria-disabled]="!editMediaDuration() || !isEditRangeValid() || editWaveformLoading() || editWaveformPeaks().length === 0"
-              (click)="seekEditPreview(editAudio, $event)"
-              (keydown)="seekEditPreviewWithKeyboard(editAudio, $event)"
-              (pointermove)="moveEditRangeHandle($event, waveformTrack)"
-              (pointerup)="finishEditRangeHandleDrag($event)"
-              (pointercancel)="finishEditRangeHandleDrag($event)"
-            >
-              @if (editWaveformLoading()) {
-                <span class="waveform-message">جاري تحليل صوت الملف...</span>
-              } @else if (editWaveformError()) {
-                <span class="waveform-message waveform-error">{{ editWaveformError() }}</span>
-              } @else if (!editingPreviewUrl()) {
-                <span class="waveform-message waveform-error">الملف الأصلي مطلوب لعرض الموجة ومعاينة الصوت.</span>
-              } @else {
-                <span class="waveform-timeline">
-                  <span class="waveform-bars" aria-hidden="true">
-                    @for (peak of editWaveformPeaks(); track $index) {
-                      <span
-                        class="waveform-bar"
-                        [class.played]="waveformBarPlayed($index)"
-                        [style.height.%]="peak * 100"
-                      ></span>
-                    }
-                  </span>
-                  <span
-                    class="waveform-selection"
-                    [style.left.%]="editRangeStartProgress() * 100"
-                    [style.width.%]="(editRangeEndProgress() - editRangeStartProgress()) * 100"
-                    aria-hidden="true"
-                  ></span>
-                  <span
-                    class="waveform-range-handle start"
-                    [style.left.%]="editRangeStartProgress() * 100"
-                    role="slider"
-                    tabindex="0"
-                    [attr.aria-label]="'بداية المقطع ' + formatTime(editStart)"
-                    [attr.aria-valuemin]="editStartHandleMinimum()"
-                    [attr.aria-valuemax]="editStartHandleMaximum()"
-                    [attr.aria-valuenow]="editStart"
-                    [attr.aria-valuetext]="formatTime(editStart)"
-                    title="اسحب لتغيير بداية المقطع"
-                    (pointerdown)="beginEditRangeHandleDrag('start', $event)"
-                    (keydown)="adjustEditRangeHandle('start', $event)"
-                  ></span>
-                  <span
-                    class="waveform-range-handle end"
-                    [style.left.%]="editRangeEndProgress() * 100"
-                    role="slider"
-                    tabindex="0"
-                    [attr.aria-label]="'نهاية المقطع ' + formatTime(editEnd)"
-                    [attr.aria-valuemin]="editStart + 0.01"
-                    [attr.aria-valuemax]="editEndHandleMaximum()"
-                    [attr.aria-valuenow]="editEnd"
-                    [attr.aria-valuetext]="formatTime(editEnd)"
-                    title="اسحب لتغيير نهاية المقطع"
-                    (pointerdown)="beginEditRangeHandleDrag('end', $event)"
-                    (keydown)="adjustEditRangeHandle('end', $event)"
-                  ></span>
-                  <span
-                    class="waveform-playhead"
-                    [style.left.%]="editWaveformProgress() * 100"
-                    aria-hidden="true"
-                  >
-                    <span></span>
-                  </span>
-                </span>
-              }
-            </div>
-
-            @if (!editingPreviewUrl() || editWaveformError()) {
-              <div class="waveform-source-required">
-                <div>
-                  <strong>ملف المصدر غير متاح</strong>
-                  <small>اختر نفس الملف الأصلي لعرض الكلمات قبل المقطع وبعده. الملف للمعاينة المحلية فقط ولن يعيد تشغيل WhisperX.</small>
-                </div>
-                <label class="waveform-source-button" for="edit-source-media">اختيار الملف الأصلي</label>
-                <input
-                  id="edit-source-media"
-                  class="waveform-source-input"
-                  type="file"
-                  accept=".wav,.mp3,.m4a,.mp4,.ogg,.webm,audio/*,video/*"
-                  (change)="chooseEditSourceMedia($event)"
-                  [disabled]="segmentSaving()"
-                />
-              </div>
-            }
-
-            <small class="waveform-instructions">
-              اسحب المقبض الأخضر للبداية والذهبي للنهاية لتضمين كلمات قبل المقطع أو بعده، ثم شغّل الجزء المحدد.
-            </small>
-
-            <div class="waveform-controls">
-              <button
-                type="button"
-                class="waveform-skip"
-                title="إرجاع 5 ثوانٍ"
-                aria-label="إرجاع خمس ثوانٍ داخل المقطع"
-                (click)="skipEditPreview(editAudio, -5)"
-                [disabled]="!editMediaDuration() || !isEditRangeValid()"
-              >
-                −5s
-              </button>
-
-              <button
-                type="button"
-                class="edit-preview-button"
-                (click)="toggleEditPreview(editAudio)"
-                [disabled]="segmentSaving() || !editingPreviewUrl() || !editMediaDuration() || !isEditRangeValid()"
-                [attr.aria-label]="editPreviewPlaying() || editPreviewBusy() ? 'إيقاف المعاينة' : 'تشغيل التوقيت المعدّل'"
-              >
-                {{ editPreviewPlaying() || editPreviewBusy() ? '■ إيقاف المعاينة' : '▶ تشغيل المقطع' }}
-              </button>
-
-              <button
-                type="button"
-                class="waveform-skip"
-                title="تقديم 5 ثوانٍ"
-                aria-label="تقديم خمس ثوانٍ داخل المقطع"
-                (click)="skipEditPreview(editAudio, 5)"
-                [disabled]="!editMediaDuration() || !isEditRangeValid()"
-              >
-                +5s
-              </button>
-            </div>
-
-            @if (editPreviewError()) {
-              <small class="preview-error" role="alert">{{ editPreviewError() }}</small>
-            }
-          </section>
-
-          <label class="modal-field">
-            <span>
-              نص المقطع
-            </span>
-
-            <textarea
-              dir="ltr"
-              rows="4"
-              maxlength="1000"
-              [(ngModel)]="editText"
-              [disabled]="segmentSaving()"
-            ></textarea>
-          </label>
-
-          <div class="time-grid">
-            <label class="modal-field">
-              <span>
-                البداية بالثانية
-              </span>
-
-              <input
-                type="number"
-                min="0"
-                [max]="lesson.manifest.duration"
-                step="0.01"
-                [(ngModel)]="editStart"
-                (ngModelChange)="onEditRangeChanged()"
-                [disabled]="segmentSaving()"
-              />
-
-              <small dir="ltr">
-                {{ formatTime(editStart) }}
-              </small>
-            </label>
-
-            <label class="modal-field">
-              <span>
-                النهاية بالثانية
-              </span>
-
-              <input
-                type="number"
-                min="0"
-                [max]="lesson.manifest.duration"
-                step="0.01"
-                [(ngModel)]="editEnd"
-                (ngModelChange)="onEditRangeChanged()"
-                [disabled]="segmentSaving()"
-              />
-
-              <small dir="ltr">
-                {{ formatTime(editEnd) }}
-              </small>
-            </label>
-          </div>
-
-          <p class="modal-help">
-            حفظ التعديل يعيد تجهيز صوت هذا المقطع حسب التوقيت الجديد، ثم يحدثه في القائمة.
-          </p>
-        </div>
-
-        <footer class="modal-footer">
           <button
             type="button"
             class="secondary-button"
-            (click)="closeEditModal()"
-            [disabled]="segmentSaving()"
+            (click)="createNewLesson()"
+            [disabled]="newLessonBusy() || busy() || segmentSaving() || lessonSaving()"
           >
-            إلغاء
+            @if (newLessonBusy()) { جاري تنظيف الدرس السابق... } @else { إنشاء درس جديد }
           </button>
-
           <button
             type="button"
             class="primary-button"
-            (click)="saveSegmentEdit()"
-            [disabled]="segmentSaving() || !isEditRangeValid()"
+            (click)="approveAndSaveLesson()"
+            [disabled]="!canSaveLesson()"
           >
-            {{
-              segmentSaving()
-                ? 'جاري حفظ التعديل...'
-                : 'حفظ التعديل'
-            }}
+            {{ lessonSaving() ? 'جاري حفظ الدرس...' : 'اعتماد الدرس وحفظه' }}
           </button>
-        </footer>
-      </section>
-    </div>
+        </div>
+      </div>
+    </section>
+    }
+  </div>
+  } @if (activeCreationTab() === 'activities') {
+  <div class="tab-workspace tab-workspace--activities">
+    <app-admin-lesson-workflow [embeddedVersionId]="activeVersionId()" [embedded]="true" />
+  </div>
+  } @if (editingIndex() !== null && result(); as lesson) {
+  <div class="modal-backdrop" role="presentation" (click)="closeEditModal()">
+    <section
+      class="edit-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-modal-title"
+      (click)="$event.stopPropagation()"
+      (keydown)="$event.stopPropagation()"
+    >
+      <header class="modal-header">
+        <div>
+          <span class="segment-number large"> {{ (editingIndex() ?? 0) + 1 }} </span>
+
+          <div>
+            <h2 id="edit-modal-title">تعديل المقطع {{ (editingIndex() ?? 0) + 1 }}</h2>
+
+            <small dir="ltr"> {{ formatTime(editStart) }} → {{ formatTime(editEnd) }} </small>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          class="close-button"
+          (click)="closeEditModal()"
+          [disabled]="segmentSaving()"
+          aria-label="إغلاق"
+        >
+          ×
+        </button>
+      </header>
+
+      <div class="modal-body">
+        <audio
+          #editAudio
+          hidden
+          preload="metadata"
+          [src]="editingPreviewUrl()"
+          (loadedmetadata)="onEditPreviewMetadata($event)"
+          (timeupdate)="onEditPreviewTimeUpdate($event)"
+          (ended)="stopEditPreview('source_ended')"
+          (error)="onEditPreviewError()"
+        ></audio>
+
+        <section class="waveform-editor" aria-label="معاينة التموجات الصوتية للمقطع">
+          <div class="waveform-heading">
+            <strong>
+              <span aria-hidden="true">≋</span>
+              محرر التموجات الصوتية
+            </strong>
+
+            <span class="waveform-clock" dir="ltr">
+              {{ formatTime(editWaveformElapsed()) }} / {{ formatTime(editRangeDuration()) }}
+            </span>
+          </div>
+
+          <div class="waveform-scale" dir="ltr">
+            <span>{{ formatTime(editWaveformViewStart()) }}</span>
+            <span>{{ formatTime(editWaveformViewMidpoint()) }}</span>
+            <span>{{ formatTime(editWaveformViewEnd()) }}</span>
+          </div>
+
+          <div
+            #waveformTrack
+            class="waveform-track"
+            role="group"
+            tabindex="0"
+            aria-label="موجة الصوت ومقبضا بداية المقطع ونهايته"
+            dir="ltr"
+            [class.disabled]="!editMediaDuration() || !isEditRangeValid() || editWaveformLoading() || editWaveformPeaks().length === 0"
+            [attr.aria-disabled]="!editMediaDuration() || !isEditRangeValid() || editWaveformLoading() || editWaveformPeaks().length === 0"
+            (click)="seekEditPreview(editAudio, $event)"
+            (keydown)="seekEditPreviewWithKeyboard(editAudio, $event)"
+            (pointermove)="moveEditRangeHandle($event, waveformTrack)"
+            (pointerup)="finishEditRangeHandleDrag($event)"
+            (pointercancel)="finishEditRangeHandleDrag($event)"
+          >
+            @if (editWaveformLoading()) {
+            <span class="waveform-message">جاري تحليل صوت الملف...</span>
+            } @else if (editWaveformError()) {
+            <span class="waveform-message waveform-error">{{ editWaveformError() }}</span>
+            } @else if (!editingPreviewUrl()) {
+            <span class="waveform-message waveform-error"
+              >الملف الأصلي مطلوب لعرض الموجة ومعاينة الصوت.</span
+            >
+            } @else {
+            <span class="waveform-timeline">
+              <span class="waveform-bars" aria-hidden="true">
+                @for (peak of editWaveformPeaks(); track $index) {
+                <span
+                  class="waveform-bar"
+                  [class.played]="waveformBarPlayed($index)"
+                  [style.height.%]="peak * 100"
+                ></span>
+                }
+              </span>
+              <span
+                class="waveform-selection"
+                [style.left.%]="editRangeStartProgress() * 100"
+                [style.width.%]="(editRangeEndProgress() - editRangeStartProgress()) * 100"
+                aria-hidden="true"
+              ></span>
+              <span
+                class="waveform-range-handle start"
+                [style.left.%]="editRangeStartProgress() * 100"
+                role="slider"
+                tabindex="0"
+                [attr.aria-label]="'بداية المقطع ' + formatTime(editStart)"
+                [attr.aria-valuemin]="editStartHandleMinimum()"
+                [attr.aria-valuemax]="editStartHandleMaximum()"
+                [attr.aria-valuenow]="editStart"
+                [attr.aria-valuetext]="formatTime(editStart)"
+                title="اسحب لتغيير بداية المقطع"
+                (pointerdown)="beginEditRangeHandleDrag('start', $event)"
+                (keydown)="adjustEditRangeHandle('start', $event)"
+              ></span>
+              <span
+                class="waveform-range-handle end"
+                [style.left.%]="editRangeEndProgress() * 100"
+                role="slider"
+                tabindex="0"
+                [attr.aria-label]="'نهاية المقطع ' + formatTime(editEnd)"
+                [attr.aria-valuemin]="editStart + 0.01"
+                [attr.aria-valuemax]="editEndHandleMaximum()"
+                [attr.aria-valuenow]="editEnd"
+                [attr.aria-valuetext]="formatTime(editEnd)"
+                title="اسحب لتغيير نهاية المقطع"
+                (pointerdown)="beginEditRangeHandleDrag('end', $event)"
+                (keydown)="adjustEditRangeHandle('end', $event)"
+              ></span>
+              <span
+                class="waveform-playhead"
+                [style.left.%]="editWaveformProgress() * 100"
+                aria-hidden="true"
+              >
+                <span></span>
+              </span>
+            </span>
+            }
+          </div>
+
+          @if (!editingPreviewUrl() || editWaveformError()) {
+          <div class="waveform-source-required">
+            <div>
+              <strong>ملف المصدر غير متاح</strong>
+              <small
+                >اختر نفس الملف الأصلي لعرض الكلمات قبل المقطع وبعده. الملف للمعاينة المحلية فقط ولن
+                يعيد تشغيل WhisperX.</small
+              >
+            </div>
+            <label class="waveform-source-button" for="edit-source-media"
+              >اختيار الملف الأصلي</label
+            >
+            <input
+              id="edit-source-media"
+              class="waveform-source-input"
+              type="file"
+              accept=".wav,.mp3,.m4a,.mp4,.ogg,.webm,audio/*,video/*"
+              (change)="chooseEditSourceMedia($event)"
+              [disabled]="segmentSaving()"
+            />
+          </div>
+          }
+
+          <small class="waveform-instructions">
+            اسحب المقبض الأخضر للبداية والذهبي للنهاية لتضمين كلمات قبل المقطع أو بعده، ثم شغّل
+            الجزء المحدد.
+          </small>
+
+          <div class="waveform-controls">
+            <button
+              type="button"
+              class="waveform-skip"
+              title="إرجاع 5 ثوانٍ"
+              aria-label="إرجاع خمس ثوانٍ داخل المقطع"
+              (click)="skipEditPreview(editAudio, -5)"
+              [disabled]="!editMediaDuration() || !isEditRangeValid()"
+            >
+              −5s
+            </button>
+
+            <button
+              type="button"
+              class="edit-preview-button"
+              (click)="toggleEditPreview(editAudio)"
+              [disabled]="segmentSaving() || !editingPreviewUrl() || !editMediaDuration() || !isEditRangeValid()"
+              [attr.aria-label]="editPreviewPlaying() || editPreviewBusy() ? 'إيقاف المعاينة' : 'تشغيل التوقيت المعدّل'"
+            >
+              {{ editPreviewPlaying() || editPreviewBusy() ? '■ إيقاف المعاينة' : '▶ تشغيل المقطع'
+              }}
+            </button>
+
+            <button
+              type="button"
+              class="waveform-skip"
+              title="تقديم 5 ثوانٍ"
+              aria-label="تقديم خمس ثوانٍ داخل المقطع"
+              (click)="skipEditPreview(editAudio, 5)"
+              [disabled]="!editMediaDuration() || !isEditRangeValid()"
+            >
+              +5s
+            </button>
+          </div>
+
+          @if (editPreviewError()) {
+          <small class="preview-error" role="alert">{{ editPreviewError() }}</small>
+          }
+        </section>
+
+        <label class="modal-field">
+          <span> نص المقطع </span>
+
+          <textarea
+            dir="ltr"
+            rows="4"
+            maxlength="1000"
+            [(ngModel)]="editText"
+            [disabled]="segmentSaving()"
+          ></textarea>
+        </label>
+
+        <div class="time-grid">
+          <label class="modal-field">
+            <span> البداية بالثانية </span>
+
+            <input
+              type="number"
+              min="0"
+              [max]="lesson.manifest.duration"
+              step="0.01"
+              [(ngModel)]="editStart"
+              (ngModelChange)="onEditRangeChanged()"
+              [disabled]="segmentSaving()"
+            />
+
+            <small dir="ltr"> {{ formatTime(editStart) }} </small>
+          </label>
+
+          <label class="modal-field">
+            <span> النهاية بالثانية </span>
+
+            <input
+              type="number"
+              min="0"
+              [max]="lesson.manifest.duration"
+              step="0.01"
+              [(ngModel)]="editEnd"
+              (ngModelChange)="onEditRangeChanged()"
+              [disabled]="segmentSaving()"
+            />
+
+            <small dir="ltr"> {{ formatTime(editEnd) }} </small>
+          </label>
+        </div>
+
+        <p class="modal-help">
+          حفظ التعديل يعيد تجهيز صوت هذا المقطع حسب التوقيت الجديد، ثم يحدثه في القائمة.
+        </p>
+      </div>
+
+      <footer class="modal-footer">
+        <button
+          type="button"
+          class="secondary-button"
+          (click)="closeEditModal()"
+          [disabled]="segmentSaving()"
+        >
+          إلغاء
+        </button>
+
+        <button
+          type="button"
+          class="primary-button"
+          (click)="saveSegmentEdit()"
+          [disabled]="segmentSaving() || !isEditRangeValid()"
+        >
+          {{ segmentSaving() ? 'جاري حفظ التعديل...' : 'حفظ التعديل' }}
+        </button>
+      </footer>
+    </section>
+  </div>
   }
 </section>

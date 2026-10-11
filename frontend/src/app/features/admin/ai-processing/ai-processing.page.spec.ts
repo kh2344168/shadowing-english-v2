@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
-import { AuthoringLesson, ShadowingAuthoringApi } from '../shadowing-authoring.api';
+import { AuthoringLesson } from '../shadowing-authoring.api';
 import { AdminAIProcessingPage } from './ai-processing.page';
 import { ImportedLesson } from './local-lesson';
 import { LocalProcessorClient } from './local-processor.client';
@@ -24,9 +24,10 @@ describe('AdminAIProcessingPage — approve and save', () => {
   let router: Router;
 
   function lesson(): ImportedLesson {
-    const files = [1, 2].map((index) => new File(
-      [new Uint8Array(64)], 'segment-0' + index + '.wav', { type: 'audio/wav' },
-    ));
+    const files = [1, 2].map(
+      (index) =>
+        new File([new Uint8Array(64)], 'segment-0' + index + '.wav', { type: 'audio/wav' }),
+    );
     return {
       manifest: {
         schemaVersion: 1,
@@ -56,6 +57,7 @@ describe('AdminAIProcessingPage — approve and save', () => {
     page.title = result.manifest.title;
     page.description = result.manifest.description;
     page.reviewed = true;
+    page.selectedSegmentIndices.set(new Set([0, 1]));
     page.previewUrls.set(['blob:first-clip', 'blob:second-clip']);
     fixture.detectChanges();
     return result;
@@ -98,10 +100,13 @@ describe('AdminAIProcessingPage — approve and save', () => {
     client.initialize.mockReturnValue(null);
     client.remove.mockResolvedValue(undefined);
     const browserURL = URL;
-    vi.stubGlobal('URL', class extends browserURL {
-      static override createObjectURL = vi.fn(() => 'blob:updated-clip');
-      static override revokeObjectURL = vi.fn();
-    });
+    vi.stubGlobal(
+      'URL',
+      class extends browserURL {
+        static override createObjectURL = vi.fn(() => 'blob:updated-clip');
+        static override revokeObjectURL = vi.fn();
+      },
+    );
     await TestBed.configureTestingModule({
       imports: [AdminAIProcessingPage],
       providers: [
@@ -118,7 +123,9 @@ describe('AdminAIProcessingPage — approve and save', () => {
     fixture = TestBed.createComponent(AdminAIProcessingPage);
     page = fixture.componentInstance;
     fixture.detectChanges();
-    http.expectOne('/api/auth/session').flush({ authenticated: true, userId: 'admin-1', roles: ['Admin'] });
+    http
+      .expectOne('/api/auth/session')
+      .flush({ authenticated: true, userId: 'admin-1', roles: ['Admin'] });
     await fixture.whenStable();
   });
 
@@ -155,7 +162,10 @@ describe('AdminAIProcessingPage — approve and save', () => {
     const original = prepareReviewedLesson();
     const refreshed = lesson();
     refreshed.manifest.segments[0] = {
-      ...refreshed.manifest.segments[0], text: 'Latest edited sentence.', start: 0.5, end: 1.5,
+      ...refreshed.manifest.segments[0],
+      text: 'Latest edited sentence.',
+      start: 0.5,
+      end: 1.5,
     };
     refreshed.files[0] = new File([new Uint8Array(96)], 'segment-01.wav', { type: 'audio/wav' });
     refreshed.files[1] = original.files[1];
@@ -201,7 +211,9 @@ describe('AdminAIProcessingPage — approve and save', () => {
     expect(requests).toHaveLength(1);
     requests[0].flush(savedResponse());
     await fixture.whenStable();
-    expect(page.savedLesson()).not.toBeNull();
+    expect(page.result()).toBeNull();
+    expect(page.activeVersionId()).toBe('saved-version-1');
+    expect(router.navigate).toHaveBeenCalledOnce();
   });
 
   it('retries with the same requestId and preserves all work when saving fails', async () => {
@@ -219,7 +231,6 @@ describe('AdminAIProcessingPage — approve and save', () => {
     expect(page.reviewed).toBe(true);
     expect(page.title).toBe(result.manifest.title);
     expect(page.description).toBe(result.manifest.description);
-    expect(page.savedLesson()).toBeNull();
     expect(page.lessonSaving()).toBe(false);
     expect(page.error()).toContain('خدمة حفظ الصوت غير متاحة');
     expect(page.canSaveLesson()).toBe(true);
@@ -255,44 +266,106 @@ describe('AdminAIProcessingPage — approve and save', () => {
     expect(client.recut).not.toHaveBeenCalled();
   });
 
-  it('shows both success choices without navigating automatically', async () => {
-    const result = prepareReviewedLesson();
-    await saveSuccessfully();
-    expect(page.result()).toBe(result);
-    expect(page.savedLesson()!.id).toBe(jobId);
-    expect(page.saveChoicePending()).toBe(true);
-    expect(button('الانتقال إلى قائمة الدروس')).toBeTruthy();
-    expect(button('البقاء في الصفحة')).toBeTruthy();
-    expect(router.navigate).not.toHaveBeenCalled();
-    expect(router.url).toBe('/admin/ai-processing');
-  });
-
-  it('navigates to the lesson list only when the user clicks the list choice', async () => {
+  it('unlocks the lesson-content tab and embeds the complete workflow in the same page', async () => {
     prepareReviewedLesson();
+    const view = fixture.nativeElement as HTMLElement;
+    let tabs = view.querySelectorAll<HTMLButtonElement>('.workflow-step');
+    expect(tabs[1].disabled).toBe(true);
+
     await saveSuccessfully();
-    button('الانتقال إلى قائمة الدروس').click();
-    expect(router.navigate).toHaveBeenCalledOnce();
-    expect(router.navigate).toHaveBeenCalledWith(['/admin/lessons']);
+    tabs = view.querySelectorAll<HTMLButtonElement>('.workflow-step');
+    expect(tabs[1].disabled).toBe(false);
+    tabs[1].click();
+    fixture.detectChanges();
+    await Promise.resolve();
+    http.expectOne('/api/admin/lessons/saved-version-1/workflow').flush({
+      lessonId: jobId,
+      versionId: 'saved-version-1',
+      versionNumber: 1,
+      title: 'Processed lesson',
+      description: 'Processed description',
+      revision: 'workflow-revision',
+      aiStatus: null,
+      reviewedStages: [],
+      stages: [
+        {
+          id: 'shadowing-stage',
+          type: 'shadowing',
+          title: 'Shadowing الأساسي',
+          position: 1,
+          enabled: true,
+          required: true,
+        },
+        {
+          id: 'vocabulary-stage',
+          type: 'vocabulary',
+          title: 'الكلمات والـ Chunks',
+          position: 2,
+          enabled: true,
+          required: true,
+        },
+        {
+          id: 'listen-stage',
+          type: 'listen-type',
+          title: 'اسمع واكتب',
+          position: 3,
+          enabled: true,
+          required: false,
+        },
+      ],
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(page.activeCreationTab()).toBe('activities');
+    expect(fixture.nativeElement.querySelector('app-admin-lesson-workflow')).toBeTruthy();
+    expect(view.querySelectorAll('.stage-card')).toHaveLength(3);
+    expect(fixture.nativeElement.textContent).toContain('رحلة تجهيز الدرس');
+    const stageTitles = Array.from(view.querySelectorAll<HTMLInputElement>('.stage-title')).map(
+      (input) => input.value,
+    );
+    expect(stageTitles).toContain('الكلمات والـ Chunks');
+    expect(stageTitles).toContain('اسمع واكتب');
   });
 
-  it('keeps the saved state visible and stays on AI Processing when stay is clicked', async () => {
-    const result = prepareReviewedLesson();
+  it('clears the creation draft only after DB save and routes to the canonical workflow URL', async () => {
+    prepareReviewedLesson();
+    page.media = new File([new Uint8Array(24)], 'source.mp3', { type: 'audio/mpeg' });
+    page.transcriptFile = new File(['Sentence 1.'], 'lesson.txt', { type: 'text/plain' });
+    page.script = 'Sentence 1.';
+
     await saveSuccessfully();
-    const saved = page.savedLesson();
-    button('البقاء في الصفحة').click();
-    fixture.detectChanges();
-    expect(router.navigate).not.toHaveBeenCalled();
-    expect(router.url).toBe('/admin/ai-processing');
-    expect(page.savedLesson()).toBe(saved);
-    expect(page.result()).toBe(result);
-    expect(page.reviewed).toBe(true);
-    expect(page.saveChoicePending()).toBe(false);
-    expect(fixture.nativeElement.textContent).toContain('الدرس محفوظ بالفعل في قائمة الدروس');
-    expect(button('إنشاء درس جديد')).toBeTruthy();
-    expect(button('الانتقال إلى قائمة الدروس')).toBeTruthy();
-    await page.approveAndSaveLesson();
-    expect(http.match('/api/auth/csrf')).toEqual([]);
-    expect(http.match('/api/admin/shadowing/lessons')).toEqual([]);
+
+    expect(client.remove).toHaveBeenCalledWith(jobId);
+    expect(client.forgetJob).toHaveBeenCalled();
+    expect(page.result()).toBeNull();
+    expect(page.job()).toBeNull();
+    expect(page.media).toBeNull();
+    expect(page.transcriptFile).toBeNull();
+    expect(page.script).toBe('');
+    expect(page.title).toBe('');
+    expect(page.description).toBe('');
+    expect(page.activeVersionId()).toBe('saved-version-1');
+    expect(router.navigate).toHaveBeenCalledWith(
+      ['/admin/lessons', 'saved-version-1', 'workflow'],
+      { replaceUrl: true },
+    );
+  });
+
+  it('keeps the saved DB lesson and clears stale local state if processor cleanup fails', async () => {
+    prepareReviewedLesson();
+    client.remove.mockRejectedValue(new Error('processor_unavailable'));
+
+    await saveSuccessfully();
+
+    expect(page.result()).toBeNull();
+    expect(page.title).toBe('');
+    expect(page.activeVersionId()).toBe('saved-version-1');
+    expect(client.forgetJob).toHaveBeenCalled();
+    expect(router.navigate).toHaveBeenCalledWith(
+      ['/admin/lessons', 'saved-version-1', 'workflow'],
+      { replaceUrl: true },
+    );
   });
 
   it('blocks edits, processing and cleanup during save and prevents a second save after success', async () => {
@@ -314,29 +387,13 @@ describe('AdminAIProcessingPage — approve and save', () => {
     expect(page.canSaveLesson()).toBe(false);
   });
 
-  it('clears the saved state only when the user explicitly starts a new lesson', async () => {
-    prepareReviewedLesson();
-    await saveSuccessfully();
-    page.stayOnAIProcessing();
-    await page.createNewLesson();
-    expect(client.remove).toHaveBeenCalledWith(jobId);
-    expect(page.savedLesson()).toBeNull();
-    expect(page.result()).toBeNull();
-    expect(page.saveChoicePending()).toBe(false);
-    expect(page.title).toBe('');
-    expect(page.description).toBe('');
-    expect(router.navigate).not.toHaveBeenCalled();
-  });
-
-  it('retains the saved state and result if starting a new lesson cannot clean up the local job', async () => {
+  it('retains an unsaved result if starting a new lesson cannot clean up the local job', async () => {
     const result = prepareReviewedLesson();
-    await saveSuccessfully();
-    const saved = page.savedLesson();
     client.remove.mockRejectedValue(new Error('processor_unavailable'));
     await page.createNewLesson();
-    expect(page.savedLesson()).toBe(saved);
     expect(page.result()).toBe(result);
     expect(page.newLessonBusy()).toBe(false);
+    expect(router.navigate).not.toHaveBeenCalled();
   });
 
   it('validates the title and available WAV files before posting', async () => {
@@ -358,19 +415,27 @@ describe('AdminAIProcessingPage — approve and save', () => {
     const warn = vi.spyOn(console, 'warn');
     const saving = page.approveAndSaveLesson();
     await flushCsrf();
-    http.expectOne('/api/admin/shadowing/lessons').flush(
-      { error: 'Sensitive content from the server' }, { status: 500, statusText: 'Error' },
-    );
+    http
+      .expectOne('/api/admin/shadowing/lessons')
+      .flush({ error: 'Sensitive content from the server' }, { status: 500, statusText: 'Error' });
     await saving;
     expect(info).toHaveBeenCalledWith('[Admin.AILesson.Save.Start]', {
-      requestId: jobId, jobId, segmentCount: 2,
+      requestId: jobId,
+      jobId,
+      segmentCount: 2,
+      totalCount: 2,
     });
     expect(warn).toHaveBeenCalledWith('[Admin.AILesson.Save.Failed]', {
-      requestId: jobId, status: 500, code: 'request_failed', durationMs: expect.any(Number),
+      requestId: jobId,
+      status: 500,
+      code: 'request_failed',
+      durationMs: expect.any(Number),
     });
     await saveSuccessfully();
     expect(info).toHaveBeenCalledWith('[Admin.AILesson.Save.Success]', {
-      lessonId: jobId, versionId: 'saved-version-1', durationMs: expect.any(Number),
+      lessonId: jobId,
+      versionId: 'saved-version-1',
+      durationMs: expect.any(Number),
     });
     const logged = JSON.stringify([...info.mock.calls, ...warn.mock.calls]);
     expect(logged).not.toContain('Sentence 1.');

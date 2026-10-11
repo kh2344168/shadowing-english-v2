@@ -562,7 +562,9 @@ internal sealed class MediaApp(string contentRoot, IShadowingMediaStore store, S
     public async Task RefreshCsrfAsync(HttpClient client)
     {
         using var response = await client.GetAsync("/api/auth/csrf");
-        var cookie = response.Headers.GetValues("Set-Cookie").Single(x => x.StartsWith("XSRF-TOKEN="));
+        if (!response.Headers.TryGetValues("Set-Cookie", out var cookies))
+            throw new InvalidOperationException("test_csrf_cookie_missing_" + (int)response.StatusCode);
+        var cookie = cookies.Single(x => x.StartsWith("XSRF-TOKEN="));
         var token = Uri.UnescapeDataString(cookie.Split(';')[0]["XSRF-TOKEN=".Length..]);
         client.DefaultRequestHeaders.Remove("X-XSRF-TOKEN"); client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token);
     }

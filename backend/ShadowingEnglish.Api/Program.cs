@@ -211,6 +211,7 @@ app.MapAdminGroupsEndpoints();
 app.MapAdminCurriculumsEndpoints();
 app.MapAdminShadowingEndpoints();
 app.MapAdminLessonManagementEndpoints();
+app.MapAdminLessonWorkflowEndpoints();
 app.MapStudentLearningEndpoints();
 app.MapStudentShadowingReportingEndpoints();
 app.MapStudentAiLearningEndpoints();

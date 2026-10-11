@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using ShadowingEnglish.Api.Modules.Lessons;
 using ShadowingEnglish.Core.Learning;
 using ShadowingEnglish.Infrastructure.Database;
 
@@ -123,6 +124,60 @@ public static class AdminLessonAiEndpoints
             catch (Exception ex) { return Failure(log, ex, started, "Edit"); }
         }).RequireRateLimiting("admin-lesson-write");
 
+        group.MapPost("/{versionId:guid}/ai/{jobId:guid}/reopen", async (Guid versionId, Guid jobId,
+            ReopenAiRequest request, HttpContext http, IAntiforgery csrf, ApplicationDbContext db,
+            ILoggerFactory logs) =>
+        {
+            var started = Stopwatch.GetTimestamp(); var log = logs.CreateLogger("Admin.LessonAI");
+            log.LogInformation("Admin.AiContent.Reopen.Start JobId={JobId} TraceId={TraceId}",
+                jobId, http.TraceIdentifier);
+            if (!await ValidCsrf(csrf, http)) return Results.BadRequest(new { error = "invalid_csrf" });
+            if (!Guid.TryParse(http.User.FindFirstValue(ClaimTypes.NameIdentifier), out var adminId) ||
+                request.RequestId == Guid.Empty || request.ExpectedRevision == Guid.Empty)
+                return Results.BadRequest(new { error = "invalid_request" });
+            try
+            {
+                var existing = await db.LessonAiContents.AsNoTracking()
+                    .SingleOrDefaultAsync(x => x.Id == request.RequestId, http.RequestAborted);
+                if (existing is not null)
+                    return existing.LessonVersionId == versionId ? Results.Ok(View(existing)) :
+                        Results.Conflict(new { error = "request_id_conflict" });
+
+                var source = await db.LessonAiContents.AsNoTracking().SingleOrDefaultAsync(
+                    x => x.Id == jobId && x.LessonVersionId == versionId, http.RequestAborted);
+                if (source is null) return Results.NotFound(new { error = "ai_job_not_found" });
+                if (source.Status != "Approved" || source.Revision != request.ExpectedRevision ||
+                    string.IsNullOrWhiteSpace(source.PayloadJson))
+                    return Results.Conflict(new { error = "approved_content_changed" });
+                if (await db.LessonAiContents.AnyAsync(x => x.LessonVersionId == versionId &&
+                    (x.Status == "Pending" || x.Status == "Generating" || x.Status == "Draft"),
+                    http.RequestAborted))
+                    return Results.Conflict(new { error = "ai_draft_in_progress" });
+
+                var now = DateTimeOffset.UtcNow;
+                var draft = new LessonAiContent
+                {
+                    Id = request.RequestId,
+                    LessonVersionId = versionId,
+                    CreatedByAdminId = adminId,
+                    Revision = Guid.NewGuid(),
+                    Status = "Draft",
+                    PayloadJson = source.PayloadJson,
+                    ProviderName = source.ProviderName,
+                    CreatedAtUtc = now,
+                    UpdatedAtUtc = now
+                };
+                db.LessonAiContents.Add(draft);
+                await db.SaveChangesAsync(http.RequestAborted);
+                log.LogInformation(
+                    "Admin.AiContent.Reopen.Success SourceJobId={SourceJobId} DraftJobId={DraftJobId} DurationMs={DurationMs}",
+                    jobId, draft.Id, Ms(started));
+                return Results.Json(View(draft), statusCode: 201);
+            }
+            catch (DbUpdateException) { return Results.Conflict(new { error = "ai_job_changed" }); }
+            catch (Exception ex) { return Failure(log, ex, started, "Reopen"); }
+        }).RequireRateLimiting("admin-lesson-write");
+
         group.MapPost("/{versionId:guid}/ai/{jobId:guid}/approve", async (Guid versionId, Guid jobId,
             ApproveAiRequest request, HttpContext http, IAntiforgery csrf, ApplicationDbContext db,
             ILoggerFactory logs) =>
@@ -146,7 +201,18 @@ public static class AdminLessonAiEndpoints
                     segments.Select(x => x.Position).ToArray());
                 if (material is null)
                     return Results.BadRequest(new { error = "invalid_material" });
-                if (!LessonMaterialRules.ReadyToApprove(material))
+                var workflowJson = await db.LessonWorkflows.AsNoTracking()
+                    .Where(x => x.LessonVersionId == versionId).Select(x => x.StagesJson)
+                    .SingleOrDefaultAsync(http.RequestAborted);
+                string[]? requiredStages = null;
+                if (workflowJson is not null)
+                {
+                    var workflowStages = JsonSerializer.Deserialize<
+                        AdminLessonWorkflowEndpoints.WorkflowStage[]>(workflowJson, LessonMaterialRules.Json);
+                    requiredStages = workflowStages?.Where(x => x.Enabled && x.Type is not ("shadowing" or "content"))
+                        .Select(x => x.Type).Distinct().ToArray();
+                }
+                if (!LessonMaterialRules.ReadyToApprove(material, requiredStages))
                     return Results.Conflict(new { error = "review_incomplete" });
                 job.Status = "Approved"; job.ApprovedAtUtc = DateTimeOffset.UtcNow;
                 job.UpdatedAtUtc = job.ApprovedAtUtc.Value;
@@ -177,6 +243,7 @@ public static class AdminLessonAiEndpoints
         return Results.Problem(statusCode: 500, title: "ai_content_operation_failed");
     }
     public sealed record StartAiRequest(Guid RequestId);
+    public sealed record ReopenAiRequest(Guid RequestId, Guid ExpectedRevision);
     public sealed record UpdateAiRequest(Guid ExpectedRevision, LessonMaterial Material);
     public sealed record ApproveAiRequest(Guid ExpectedRevision);
 }

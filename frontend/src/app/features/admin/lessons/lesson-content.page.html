@@ -1,0 +1,128 @@
+<section class="content-page" dir="rtl" aria-labelledby="content-title">
+  <header class="page-hero">
+    <div>
+      <a [routerLink]="['/admin/lessons', versionId, 'workflow']" class="back-link"
+        ><span class="material-symbols-outlined">arrow_forward</span> رحلة الدرس</a
+      >
+      <span class="eyebrow">SHADOWING STUDIO</span>
+      <h1 id="content-title">مراجعة الـShadowing</h1>
+      <p>اسمع كل مقطع وقارن التسجيل بالنص. عدّل النص أو استبدل الصوت من نفس البطاقة.</p>
+    </div>
+    <div class="hero-stat">
+      <span class="material-symbols-outlined">graphic_eq</span
+      ><strong>{{ segments().length }}</strong><small>مقطع صوتي</small>
+    </div>
+  </header>
+
+  @if (error()) {
+  <p class="alert alert--error" role="alert">{{ error() }}</p>
+  } @if (notice()) {
+  <p class="alert alert--success" role="status">{{ notice() }}</p>
+  } @if (loading()) {
+  <div class="loading" role="status">
+    <span class="material-symbols-outlined spin">progress_activity</span> جاري تحميل مقاطع
+    الـShadowing...
+  </div>
+  } @else {
+  <section class="lesson-details">
+    <div class="section-title">
+      <span class="material-symbols-outlined">description</span>
+      <div>
+        <h2>بيانات الدرس</h2>
+        <p>العنوان والوصف اللذان سيظهران للطالب.</p>
+      </div>
+    </div>
+    <div class="details-grid">
+      <label class="field"
+        ><span>اسم الدرس</span
+        ><input
+          type="text"
+          maxlength="160"
+          [value]="title()"
+          (input)="setTitle($any($event.target).value)"
+      /></label>
+      <label class="field"
+        ><span>الوصف</span
+        ><textarea
+          rows="3"
+          maxlength="1000"
+          [value]="description()"
+          (input)="setDescription($any($event.target).value)"
+        ></textarea>
+      </label>
+    </div>
+  </section>
+
+  <div class="segments-heading">
+    <div>
+      <span class="eyebrow">AUDIO & SCRIPT</span>
+      <h2>مقاطع الدرس</h2>
+      <p>شغّل الصوت، راجع التطابق، ثم غيّر الجزء الذي يحتاج تعديلًا فقط.</p>
+    </div>
+    <span>{{ segments().length }} جملة</span>
+  </div>
+  <div class="segments-list">
+    @for (segment of segments(); track segment.position) {
+    <article class="segment-card">
+      <div class="segment-side">
+        <span class="segment-number">{{ segment.position }}</span
+        ><span class="material-symbols-outlined">graphic_eq</span>
+      </div>
+      <div class="segment-main">
+        <div class="audio-panel">
+          <div><span>التسجيل الحالي</span><strong>استمع قبل تعديل النص</strong></div>
+          <audio controls preload="none" [src]="segment.audioUrl">
+            متصفحك لا يدعم تشغيل الصوت.
+          </audio>
+        </div>
+        <label class="field script-field"
+          ><span>النص المطابق للتسجيل</span
+          ><textarea
+            dir="ltr"
+            rows="3"
+            maxlength="1000"
+            [value]="segment.text"
+            (input)="setText(segment.position, $any($event.target).value)"
+          ></textarea
+          ><small
+            >لو النص لا يطابق ما تسمعه، صححه هنا. لو التسجيل نفسه خطأ، استبدله بالأسفل.</small
+          ></label
+        >
+        <label class="replace-audio" [class.has-file]="!!segment.audio">
+          <span class="replace-icon material-symbols-outlined"
+            >{{ segment.audio ? 'check_circle' : 'upload_file' }}</span
+          >
+          <span
+            ><strong>{{ segment.audio ? 'تم اختيار تسجيل بديل' : 'استبدال التسجيل الصوتي' }}</strong
+            ><small
+              >{{ segment.audio?.name || 'WAV فقط · بحد أقصى 2 MB · اتركه فارغًا للاحتفاظ بالصوت
+              الحالي' }}</small
+            ></span
+          >
+          <span class="choose-file">{{ segment.audio ? 'تغيير الملف' : 'اختيار ملف' }}</span>
+          <input
+            type="file"
+            accept=".wav,audio/wav"
+            (change)="setAudio(segment.position, $event)"
+          />
+        </label>
+      </div>
+    </article>
+    }
+  </div>
+
+  <footer class="save-bar">
+    <div>
+      <span class="material-symbols-outlined">history</span>
+      <p>
+        <strong>الحفظ ينشئ نسخة جديدة آمنة</strong
+        ><small>لن نغيّر النسخة المنشورة أو نحذف التسجيلات الحالية.</small>
+      </p>
+    </div>
+    <button type="button" [disabled]="!dirty() || saving()" (click)="save()">
+      <span class="material-symbols-outlined">save</span>{{ saving() ? 'جاري الحفظ...' : dirty() ?
+      'حفظ نسخة جديدة' : 'لا توجد تعديلات' }}
+    </button>
+  </footer>
+  }
+</section>

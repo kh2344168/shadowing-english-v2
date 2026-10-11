@@ -23,6 +23,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<PublishedLessonSlot> PublishedLessonSlots => Set<PublishedLessonSlot>();
     public DbSet<StudentStageProgress> StudentStageProgress => Set<StudentStageProgress>();
     public DbSet<LessonAiContent> LessonAiContents => Set<LessonAiContent>();
+    public DbSet<LessonWorkflow> LessonWorkflows => Set<LessonWorkflow>();
     public DbSet<StudentPracticeAttempt> StudentPracticeAttempts => Set<StudentPracticeAttempt>();
     public DbSet<StudentAiDailyUsage> StudentAiDailyUsages => Set<StudentAiDailyUsage>();
     public DbSet<AiProviderConfiguration> AiProviderConfigurations => Set<AiProviderConfiguration>();
@@ -194,6 +195,16 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.HasIndex(x => new { x.LessonVersionId, x.CreatedAtUtc });
             entity.HasOne<LessonVersion>().WithMany().HasForeignKey(x => x.LessonVersionId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.CreatedByAdminId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<LessonWorkflow>(entity =>
+        {
+            entity.ToTable("LessonWorkflows");
+            entity.HasKey(x => x.LessonVersionId);
+            entity.Property(x => x.StagesJson).IsRequired().HasMaxLength(16000);
+            entity.Property(x => x.Revision).IsConcurrencyToken();
+            entity.HasOne<LessonVersion>().WithOne().HasForeignKey<LessonWorkflow>(x => x.LessonVersionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<StudentAiDailyUsage>(entity =>

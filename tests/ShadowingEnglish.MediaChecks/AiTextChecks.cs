@@ -60,6 +60,14 @@ internal static class AiTextChecks
             Assert(!LessonMaterialRules.Valid(v1 with { Dictation =
                 [new DictationCard(3, true, ["Hello world"])] }, "Hello world\nHello from here", [1, 2]),
                 "unknown_segment_accepted");
+            Assert(LessonMaterialRules.ReadyToApprove(v1 with { ReviewedStages =
+                ["vocabulary", "listen-type", "grammar", "vocabulary-quiz", "grammar-quiz",
+                    "word-order", "conversation"] }), "default_workflow_review_rejected");
+            Assert(LessonMaterialRules.ReadyToApprove(v1 with { ReviewedStages =
+                ["vocabulary", "listen-type", "quiz", "conversation"] }),
+                "legacy_review_rejected");
+            Assert(!LessonMaterialRules.ReadyToApprove(v1 with { ReviewedStages =
+                ["vocabulary", "listen-type", "conversation"] }), "partial_review_accepted");
             return Task.CompletedTask;
         });
         await check("Generated chunks and safe dictation preserve the old model response", () =>
@@ -92,12 +100,13 @@ internal static class AiTextChecks
                 .UseSqlServer("Server=127.0.0.1;Database=NeverConnected;Integrated Security=true;").Options;
             using var model = new ApplicationDbContext(options);
             Assert(!model.Database.HasPendingModelChanges(), "ai_model_snapshot_is_stale");
-            Assert(model.Database.GetMigrations().Last() == "20261005134000_AddAiProviderManagement",
+            Assert(model.Database.GetMigrations().Last() == "20261011090000_AddLessonWorkflows",
                 "ai_migration_not_registered");
             var script = model.GetService<IMigrator>().GenerateScript();
             Assert(script.Contains("CREATE TABLE [LessonAiContents]") &&
                 script.Contains("CREATE TABLE [StudentPracticeAttempts]") &&
-                script.Contains("[AiContentId]", StringComparison.Ordinal), "ai_migration_sql_missing");
+                script.Contains("[AiContentId]", StringComparison.Ordinal) &&
+                script.Contains("CREATE TABLE [LessonWorkflows]"), "ai_migration_sql_missing");
             return Task.CompletedTask;
         });
         await check("Router falls back after 429 and validates JSON before returning", async () =>
@@ -208,6 +217,51 @@ internal static class AiTextChecks
             using var approved = await adminClient.PostAsJsonAsync(url + "/approve",
                 new { expectedRevision = nextRevision });
             Assert(approved.StatusCode == HttpStatusCode.OK, "reviewed_content_not_approved");
+        });
+        await check("Admin workflow is protected, read-only on open, and concurrency safe", async () =>
+        {
+            var route = $"/api/admin/lessons/{versionId}/workflow";
+            using var anonymous = app.Client();
+            using var anonymousResponse = await anonymous.GetAsync(route);
+            Assert(anonymousResponse.StatusCode == HttpStatusCode.Unauthorized,
+                "anonymous_workflow_access_allowed");
+            using var studentResponse = await studentClient.GetAsync(route);
+            Assert(studentResponse.StatusCode == HttpStatusCode.Forbidden,
+                "student_workflow_access_allowed");
+
+            using var opened = await adminClient.GetAsync(route);
+            Assert(opened.StatusCode == HttpStatusCode.OK, "workflow_defaults_missing");
+            var openedJson = await opened.Content.ReadFromJsonAsync<JsonElement>();
+            Assert(openedJson.GetProperty("revision").GetGuid() == Guid.Empty &&
+                openedJson.GetProperty("stages").GetArrayLength() == 8,
+                "workflow_defaults_invalid");
+            using (var scope = app.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                Assert(await db.LessonWorkflows.CountAsync(x => x.LessonVersionId == versionId) == 0,
+                    "workflow_open_created_hidden_write");
+            }
+
+            var stages = openedJson.GetProperty("stages").Clone();
+            var csrf = adminClient.DefaultRequestHeaders.GetValues("X-XSRF-TOKEN").Single();
+            adminClient.DefaultRequestHeaders.Remove("X-XSRF-TOKEN");
+            using var missingCsrf = await adminClient.PutAsJsonAsync(route,
+                new { expectedRevision = Guid.Empty, stages });
+            adminClient.DefaultRequestHeaders.Add("X-XSRF-TOKEN", csrf);
+            Assert(missingCsrf.StatusCode == HttpStatusCode.BadRequest,
+                "workflow_write_without_csrf_allowed");
+
+            using var saved = await adminClient.PutAsJsonAsync(route,
+                new { expectedRevision = Guid.Empty, stages });
+            Assert(saved.StatusCode == HttpStatusCode.OK, "workflow_not_saved");
+            var savedJson = await saved.Content.ReadFromJsonAsync<JsonElement>();
+            Assert(savedJson.GetProperty("revision").GetGuid() != Guid.Empty,
+                "workflow_revision_not_rotated");
+            using var stale = await adminClient.PutAsJsonAsync(route,
+                new { expectedRevision = Guid.Empty, stages });
+            Assert(stale.StatusCode == HttpStatusCode.Conflict &&
+                (await stale.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString() ==
+                "workflow_changed", "stale_workflow_write_allowed");
         });
         await check("Only the assigned student sees reviewed material, without quiz answers", async () =>
         {

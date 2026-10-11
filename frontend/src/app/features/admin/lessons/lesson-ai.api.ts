@@ -12,6 +12,8 @@ export interface VocabularyCard {
   extraExample?: string | null;
   usageNote?: string | null;
   testLater?: boolean;
+  imageUrl?: string | null;
+  repeatForReview?: boolean;
 }
 export interface DictationCard {
   position: number;
@@ -43,7 +45,16 @@ export interface LessonMaterial {
   studentRole?: string | null;
   openingMessage?: string | null;
   shadowingReviewEnabled?: boolean;
-  reviewedStages?: Array<'vocabulary' | 'listen-type' | 'quiz' | 'conversation'> | null;
+  reviewedStages?: Array<
+    | 'vocabulary'
+    | 'listen-type'
+    | 'grammar'
+    | 'vocabulary-quiz'
+    | 'grammar-quiz'
+    | 'word-order'
+    | 'conversation'
+    | 'quiz'
+  > | null;
 }
 export interface LessonAiJob {
   id: string;
@@ -81,6 +92,12 @@ export class LessonAiApi {
     return this.http.put<LessonAiJob>(
       `${this.base}/${encodeURIComponent(versionId)}/ai/${encodeURIComponent(job.id)}`,
       { expectedRevision: job.revision, material },
+    );
+  }
+  reopen(versionId: string, job: LessonAiJob, requestId: string) {
+    return this.http.post<LessonAiJob>(
+      `${this.base}/${encodeURIComponent(versionId)}/ai/${encodeURIComponent(job.id)}/reopen`,
+      { requestId, expectedRevision: job.revision },
     );
   }
   approve(versionId: string, job: LessonAiJob) {

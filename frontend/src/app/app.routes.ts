@@ -37,6 +37,25 @@ export const routes: Routes = [
           import('./features/admin/lessons/ai-review.page').then((m) => m.AdminAiReviewPage),
       },
       {
+        path: 'lessons/:versionId/workflow',
+        loadComponent: () =>
+          import('./features/admin/ai-processing/ai-processing.page').then(
+            (m) => m.AdminAIProcessingPage,
+          ),
+      },
+      {
+        path: 'lessons/:versionId/workflow/:stageId/content',
+        loadComponent: () =>
+          import('./features/admin/lessons/lesson-content.page').then(
+            (m) => m.AdminLessonContentPage,
+          ),
+      },
+      {
+        path: 'lessons/:versionId/workflow/:stageId',
+        loadComponent: () =>
+          import('./features/admin/lessons/ai-review.page').then((m) => m.AdminAiReviewPage),
+      },
+      {
         path: 'ai-processing',
         loadComponent: () =>
           import('./features/admin/ai-processing/ai-processing.page').then(

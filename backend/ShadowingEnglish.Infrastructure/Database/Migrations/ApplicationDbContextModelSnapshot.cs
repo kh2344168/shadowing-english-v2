@@ -475,6 +475,28 @@ namespace ShadowingEnglish.Infrastructure.Database.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.LessonWorkflow", b =>
+                {
+                    b.Property<Guid>("LessonVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("StagesJson")
+                        .IsRequired()
+                        .HasMaxLength(16000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("LessonVersionId");
+
+                    b.ToTable("LessonWorkflows", (string)null);
+                });
+
             modelBuilder.Entity("ShadowingEnglish.Core.Learning.PublishedCurriculumVersion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1018,6 +1040,15 @@ namespace ShadowingEnglish.Infrastructure.Database.Migrations
                         .WithMany()
                         .HasForeignKey("LessonDefinitionId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.LessonWorkflow", b =>
+                {
+                    b.HasOne("ShadowingEnglish.Core.Learning.LessonVersion", null)
+                        .WithOne()
+                        .HasForeignKey("ShadowingEnglish.Core.Learning.LessonWorkflow", "LessonVersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

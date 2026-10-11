@@ -1,0 +1,200 @@
+<section
+  class="workflow-page"
+  [class.workflow-page--embedded]="embedded"
+  dir="rtl"
+  aria-labelledby="workflow-title"
+>
+  <header class="workflow-hero">
+    <div class="hero-copy">
+      @if (!embedded) {
+      <a routerLink="/admin/lessons" class="back-link">
+        <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+        مكتبة الدروس
+      </a>
+      }
+      <span class="eyebrow">LESSON JOURNEY BUILDER</span>
+      <h1 id="workflow-title">رحلة تجهيز الدرس</h1>
+      @if (workflow(); as current) {
+      <p><strong>{{ current.title }}</strong> · النسخة {{ current.versionNumber }}</p>
+      <small>{{ current.description || 'رتّب مراحل الدرس وحدد ما سيظهر للطالب.' }}</small>
+      }
+    </div>
+    <div class="hero-summary" aria-label="ملخص الرحلة">
+      <span class="summary-icon material-symbols-outlined" aria-hidden="true">route</span>
+      <div><strong>{{ enabledCount() }}</strong><small>مراحل مفعّلة</small></div>
+      <div><strong>{{ stages().length }}</strong><small>إجمالي المراحل</small></div>
+    </div>
+  </header>
+
+  @if (error()) {
+  <p class="alert alert--error" role="alert">{{ error() }}</p>
+  } @if (notice()) {
+  <p class="alert alert--success" role="status">{{ notice() }}</p>
+  } @if (loading()) {
+  <div class="loading-state" role="status">
+    <span class="material-symbols-outlined spin" aria-hidden="true">progress_activity</span>
+    جاري تجهيز رحلة الدرس...
+  </div>
+  } @else if (workflow()) {
+  <div class="workflow-toolbar">
+    <div>
+      <h2>مراحل الطالب</h2>
+      <p>فعّل ما تحتاجه، كرّر أي تدريب، وغيّر الترتيب قبل النشر.</p>
+    </div>
+    <button type="button" class="add-stage" (click)="libraryOpen.set(true)">
+      <span class="material-symbols-outlined" aria-hidden="true">add_circle</span>
+      إضافة مرحلة
+    </button>
+  </div>
+
+  <ol class="stage-list" aria-label="مراحل رحلة الدرس">
+    @for (stage of stages(); track stage.id; let index = $index) { @let meta =
+    definition(stage.type); @let state = status(stage);
+    <li class="stage-card" [class.stage-card--disabled]="!stage.enabled">
+      <div class="stage-order">
+        <span>{{ index + 1 }}</span>
+        <div class="order-buttons" role="group" [attr.aria-label]="'ترتيب ' + stage.title">
+          <button
+            type="button"
+            (click)="move(stage, -1)"
+            [disabled]="index === 0 || isCore(stage)"
+            aria-label="تحريك لأعلى"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">keyboard_arrow_up</span>
+          </button>
+          <button
+            type="button"
+            (click)="move(stage, 1)"
+            [disabled]="index === stages().length - 1 || isCore(stage)"
+            aria-label="تحريك لأسفل"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">keyboard_arrow_down</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="stage-icon" [attr.data-tone]="meta.color">
+        <span class="material-symbols-outlined" aria-hidden="true">{{ meta.icon }}</span>
+      </div>
+
+      <div class="stage-copy">
+        <div class="stage-title-row">
+          <input
+            #stageTitle
+            class="stage-title"
+            [value]="stage.title"
+            maxlength="80"
+            [attr.aria-label]="'اسم مرحلة ' + stage.title"
+            (change)="rename(stage, stageTitle.value)"
+          />
+          <span class="status-pill" [attr.data-tone]="state.tone">
+            <span class="material-symbols-outlined" aria-hidden="true">{{ state.icon }}</span>
+            {{ state.label }}
+          </span>
+        </div>
+        <p>{{ meta.description }}</p>
+        <div class="stage-options">
+          <label class="switch-control">
+            <input
+              type="checkbox"
+              [checked]="stage.enabled"
+              [disabled]="isCore(stage)"
+              (change)="toggle(stage, $any($event.target).checked)"
+            />
+            <span class="switch" aria-hidden="true"></span>
+            {{ stage.enabled ? 'مفعّلة' : 'غير مفعّلة' }}
+          </label>
+          <label class="check-control">
+            <input
+              type="checkbox"
+              [checked]="stage.required"
+              [disabled]="isCore(stage) || !stage.enabled"
+              (change)="toggleRequired(stage, $any($event.target).checked)"
+            />
+            إجبارية للطالب
+          </label>
+        </div>
+      </div>
+
+      <div class="stage-actions">
+        <button type="button" class="open-stage" [disabled]="!stage.enabled" (click)="open(stage)">
+          فتح وتعديل
+          <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+        </button>
+        @if (!isCore(stage)) {
+        <div class="more-actions">
+          <button
+            type="button"
+            (click)="duplicate(stage)"
+            title="تكرار المرحلة"
+            aria-label="تكرار المرحلة"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
+          </button>
+          <button
+            type="button"
+            class="delete-action"
+            (click)="remove(stage)"
+            title="حذف المرحلة"
+            aria-label="حذف المرحلة"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+          </button>
+        </div>
+        }
+      </div>
+    </li>
+    }
+  </ol>
+
+  <footer class="workflow-footer">
+    <div>
+      <span class="material-symbols-outlined" aria-hidden="true">info</span>
+      <p>
+        <strong>لن يظهر أي تغيير للطلاب قبل نشر المنهج.</strong
+        ><small>تعطيل المرحلة يحتفظ بإعداداتها حتى تعيد تفعيلها.</small>
+      </p>
+    </div>
+    <button type="button" class="save-workflow" [disabled]="!dirty() || saving()" (click)="save()">
+      <span class="material-symbols-outlined" aria-hidden="true">save</span>
+      {{ saving() ? 'جاري الحفظ...' : dirty() ? 'حفظ رحلة الدرس' : 'تم حفظ الرحلة' }}
+    </button>
+  </footer>
+  } @if (libraryOpen()) {
+  <div class="dialog-backdrop">
+    <section
+      class="stage-library"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="stage-library-title"
+    >
+      <header>
+        <div>
+          <span class="eyebrow">ACTIVITY LIBRARY</span>
+          <h2 id="stage-library-title">إضافة مرحلة للرحلة</h2>
+          <p>يمكنك إضافة نفس النوع أكثر من مرة وتسميته كما تريد.</p>
+        </div>
+        <button
+          type="button"
+          class="close-dialog"
+          (click)="libraryOpen.set(false)"
+          aria-label="إغلاق"
+        >
+          ×
+        </button>
+      </header>
+      <div class="library-grid">
+        @for (item of library; track item.type) {
+        <button type="button" class="library-card" (click)="add(item)">
+          <span class="stage-icon" [attr.data-tone]="item.color"
+            ><span class="material-symbols-outlined" aria-hidden="true">{{ item.icon }}</span></span
+          >
+          <span><strong>{{ item.title }}</strong><small>{{ item.description }}</small></span>
+          <span class="material-symbols-outlined add-icon" aria-hidden="true">add</span>
+        </button>
+        }
+      </div>
+    </section>
+  </div>
+  }
+</section>

@@ -6,7 +6,8 @@ namespace ShadowingEnglish.Api.Modules.AI;
 // Optional fields keep lessons approved before the V1 activity port readable.
 public sealed record VocabularyCard(string Word, string MeaningAr, string ExampleEn, string ExampleAr,
     string Kind = "word", bool IncludeForStudent = true, string? Explanation = null,
-    string? ExtraExample = null, string? UsageNote = null, bool TestLater = false);
+    string? ExtraExample = null, string? UsageNote = null, bool TestLater = false,
+    string? ImageUrl = null, bool RepeatForReview = false);
 public sealed record DictationCard(int Position, bool Enabled = true, string[]? AcceptedAnswers = null,
     string? Hint = null);
 public sealed record LessonTranscriptSegment(int Position, string Text);
@@ -21,10 +22,26 @@ public sealed record ChatFeedback(string Reply, string Correction, string Better
 public static class LessonMaterialRules
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-    private static readonly string[] Stages = ["vocabulary", "listen-type", "quiz", "conversation"];
+    private static readonly string[] DefaultApprovalStages = [
+        "vocabulary", "listen-type", "grammar", "vocabulary-quiz", "grammar-quiz",
+        "word-order", "conversation"
+    ];
+    private static readonly string[] LegacyApprovalStages =
+        ["vocabulary", "listen-type", "quiz", "conversation"];
+    private static readonly HashSet<string> AcceptedReviewStages =
+        [.. DefaultApprovalStages, "quiz"];
 
-    public static bool ReadyToApprove(LessonMaterial material) =>
-        material.ReviewedStages is { } reviewed && Stages.All(reviewed.Contains);
+    public static bool ReadyToApprove(LessonMaterial material, IEnumerable<string>? requiredStages = null)
+    {
+        if (material.ReviewedStages is not { } reviewed) return false;
+        var required = requiredStages?.Distinct().ToArray() ??
+            (reviewed.Contains("quiz") && !reviewed.Any(DefaultApprovalStages[2..].Contains)
+                ? LegacyApprovalStages
+                : DefaultApprovalStages);
+        return required.All(stage =>
+            reviewed.Contains(stage) || reviewed.Contains("quiz") &&
+            stage is "grammar" or "vocabulary-quiz" or "grammar-quiz" or "word-order");
+    }
 
     public static LessonMaterial? Parse(string raw, string source, int[]? segmentPositions = null)
     {
@@ -102,8 +119,8 @@ public static class LessonMaterialRules
             material.ConversationGoals is { Length: > 6 } ||
             material.ConversationGoals?.Any(x => !Field(x, 160)) == true ||
             material.ReviewedStages is { } reviewed &&
-                (reviewed.Length > Stages.Length || reviewed.Distinct().Count() != reviewed.Length ||
-                    reviewed.Any(x => !Stages.Contains(x)))) return false;
+                (reviewed.Length > AcceptedReviewStages.Count || reviewed.Distinct().Count() != reviewed.Length ||
+                    reviewed.Any(x => !AcceptedReviewStages.Contains(x)))) return false;
 
         var sourceWords = Tokens(source);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -112,7 +129,8 @@ public static class LessonMaterialRules
             if (card is null || !Field(card.Word, 80) || !Field(card.MeaningAr, 120) ||
                 !Field(card.ExampleEn, 200) || !Field(card.ExampleAr, 200) ||
                 !Optional(card.Explanation, 300) || !Optional(card.ExtraExample, 200) ||
-                !Optional(card.UsageNote, 200) || card.Kind is not ("word" or "chunk") ||
+                !Optional(card.UsageNote, 200) || !Optional(card.ImageUrl, 1000) ||
+                card.Kind is not ("word" or "chunk") ||
                 !seen.Add(card.Word.Trim()) ||
                 !Regex.IsMatch(card.Word, "^[a-zA-Z]+(?:['-][a-zA-Z]+)*(?: [a-zA-Z]+(?:['-][a-zA-Z]+)*)*$") ||
                 (card.Kind == "word" && card.Word.Contains(' ')) ||

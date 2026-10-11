@@ -1,79 +1,105 @@
 <section class="review-page" dir="rtl" aria-labelledby="review-title">
-  <header class="review-header">
-    <a routerLink="/admin/lessons" class="back">← قائمة الدروس</a>
-    <span class="eyebrow">Admin Content Review</span>
-    <h1 id="review-title">مراجعة محتوى الدرس</h1>
-    <p>راجع نتيجة المعالجة مرحلة بمرحلة. اختر ما يصلح للطالب، واحفظ كل مرحلة، ثم اعتمد المحتوى.</p>
+  <header class="review-hero">
+    <div>
+      <a
+        [routerLink]="workflowMode ? ['/admin/lessons', versionId, 'workflow'] : ['/admin/lessons']"
+        class="back"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+        {{ workflowMode ? 'رحلة الدرس' : 'قائمة الدروس' }}
+      </a>
+      <span class="eyebrow">LESSON ACTIVITY STUDIO</span>
+      <h1 id="review-title">{{ pageTitle() }}</h1>
+      <p>كل مرحلة لها مساحة عمل وأدوات مراجعة مناسبة لها، ولن يظهر شيء للطالب قبل الاعتماد.</p>
+    </div>
+    @if (job()?.status === 'Draft' && draft()) {
+    <div class="hero-progress">
+      <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
+      <strong>{{ reviewedCount() }} / {{ requiredReviewStages().length }}</strong>
+      <small>مراحل مكتملة</small>
+    </div>
+    }
   </header>
 
   @if (error()) {
-  <p role="alert" class="alert">{{ error() }}</p>
+  <p role="alert" class="alert alert--error">{{ error() }}</p>
   } @if (notice()) {
-  <p role="status" class="notice">{{ notice() }}</p>
+  <p role="status" class="alert alert--success">{{ notice() }}</p>
   } @if (loading()) {
-  <p role="status">جاري قراءة حالة الدرس...</p>
-  } @else {
-  <p>
-    الخدمات المفعّلة: {{ providers().length ? providers().join('، ') : 'لم تُضف مفاتيح على الباك إند
-    بعد' }}.
-  </p>
-  @if (job(); as current) {
-  <div class="state" role="status">
-    @switch (current.status) { @case ('Pending') { المعالجة في الانتظار. ستبدأ تلقائيًا بعد إضافة
-    المفاتيح وتشغيل API. } @case ('Generating') { جاري إعداد مسودة الكلمات والتمارين... } @case
-    ('Draft') { المسودة جاهزة للمراجعة؛ لم تظهر للطلاب بعد. } @case ('Approved') { المحتوى معتمد.
-    يظهر للطالب فقط ضمن نسخة منهج تُنشر بعد الاعتماد. } @case ('Failed') { {{
-    failureReason(current.errorCode) }} } }
+  <div class="loading">
+    <span class="material-symbols-outlined spin">progress_activity</span> جاري تجهيز مساحة العمل...
   </div>
-  @if (current.providerName) { <small>المزود الذي جهّز المسودة: {{ current.providerName }}</small> }
   } @else {
-  <div class="state">هذا الدرس لم تُجهّز له كلمات بعد.</div>
-  } @if (!job() || job()?.status === 'Failed' || job()?.status === 'Approved' || job()?.status ===
-  'Draft') {
+  <div class="service-bar">
+    <span class="service-dot" [class.off]="!providers().length"></span>
+    <span
+      >{{ providers().length ? 'الذكاء الاصطناعي جاهز: ' + providers().join('، ') : 'لم تتم إضافة
+      مزود ذكاء اصطناعي بعد' }}</span
+    >
+    @if (job(); as current) {
+    <strong>
+      @switch (current.status) { @case ('Pending') { في قائمة الانتظار } @case ('Generating') { جاري
+      إنشاء المحتوى } @case ('Draft') { مسودة تحت المراجعة } @case ('Approved') { محتوى معتمد }
+      @case ('Failed') { المعالجة توقفت } }
+    </strong>
+    }
+  </div>
+
+  @if (job()?.status === 'Failed') {
+  <p class="alert alert--error">{{ failureReason(job()!.errorCode) }}</p>
+  } @if (!job()) {
+  <div class="empty-state">
+    <span class="material-symbols-outlined">auto_awesome</span>
+    <h2>ابدأ تجهيز أنشطة الدرس</h2>
+    <p>سنستخرج الكلمات والتدريبات من جمل الـShadowing.</p>
+  </div>
+  } @if (!job() || job()?.status === 'Failed') {
   <button
     type="button"
-    class="secondary"
+    class="generate-button"
     [disabled]="busy() || !providers().length"
     (click)="generate()"
   >
-    {{ job()?.status === 'Failed' ? 'إعادة المعالجة' : 'إنشاء مسودة جديدة' }}
+    <span class="material-symbols-outlined">auto_awesome</span>
+    {{ job()?.status === 'Failed' ? 'إعادة المعالجة' : 'إنشاء مسودة بالذكاء الاصطناعي' }}
   </button>
   } @if (job()?.status === 'Draft' && draft(); as material) { @if (!selectedStage()) {
   <section class="review-overview" aria-labelledby="stages-title">
     <div class="overview-heading">
       <div>
-        <h2 id="stages-title">نتيجة معالجة الدرس</h2>
-        <p>المسودة محفوظة للإدارة فقط. افتح كل مرحلة لمراجعة محتواها قبل الاعتماد.</p>
+        <span class="eyebrow">CONTENT PIPELINE</span>
+        <h2 id="stages-title">مراحل المحتوى</h2>
+        <p>افتح كل مرحلة، راجع تفاصيلها، ثم اعتمدها بشكل مستقل.</p>
       </div>
       <span class="progress-badge"
-        >{{ material.reviewedStages?.length ?? 0 }} / {{ stages.length }} مراحل تمت مراجعتها</span
+        >{{ reviewedCount() }} من {{ requiredReviewStages().length }} تمت مراجعتها</span
       >
     </div>
-    <div class="stage-list">
-      @for (stage of stages; track stage.key; let stageIndex = $index) {
-      <article class="stage-row" [class.is-selected]="selectedStage() === stage.key">
-        <span class="stage-number">{{ stageIndex + 1 }}</span>
-        <div class="stage-copy">
-          <h3>{{ stage.title }}</h3>
-          <p>{{ stage.description }}</p>
-          <small>{{ stageSummary(stage.key) }}</small>
-        </div>
-        <div class="stage-controls">
-          <span class="stage-badge" [class.reviewed]="stageReviewed(stage.key)">
-            {{ stageReviewed(stage.key) ? 'تمت مراجعتها' : 'تحتاج مراجعة' }}
-          </span>
-          <button type="button" (click)="openStage(stage.key)">
-            {{ selectedStage() === stage.key ? 'المرحلة مفتوحة' : 'فتح ومراجعة' }}
-          </button>
-        </div>
+    <div class="stage-grid">
+      @for (stage of stages; track stage.key) { @if (requiredReviewStages().includes(stage.key)) {
+      <article class="stage-tile" [class.reviewed]="stageReviewed(stage.key)">
+        <span class="stage-icon material-symbols-outlined">{{ stage.icon }}</span>
+        <div class="stage-index">{{ stageNumber(stage.key) }}</div>
+        <h3>{{ stage.title }}</h3>
+        <p>{{ stage.description }}</p>
+        <small>{{ stageSummary(stage.key) }}</small>
+        <button type="button" (click)="openStage(stage.key)">
+          فتح المرحلة <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        @if (stageReviewed(stage.key)) {
+        <span class="reviewed-mark"
+          ><span class="material-symbols-outlined">verified</span> تمت المراجعة</span
+        >
+        }
       </article>
-      }
+      } }
     </div>
     <div class="overview-actions">
-      <p>
-        {{ allStagesReviewed() ? 'كل المراحل راجعتها. اعتمد المحتوى ليصبح جاهزًا للنشر ضمن المنهج.'
-        : 'لن يظهر شيء للطالب قبل اعتماد المحتوى ونشر المنهج.' }}
-      </p>
+      <div>
+        <strong
+          >{{ allStagesReviewed() ? 'الدرس جاهز للاعتماد' : 'أكمل مراجعة المراحل المفعلة' }}</strong
+        ><small>يمكنك الرجوع لأي مرحلة وتعديلها لاحقًا.</small>
+      </div>
       @if (dirty()) {
       <button type="button" class="secondary" [disabled]="busy()" (click)="save()">
         حفظ المسودة
@@ -90,347 +116,499 @@
   </section>
   } @if (selectedStage(); as activeStage) {
   <div class="stage-heading">
+    <div class="stage-heading__icon">
+      <span class="material-symbols-outlined">{{ stageIcon(activeStage) }}</span>
+    </div>
     <div>
       <span class="eyebrow">المرحلة {{ stageNumber(activeStage) }}</span>
       <h2>{{ stageTitle(activeStage) }}</h2>
-      <p>راجع التفاصيل، ثم احفظ واعتمد هذه المرحلة. تقدر ترجع لأي مرحلة وتعدلها لاحقًا.</p>
+      <p>راجع المحتوى كما سيظهر للطالب، ثم احفظ واعتمد المرحلة.</p>
     </div>
-    <button type="button" class="secondary" (click)="selectedStage.set(null)">
-      العودة للمراحل
+    <button type="button" class="secondary back-to-stages" (click)="backToStages()">
+      <span class="material-symbols-outlined">grid_view</span>
+      {{ workflowMode ? 'الرجوع لرحلة الدرس' : 'كل المراحل' }}
     </button>
   </div>
+
   @if (activeStage === 'vocabulary') {
-  <section class="card" aria-labelledby="words-title">
-    <h2 id="words-title">١. الكلمات والعبارات من جمل الدرس</h2>
-    <p>اختر ما يظهر للطالب. اترك كلمة في بنك الدرس بدون عرض لو محتاجة مراجعة لاحقًا.</p>
-    <label class="check"
-      ><input
-        type="checkbox"
-        [(ngModel)]="material.shadowingReviewEnabled"
-        name="shadowing-review-enabled"
-        (ngModelChange)="changed()"
-      />
-      أعد Shadowing بعد فهم الكلمات</label
-    >
-    @for (word of material.vocabulary; track $index; let wordIndex = $index) {
-    <fieldset>
-      <legend>{{ word.kind === 'chunk' ? 'عبارة' : 'كلمة' }} {{ wordIndex + 1 }}</legend>
-      <label
-        >النوع
-        <select [(ngModel)]="word.kind" [name]="'kind-' + wordIndex" (ngModelChange)="changed()">
-          <option value="word">كلمة</option>
-          <option value="chunk">عبارة (Chunk)</option>
-        </select>
-      </label>
-      <label
-        >الكلمة من النص
-        <input
-          [(ngModel)]="word.word"
-          [name]="'word-' + wordIndex"
-          maxlength="80"
-          (ngModelChange)="changed()"
-      /></label>
-      <label
-        >المعنى بالعربي
-        <input
-          [(ngModel)]="word.meaningAr"
-          [name]="'meaning-' + wordIndex"
-          maxlength="120"
-          (ngModelChange)="changed()"
-      /></label>
-      <label
-        >مثال إنجليزي
-        <input
-          dir="ltr"
-          [(ngModel)]="word.exampleEn"
-          [name]="'example-' + wordIndex"
-          maxlength="200"
-          (ngModelChange)="changed()"
-      /></label>
-      <label
-        >شرح المثال بالعربي
-        <input
-          [(ngModel)]="word.exampleAr"
-          [name]="'example-ar-' + wordIndex"
-          maxlength="200"
-          (ngModelChange)="changed()"
-      /></label>
-      <label
-        >شرح مبسط بالإنجليزية
-        <input
-          [(ngModel)]="word.explanation"
-          [name]="'explanation-' + wordIndex"
-          maxlength="300"
-          (ngModelChange)="changed()"
-        />
-      </label>
-      <label
-        >مثال إضافي
-        <input
-          dir="ltr"
-          [(ngModel)]="word.extraExample"
-          [name]="'extra-' + wordIndex"
-          maxlength="200"
-          (ngModelChange)="changed()"
-        />
-      </label>
-      <label
-        >متى نستخدمها؟
-        <input
-          [(ngModel)]="word.usageNote"
-          [name]="'usage-' + wordIndex"
-          maxlength="200"
-          (ngModelChange)="changed()"
-        />
-      </label>
-      <label class="check"
-        ><input
-          type="checkbox"
-          [(ngModel)]="word.includeForStudent"
-          [name]="'include-' + wordIndex"
-          (ngModelChange)="changed()"
-        />
-        اعرضها للطالب</label
-      >
-      <button
-        type="button"
-        class="secondary"
-        [disabled]="material.vocabulary.length <= 1"
-        (click)="removeVocabulary(wordIndex)"
-      >
-        استبعاد من المسودة
-      </button>
-    </fieldset>
-    }
+  <section class="workspace vocabulary-workspace" aria-labelledby="words-title">
+    <div class="workspace-title">
+      <div>
+        <span class="eyebrow">VISUAL VOCABULARY</span>
+        <h2 id="words-title">الكلمات والعبارات</h2>
+        <p>صورة، معنى، نطق، ومثال لكل بطاقة. اختر بدقة ما يصل للطالب.</p>
+      </div>
+      <span class="count-chip">{{ material.vocabulary.length }} بطاقة</span>
+    </div>
+    <div class="vocabulary-grid">
+      @for (word of material.vocabulary; track $index; let wordIndex = $index) {
+      <article class="word-card" [class.word-card--excluded]="word.includeForStudent === false">
+        <div class="word-visual">
+          @if (word.imageUrl) {
+          <img
+            [src]="word.imageUrl"
+            [alt]="word.word"
+            (error)="$any($event.target).style.display='none'"
+          />
+          }
+          <span class="visual-fallback material-symbols-outlined">image</span>
+          <span class="kind-badge">{{ word.kind === 'chunk' ? 'CHUNK' : 'WORD' }}</span>
+          <label class="include-toggle"
+            ><input
+              type="checkbox"
+              [(ngModel)]="word.includeForStudent"
+              [name]="'include-' + wordIndex"
+              (ngModelChange)="changed()"
+            /><span></span>{{ word.includeForStudent === false ? 'مستبعدة' : 'مع الطالب' }}</label
+          >
+        </div>
+        <div class="word-body">
+          <div class="word-head">
+            <label class="field field--word"
+              ><span>الكلمة أو العبارة</span
+              ><input
+                dir="ltr"
+                [(ngModel)]="word.word"
+                [name]="'word-' + wordIndex"
+                maxlength="80"
+                (ngModelChange)="changed()"
+            /></label>
+            <button
+              type="button"
+              class="sound-button"
+              (click)="speak(word.word)"
+              [disabled]="!word.word.trim()"
+              aria-label="اسمع نطق الكلمة"
+            >
+              <span class="material-symbols-outlined">volume_up</span>
+            </button>
+          </div>
+          <label class="field"
+            ><span>المعنى بالعربي</span
+            ><input
+              [(ngModel)]="word.meaningAr"
+              [name]="'meaning-' + wordIndex"
+              maxlength="120"
+              (ngModelChange)="changed()"
+          /></label>
+          <div class="example-box">
+            <div>
+              <span>مثال من الدرس</span>
+              <p lang="en" dir="ltr">{{ word.exampleEn || 'Add an example sentence' }}</p>
+              <small>{{ word.exampleAr || 'أضف ترجمة المثال' }}</small>
+            </div>
+            <button
+              type="button"
+              class="sound-button sound-button--soft"
+              (click)="speak(word.exampleEn)"
+              [disabled]="!word.exampleEn.trim()"
+              aria-label="اسمع جملة المثال"
+            >
+              <span class="material-symbols-outlined">play_arrow</span>
+            </button>
+          </div>
+          <div class="edit-grid">
+            <label class="field"
+              ><span>مثال إنجليزي</span
+              ><input
+                dir="ltr"
+                [(ngModel)]="word.exampleEn"
+                [name]="'example-' + wordIndex"
+                maxlength="200"
+                (ngModelChange)="changed()"
+            /></label>
+            <label class="field"
+              ><span>ترجمة المثال</span
+              ><input
+                [(ngModel)]="word.exampleAr"
+                [name]="'example-ar-' + wordIndex"
+                maxlength="200"
+                (ngModelChange)="changed()"
+            /></label>
+            <label class="field field--wide"
+              ><span>رابط الصورة</span
+              ><input
+                dir="ltr"
+                type="url"
+                [(ngModel)]="word.imageUrl"
+                [name]="'image-' + wordIndex"
+                maxlength="1000"
+                placeholder="https://..."
+                (ngModelChange)="changed()"
+            /></label>
+            @if (word.imageUrl) {
+            <div class="image-actions field--wide">
+              <a [href]="word.imageUrl" target="_blank" rel="noopener noreferrer">
+                <span class="material-symbols-outlined">open_in_new</span> معاينة الصورة الأصلية
+              </a>
+              <button type="button" class="danger-link" (click)="clearVocabularyImage(wordIndex)">
+                <span class="material-symbols-outlined">image_not_supported</span> حذف الصورة
+              </button>
+            </div>
+            }
+            <label class="field"
+              ><span>شرح مبسط</span
+              ><input
+                [(ngModel)]="word.explanation"
+                [name]="'explanation-' + wordIndex"
+                maxlength="300"
+                (ngModelChange)="changed()"
+            /></label>
+            <label class="field"
+              ><span>متى نستخدمها؟</span
+              ><input
+                [(ngModel)]="word.usageNote"
+                [name]="'usage-' + wordIndex"
+                maxlength="200"
+                (ngModelChange)="changed()"
+            /></label>
+          </div>
+          <div class="word-footer">
+            <label class="kind-select"
+              >النوع
+              <select
+                [(ngModel)]="word.kind"
+                [name]="'kind-' + wordIndex"
+                (ngModelChange)="changed()"
+              >
+                <option value="word">كلمة</option>
+                <option value="chunk">عبارة (Chunk)</option>
+              </select></label
+            >
+            <label class="compact-check">
+              <input
+                type="checkbox"
+                [(ngModel)]="word.repeatForReview"
+                [name]="'repeat-' + wordIndex"
+                (ngModelChange)="changed()"
+              />
+              تكرارها في المراجعة
+            </label>
+            <label class="compact-check">
+              <input
+                type="checkbox"
+                [(ngModel)]="word.testLater"
+                [name]="'test-later-' + wordIndex"
+                (ngModelChange)="changed()"
+              />
+              إضافتها لاختبار لاحق
+            </label>
+            <button
+              type="button"
+              class="danger-link"
+              [disabled]="material.vocabulary.length <= 1"
+              (click)="removeVocabulary(wordIndex)"
+            >
+              <span class="material-symbols-outlined">delete</span> حذف البطاقة
+            </button>
+          </div>
+        </div>
+      </article>
+      }
+    </div>
     <button
       type="button"
-      class="secondary"
+      class="add-card"
       [disabled]="material.vocabulary.length >= 20"
       (click)="addVocabulary()"
     >
-      أضف كلمة أو عبارة من النص
+      <span class="material-symbols-outlined">add</span> إضافة كلمة أو عبارة
     </button>
   </section>
   } @if (activeStage === 'listen-type') {
-  <section class="card" aria-labelledby="dictation-title">
-    <h2 id="dictation-title">٢. اسمع واكتب ما سمعت</h2>
-    <p>اختر الجمل المناسبة. اكتب كل إجابة مقبولة في سطر منفصل؛ الجملة الأصلية مجهزة لك.</p>
-    @for (segment of segments(); track segment.position) { @if (dictationItem(segment.position); as
-    item) {
-    <fieldset>
-      <legend>جملة {{ segment.position }}</legend>
-      <p lang="en" dir="ltr">{{ segment.text }}</p>
-      <label class="check"
-        ><input
-          type="checkbox"
-          [(ngModel)]="item.enabled"
-          [name]="'dictation-' + segment.position"
-          (ngModelChange)="changed()"
-        />
-        استخدم الجملة</label
-      >
-      <label
-        >الإجابات المقبولة (واحدة في كل سطر)
-        <textarea
-          dir="ltr"
-          [ngModel]="item.acceptedAnswers.join('\n')"
-          (ngModelChange)="updateAnswers(item.position, $event)"
-          [name]="'answers-' + segment.position"
-          maxlength="3000"
-        ></textarea>
-      </label>
-      <label
-        >تلميح بدون كشف الإجابة
-        <input
-          [(ngModel)]="item.hint"
-          [name]="'hint-' + segment.position"
-          maxlength="160"
-          (ngModelChange)="changed()"
-        />
-      </label>
-    </fieldset>
-    } }
+  <section class="workspace" aria-labelledby="dictation-title">
+    <div class="workspace-title">
+      <div>
+        <span class="eyebrow">LISTEN & TYPE</span>
+        <h2 id="dictation-title">اسمع واكتب</h2>
+        <p>اختر الجمل المناسبة وحدد الإجابات المقبولة والتلميح.</p>
+      </div>
+    </div>
+    <div class="dictation-list">
+      @for (segment of segments(); track segment.position) { @if (dictationItem(segment.position);
+      as item) {
+      <article class="dictation-card" [class.disabled-card]="!item.enabled">
+        <div class="sentence-number">{{ segment.position }}</div>
+        <div class="sentence-content">
+          <div class="sentence-line">
+            <p lang="en" dir="ltr">{{ segment.text }}</p>
+            <button type="button" class="sound-button" (click)="speak(segment.text)">
+              <span class="material-symbols-outlined">volume_up</span>
+            </button>
+          </div>
+          <label class="include-toggle inline"
+            ><input
+              type="checkbox"
+              [(ngModel)]="item.enabled"
+              [name]="'dictation-' + segment.position"
+              (ngModelChange)="changed()"
+            /><span></span>{{ item.enabled ? 'ضمن التدريب' : 'مستبعدة' }}</label
+          >
+          <div class="edit-grid">
+            <label class="field"
+              ><span>الإجابات المقبولة — إجابة في كل سطر</span
+              ><textarea
+                dir="ltr"
+                [ngModel]="item.acceptedAnswers.join('\n')"
+                (ngModelChange)="updateAnswers(item.position, $event)"
+                [name]="'answers-' + segment.position"
+                maxlength="3000"
+              ></textarea></label
+            ><label class="field"
+              ><span>تلميح للطالب</span
+              ><input
+                [(ngModel)]="item.hint"
+                [name]="'hint-' + segment.position"
+                maxlength="160"
+                placeholder="مثال: تبدأ بحرف H"
+                (ngModelChange)="changed()"
+            /></label>
+          </div>
+        </div>
+      </article>
+      } }
+    </div>
   </section>
-  } @if (activeStage === 'conversation') {
-  <section class="card" aria-labelledby="grammar-title">
-    <h2 id="grammar-title">موقف المحادثة</h2>
-    <label
-      >الموقف
-      <textarea
-        [(ngModel)]="material.conversationScenario"
-        name="scenario"
-        maxlength="240"
-        (ngModelChange)="changed()"
-      ></textarea>
-    </label>
-    <label
-      >دور المعلّم في المحادثة
-      <input
-        [(ngModel)]="material.aiRole"
-        name="aiRole"
-        maxlength="100"
-        (ngModelChange)="changed()"
-      />
-    </label>
-    <label
-      >دور الطالب
-      <input
-        [(ngModel)]="material.studentRole"
-        name="studentRole"
-        maxlength="100"
-        (ngModelChange)="changed()"
-      />
-    </label>
-    <label
-      >رسالة البداية
-      <input
-        [(ngModel)]="material.openingMessage"
-        name="opening"
-        maxlength="240"
-        (ngModelChange)="changed()"
-      />
-    </label>
-    <label
-      >أهداف المحادثة (هدف في كل سطر)
-      <textarea
-        [ngModel]="(material.conversationGoals || []).join('\n')"
-        name="goals"
-        (ngModelChange)="updateGoals($event)"
-      ></textarea>
-    </label>
-    <p>كلمات المحادثة تُؤخذ تلقائيًا من الكلمات والعبارات المختارة أعلاه.</p>
-  </section>
-  } @if (activeStage === 'quiz') {
-  <section class="card" aria-labelledby="quiz-title">
-    <h2 id="quiz-title">٣. اختبار الكلمات والقواعد</h2>
-    <label
-      >القاعدة المستهدفة
-      <textarea
+  } @if (activeStage === 'grammar') {
+  <section class="workspace grammar-workspace" aria-labelledby="grammar-title">
+    <div class="grammar-hero">
+      <span class="material-symbols-outlined">school</span>
+      <div>
+        <span class="eyebrow">GRAMMAR FOCUS</span>
+        <h2 id="grammar-title">القاعدة المستهدفة</h2>
+        <p>اكتب شرحًا مباشرًا وبسيطًا يربط القاعدة بجمل الدرس.</p>
+      </div>
+    </div>
+    <label class="field"
+      ><span>شرح القاعدة</span
+      ><textarea
+        class="grammar-editor"
         [(ngModel)]="material.grammarFocus"
         name="grammar"
         maxlength="200"
         (ngModelChange)="changed()"
       ></textarea>
     </label>
-    @for (question of material.quiz; track $index; let quizIndex = $index) {
-    <fieldset>
-      <legend>السؤال {{ quizIndex + 1 }}</legend>
-      <label
-        >النوع
-        <select
-          [ngModel]="question.type || 'multiple-choice'"
-          (ngModelChange)="changeQuestionType(quizIndex, $event)"
-          [name]="'type-' + quizIndex"
-        >
-          <option value="multiple-choice">اختيار من متعدد (كلمة / قواعد)</option>
-          <option value="vocabulary-card">بطاقة معنى الكلمة</option>
-          <option value="word-order">رتب كلمات الجملة</option>
-        </select>
-      </label>
-      <label class="check"
-        ><input
-          type="checkbox"
-          [(ngModel)]="question.enabled"
-          [name]="'question-enabled-' + quizIndex"
-          (ngModelChange)="changed()"
-        />
-        اعرض السؤال للطالب</label
-      >
-      <label
-        >نص السؤال
-        <input
-          [(ngModel)]="question.question"
-          [name]="'question-' + quizIndex"
-          maxlength="220"
-          (ngModelChange)="changed()"
-      /></label>
-      @for (option of question.options; track $index; let optionIndex = $index) {
-      <label
-        >{{ question.type === 'word-order' ? 'كلمة' : 'اختيار' }} {{ optionIndex + 1 }}
-        <input
-          [ngModel]="question.options[optionIndex]"
-          (ngModelChange)="question.options[optionIndex] = $event; changed()"
-          [name]="'option-' + quizIndex + '-' + optionIndex"
-          maxlength="120"
-        />
-      </label>
-      } @if (question.type === 'word-order') {
-      <label
-        >الجملة الصحيحة بالترتيب
-        <input
-          dir="ltr"
-          [(ngModel)]="question.correctAnswer"
-          [name]="'order-' + quizIndex"
-          maxlength="200"
-          (ngModelChange)="changed()"
-        />
-      </label>
-      } @else {
-      <label
-        >رقم الإجابة الصحيحة
-        <select
-          [(ngModel)]="question.correctIndex"
-          [name]="'correct-' + quizIndex"
-          (ngModelChange)="changed()"
-        >
-          <option [ngValue]="0">الأولى</option>
-          <option [ngValue]="1">الثانية</option>
-          <option [ngValue]="2">الثالثة</option>
-          <option [ngValue]="3">الرابعة</option>
-        </select>
-      </label>
+    <div class="source-examples">
+      <h3>أمثلة جاهزة من الدرس</h3>
+      @for (segment of segments().slice(0, 4); track segment.position) {
+      <div>
+        <span>{{ segment.position }}</span>
+        <p dir="ltr">{{ segment.text }}</p>
+        <button type="button" class="sound-button sound-button--soft" (click)="speak(segment.text)">
+          <span class="material-symbols-outlined">volume_up</span>
+        </button>
+      </div>
       }
-      <label
-        >شرح الإجابة
-        <input
-          [(ngModel)]="question.explanationAr"
-          [name]="'explain-' + quizIndex"
-          maxlength="250"
-          (ngModelChange)="changed()"
-      /></label>
-      <button
-        type="button"
-        class="secondary"
-        [disabled]="material.quiz.length <= 1"
-        (click)="removeQuestion(quizIndex)"
-      >
-        استبعاد السؤال
-      </button>
-    </fieldset>
-    }
+    </div>
+  </section>
+  } @if (activeStage === 'vocabulary-quiz' || activeStage === 'grammar-quiz' || activeStage ===
+  'word-order') { @let questionType = activeStage === 'vocabulary-quiz' ? 'vocabulary-card' :
+  activeStage === 'word-order' ? 'word-order' : 'multiple-choice';
+  <section class="workspace quiz-workspace" aria-labelledby="quiz-title">
+    <div class="workspace-title">
+      <div>
+        <span class="eyebrow">ACTIVITY BUILDER</span>
+        <h2 id="quiz-title">{{ stageTitle(activeStage) }}</h2>
+        <p>كل سؤال هنا يخص هذه المرحلة فقط ويمكن استبعاده بشكل مستقل.</p>
+      </div>
+      <span class="count-chip">{{ questionsFor(questionType).length }} أسئلة</span>
+    </div>
+    <div class="question-list">
+      @for (entry of questionsFor(questionType); track entry.index; let displayIndex = $index) {
+      <article class="question-card" [class.disabled-card]="entry.question.enabled === false">
+        <div class="question-card__top">
+          <span>سؤال {{ displayIndex + 1 }}</span
+          ><label class="include-toggle inline"
+            ><input
+              type="checkbox"
+              [(ngModel)]="entry.question.enabled"
+              [name]="'question-enabled-' + entry.index"
+              (ngModelChange)="changed()"
+            /><span></span>{{ entry.question.enabled === false ? 'مستبعد' : 'مع الطالب' }}</label
+          >
+        </div>
+        <label class="field"
+          ><span>نص السؤال</span
+          ><input
+            [(ngModel)]="entry.question.question"
+            [name]="'question-' + entry.index"
+            maxlength="220"
+            (ngModelChange)="changed()"
+        /></label>
+        <div class="options-grid">
+          @for (option of entry.question.options; track $index; let optionIndex = $index) {
+          <label
+            class="option-field"
+            [class.correct]="questionType !== 'word-order' && entry.question.correctIndex === optionIndex"
+            ><span
+              >{{ questionType === 'word-order' ? 'كلمة ' : 'اختيار ' }}{{ optionIndex + 1 }}</span
+            ><input
+              [ngModel]="entry.question.options[optionIndex]"
+              (ngModelChange)="entry.question.options[optionIndex] = $event; changed()"
+              [name]="'option-' + entry.index + '-' + optionIndex"
+              maxlength="120"
+          /></label>
+          }
+        </div>
+        @if (questionType === 'word-order') {
+        <label class="field"
+          ><span>الجملة الصحيحة بالترتيب</span
+          ><input
+            dir="ltr"
+            [(ngModel)]="entry.question.correctAnswer"
+            [name]="'order-' + entry.index"
+            maxlength="200"
+            (ngModelChange)="changed()"
+        /></label>
+        } @else {
+        <label class="field compact"
+          ><span>الإجابة الصحيحة</span
+          ><select
+            [(ngModel)]="entry.question.correctIndex"
+            [name]="'correct-' + entry.index"
+            (ngModelChange)="changed()"
+          >
+            <option [ngValue]="0">الاختيار الأول</option>
+            <option [ngValue]="1">الاختيار الثاني</option>
+            <option [ngValue]="2">الاختيار الثالث</option>
+            <option [ngValue]="3">الاختيار الرابع</option>
+          </select></label
+        >
+        }
+        <label class="field"
+          ><span>شرح الإجابة للطالب</span
+          ><input
+            [(ngModel)]="entry.question.explanationAr"
+            [name]="'explain-' + entry.index"
+            maxlength="250"
+            (ngModelChange)="changed()"
+        /></label>
+        <button
+          type="button"
+          class="danger-link"
+          [disabled]="material.quiz.length <= 1"
+          (click)="removeQuestion(entry.index)"
+        >
+          <span class="material-symbols-outlined">delete</span> حذف السؤال
+        </button>
+      </article>
+      }
+    </div>
     <button
       type="button"
-      class="secondary"
+      class="add-card"
       [disabled]="material.quiz.length >= 12"
-      (click)="addQuestion('multiple-choice')"
+      (click)="addQuestion(questionType)"
     >
-      أضف سؤال اختيار
-    </button>
-    <button
-      type="button"
-      class="secondary"
-      [disabled]="material.quiz.length >= 12"
-      (click)="addQuestion('word-order')"
-    >
-      أضف سؤال ترتيب كلمات
+      <span class="material-symbols-outlined">add</span> إضافة سؤال
     </button>
   </section>
+  } @if (activeStage === 'conversation') {
+  <section class="workspace conversation-workspace" aria-labelledby="conversation-title">
+    <div class="conversation-preview">
+      <span class="material-symbols-outlined">forum</span>
+      <div>
+        <span>سيناريو المحادثة</span>
+        <p>{{ material.conversationScenario || 'اكتب موقفًا واضحًا يبدأ منه الحوار.' }}</p>
+      </div>
+    </div>
+    <h2 id="conversation-title">إعداد المحادثة</h2>
+    <label class="field"
+      ><span>الموقف</span
+      ><textarea
+        [(ngModel)]="material.conversationScenario"
+        name="scenario"
+        maxlength="240"
+        (ngModelChange)="changed()"
+      ></textarea>
+    </label>
+    <div class="edit-grid">
+      <label class="field"
+        ><span>دور المعلّم أو الذكاء الاصطناعي</span
+        ><input
+          [(ngModel)]="material.aiRole"
+          name="aiRole"
+          maxlength="100"
+          (ngModelChange)="changed()" /></label
+      ><label class="field"
+        ><span>دور الطالب</span
+        ><input
+          [(ngModel)]="material.studentRole"
+          name="studentRole"
+          maxlength="100"
+          (ngModelChange)="changed()"
+      /></label>
+    </div>
+    <label class="field"
+      ><span>رسالة البداية</span
+      ><input
+        [(ngModel)]="material.openingMessage"
+        name="opening"
+        maxlength="240"
+        (ngModelChange)="changed()"
+    /></label>
+    <label class="field"
+      ><span>أهداف المحادثة — هدف في كل سطر</span
+      ><textarea
+        [ngModel]="(material.conversationGoals || []).join('\n')"
+        name="goals"
+        (ngModelChange)="updateGoals($event)"
+      ></textarea>
+    </label>
+  </section>
   } @if (stageIssues(activeStage).length) {
-  <div class="alert" role="alert">{{ stageIssues(activeStage).join(' ') }}</div>
+  <div class="alert alert--warning" role="alert">
+    <span class="material-symbols-outlined">error</span>{{ stageIssues(activeStage).join(' ') }}
+  </div>
   }
-  <div class="actions">
+  <footer class="stage-actions-bar">
+    <div>
+      <strong
+        >{{ dirty() ? 'لديك تعديلات غير محفوظة' : stageReviewed(activeStage) ? 'هذه المرحلة معتمدة'
+        : 'راجع التفاصيل قبل الاعتماد' }}</strong
+      ><small>الحفظ لا ينشر المحتوى للطلاب.</small>
+    </div>
     <button type="button" class="secondary" [disabled]="busy() || !dirty()" (click)="save()">
-      حفظ المسودة
+      حفظ فقط
     </button>
     <button
       type="button"
       [disabled]="busy() || stageIssues(activeStage).length > 0 || (stageReviewed(activeStage) && !dirty())"
       (click)="reviewStage()"
     >
-      حفظ واعتماد هذه المرحلة
+      <span class="material-symbols-outlined">verified</span> حفظ واعتماد المرحلة
     </button>
-  </div>
+  </footer>
   } } @if (job()?.status === 'Approved') {
-  <a class="publish" routerLink="/admin/curriculums">اذهب للمنهج للإسناد والنشر الصريح ←</a>
+  <section class="approved-panel" aria-labelledby="approved-title">
+    <div class="approved-panel__icon">
+      <span class="material-symbols-outlined">verified</span>
+    </div>
+    <div>
+      <span class="eyebrow">نسخة محفوظة وآمنة</span>
+      <h2 id="approved-title">محتوى الدرس معتمد</h2>
+      <p>
+        يمكنك فتح نسخة جديدة من المحتوى الحالي وتعديل هذه المرحلة؛ تظل النسخة المعتمدة كما هي حتى
+        تعتمد تعديلاتك من جديد.
+      </p>
+    </div>
+    <div class="approved-panel__actions">
+      <button type="button" [disabled]="busy()" (click)="reopenApproved()">
+        <span class="material-symbols-outlined">edit_note</span> فتح نسخة للتعديل
+      </button>
+      <button
+        type="button"
+        class="secondary"
+        [disabled]="busy() || !providers().length"
+        (click)="generate()"
+      >
+        <span class="material-symbols-outlined">auto_awesome</span> إعادة المعالجة بالكامل
+      </button>
+      <a class="publish" routerLink="/admin/curriculums">
+        الذهاب للمنهج والنشر <span class="material-symbols-outlined">arrow_back</span>
+      </a>
+    </div>
+  </section>
   } }
 </section>

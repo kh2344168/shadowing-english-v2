@@ -43,7 +43,11 @@ public static class AdminLessonManagementEndpoints
                 var segments = await db.LessonSegments.AsNoTracking()
                     .Where(x => x.LessonVersionId == version.Id)
                     .OrderBy(x => x.Position)
-                    .Select(x => new { x.Position, x.Text })
+                    .Select(x => new
+                    {
+                        x.Position, x.Text,
+                        AudioUrl = $"/api/admin/shadowing/lessons/versions/{version.Id}/segments/{x.Position}/audio"
+                    })
                     .ToArrayAsync(http.RequestAborted);
                 http.Response.Headers.CacheControl = "no-store";
                 log.LogInformation("Admin.LessonLibrary.Details.Success LessonId={LessonId} VersionId={VersionId} Segments={Count} DurationMs={DurationMs}",
@@ -52,6 +56,49 @@ public static class AdminLessonManagementEndpoints
                     title = version.Title, description = version.Description, segments });
             }
             catch (Exception ex) { return Failure(log, started, "Details", lessonId, ex); }
+        });
+
+        group.MapGet("/versions/{versionId:guid}/segments/{position:int}/audio", async (
+            Guid versionId, int position, ApplicationDbContext db, IShadowingMediaStore media,
+            HttpContext http, ILoggerFactory loggers) =>
+        {
+            var started = Stopwatch.GetTimestamp();
+            var log = loggers.CreateLogger("Admin.LessonLibrary");
+            log.LogInformation(
+                "Admin.LessonLibrary.Audio.Start VersionId={VersionId} Position={Position} TraceId={TraceId}",
+                versionId, position, http.TraceIdentifier);
+            if (position is < 1 or > 20)
+                return Reject(log, started, 404, "lesson_audio_not_found");
+            try
+            {
+                var key = await db.LessonSegments.AsNoTracking()
+                    .Where(x => x.LessonVersionId == versionId && x.Position == position)
+                    .Select(x => x.AudioStorageKey).SingleOrDefaultAsync(http.RequestAborted);
+                if (string.IsNullOrWhiteSpace(key) || !ShadowingMediaKeys.IsValid(key))
+                    return Reject(log, started, 404, "lesson_audio_not_found");
+                if (!media.IsConfigured)
+                    return Reject(log, started, 503, "media_storage_not_configured");
+                var audio = await media.OpenAsync(key, http.RequestAborted);
+                if (audio is null) return Reject(log, started, 404, "lesson_audio_not_found");
+                http.Response.Headers.CacheControl = "private, max-age=300";
+                log.LogInformation(
+                    "Admin.LessonLibrary.Audio.Success VersionId={VersionId} Position={Position} DurationMs={DurationMs}",
+                    versionId, position, Duration(started));
+                return Results.Stream(audio.Content, "audio/wav", lastModified: audio.LastModified,
+                    entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue(audio.ETag),
+                    enableRangeProcessing: true);
+            }
+            catch (MediaStorageUnavailableException)
+            {
+                return Reject(log, started, 503, "media_storage_unavailable");
+            }
+            catch (Exception ex)
+            {
+                log.LogError(
+                    "Admin.LessonLibrary.Audio.Failed VersionId={VersionId} Position={Position} ErrorType={ErrorType} DurationMs={DurationMs}",
+                    versionId, position, ex.GetType().Name, Duration(started));
+                return Results.Problem(statusCode: 500, title: "lesson_audio_operation_failed");
+            }
         });
 
         group.MapPut("/{lessonId:guid}", async (Guid lessonId, HttpContext http,
@@ -136,6 +183,8 @@ public static class AdminLessonManagementEndpoints
                 var approved = unchangedContent ? await db.LessonAiContents.AsNoTracking()
                     .Where(x => x.LessonVersionId == latest.Id && x.Status == "Approved")
                     .OrderByDescending(x => x.ApprovedAtUtc).FirstOrDefaultAsync(http.RequestAborted) : null;
+                var previousWorkflow = await db.LessonWorkflows.AsNoTracking()
+                    .SingleOrDefaultAsync(x => x.LessonVersionId == latest.Id, http.RequestAborted);
 
                 // Published slots keep pointing at the old version and media; drafts never auto-publish a new edit.
                 db.LessonVersions.Add(new LessonVersion { Id = versionId, LessonDefinitionId = lessonId,
@@ -146,6 +195,9 @@ public static class AdminLessonManagementEndpoints
                     CreatedByAdminId = actor.Id, Revision = Guid.NewGuid(), CreatedAtUtc = now, UpdatedAtUtc = now,
                     Status = approved is null ? "Pending" : "Approved", PayloadJson = approved?.PayloadJson,
                     ProviderName = approved?.ProviderName, ApprovedAtUtc = approved is null ? null : now });
+                if (previousWorkflow is not null)
+                    db.LessonWorkflows.Add(new LessonWorkflow { LessonVersionId = versionId,
+                        Revision = Guid.NewGuid(), StagesJson = previousWorkflow.StagesJson, UpdatedAtUtc = now });
                 databaseSaveStarted = true;
                 await db.SaveChangesAsync(http.RequestAborted);
                 committed = true;

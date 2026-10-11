@@ -16,7 +16,7 @@ export interface LessonEditDetails {
   versionNumber: number;
   title: string;
   description: string;
-  segments: { position: number; text: string }[];
+  segments: { position: number; text: string; audioUrl: string }[];
 }
 
 export interface LessonEditResult extends AuthoringLesson {
@@ -133,8 +133,12 @@ export class ShadowingAuthoringApi {
   }
 
   editLesson(
-    id: string, expectedVersionId: string, requestId: string, title: string,
-    description: string, segments: { position: number; text: string; audio: File | null }[],
+    id: string,
+    expectedVersionId: string,
+    requestId: string,
+    title: string,
+    description: string,
+    segments: { position: number; text: string; audio: File | null }[],
   ): Observable<LessonEditResult> {
     const body = new FormData();
     body.append('expectedVersionId', expectedVersionId);
@@ -216,6 +220,4 @@ export class ShadowingAuthoringApi {
     segments.forEach((segment, index) => body.append(`audio${index}`, segment.audio));
     return this.http.post<AuthoringLesson>(`${this.base}/lessons`, body);
   }
-
-
 }
