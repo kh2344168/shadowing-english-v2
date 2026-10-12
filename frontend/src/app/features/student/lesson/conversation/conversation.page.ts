@@ -1,9 +1,10 @@
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../../core/auth/auth.service';
 import { AiMaterial, ConversationHistory, StudentLearningApi } from '../../learning.api';
+import { adjacentStage, stageReady } from '../stage-flow';
 
 @Component({
   selector: 'app-student-conversation-page',
@@ -19,6 +20,8 @@ export class StudentConversationPage implements OnInit {
   private readonly auth = inject(AuthService);
   readonly slotId = this.route.snapshot.paramMap.get('slotId') ?? '';
   readonly material = signal<AiMaterial | null>(null);
+  readonly previousStage = computed(() => adjacentStage(this.material()?.stages, 'conversation', -1));
+  readonly nextStage = computed(() => adjacentStage(this.material()?.stages, 'conversation', 1));
   readonly history = signal<ConversationHistory | null>(null);
   readonly loading = signal(true);
   readonly busy = signal(false);
@@ -35,9 +38,9 @@ export class StudentConversationPage implements OnInit {
     this.error.set('');
     try {
       const data = await firstValueFrom(this.api.aiMaterial(this.slotId));
-      if (!data.completed.quiz) {
+      if (!stageReady(data, 'conversation') || (!data.stages && !data.completed.quiz)) {
         this.material.set(null);
-        this.error.set('أكمل الاختبار قبل المحادثة.');
+        this.error.set('أكمل المراحل السابقة قبل المحادثة.');
       } else {
         this.material.set(data);
         this.history.set(await firstValueFrom(this.api.conversationHistory(this.slotId)));

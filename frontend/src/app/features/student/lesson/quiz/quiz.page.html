@@ -1,25 +1,23 @@
 <section class="learning-page ai-stage" dir="rtl" aria-labelledby="quiz-title">
-  <a class="learning-back" [routerLink]="['/student/lessons', slotId, 'listen-type']"
-    >← استمع واكتب</a
-  >
-  <h1 id="quiz-title" class="page-title">اختبار الدرس</h1>
+  <a class="learning-back" [routerLink]="previousStage()?.route || ['/student/lessons', slotId, 'overview']">← المرحلة السابقة</a>
+  <h1 id="quiz-title" class="page-title">{{ stage()?.title || 'اختبار الدرس' }}</h1>
   @if (loading()) {
   <p role="status" class="learning-status">جاري تحميل الأسئلة...</p>
-  } @else if (material(); as data) { @if (completed() < data.quiz.length) {
+  } @else if (material()) { @if (completed() < questions().length) {
   <article class="learning-card">
-    <span class="learning-eyebrow">السؤال {{ completed() + 1 }} من {{ data.quiz.length }}</span>
-    <h2>{{ data.quiz[completed()].question }}</h2>
-    @if (data.quiz[completed()].type === 'word-order') {
+    <span class="learning-eyebrow">السؤال {{ completed() + 1 }} من {{ questions().length }}</span>
+    <h2>{{ questions()[completed()].question }}</h2>
+    @if (questions()[completed()].type === 'word-order') {
     <p>رتب الكلمات لتكوين الجملة الصحيحة:</p>
     <div class="word-chips" dir="ltr" aria-label="الكلمات بالترتيب الذي اخترته">
       @for (index of ordered(); track $index) {
       <button type="button" class="word-chip selected" (click)="removeWord(index)">
-        {{ data.quiz[completed()].options[index] }} ×
+        {{ questions()[completed()].options[index] }} ×
       </button>
       }
     </div>
     <div class="word-chips" dir="ltr" aria-label="كلمات يمكنك اختيارها">
-      @for (word of data.quiz[completed()].options; track $index) {
+      @for (word of questions()[completed()].options; track $index) {
       <button
         type="button"
         class="word-chip"
@@ -30,12 +28,12 @@
       </button>
       }
     </div>
-    } @else { @if (data.quiz[completed()].type === 'vocabulary-card') {
+    } @else { @if (questions()[completed()].type === 'vocabulary-card') {
     <p>اختر الكلمة المناسبة لمعنى البطاقة.</p>
     }
     <fieldset>
       <legend>اختر الإجابة الصحيحة</legend>
-      @for (option of data.quiz[completed()].options; track $index) {
+      @for (option of questions()[completed()].options; track $index) {
       <label
         ><input
           type="radio"
@@ -51,7 +49,7 @@
     <button
       type="button"
       class="learning-button"
-      [disabled]="busy() || (data.quiz[completed()].type === 'word-order' ? ordered().length !== data.quiz[completed()].options.length : selected() === null)"
+      [disabled]="busy() || (questions()[completed()].type === 'word-order' ? ordered().length !== questions()[completed()].options.length : selected() === null)"
       (click)="submit()"
     >
       {{ busy() ? 'جاري التحقق...' : 'تحقق من الإجابة' }}
@@ -60,9 +58,11 @@
   } @else {
   <section class="learning-card" role="status">
     <h2>أنهيت الاختبار</h2>
-    <a class="learning-button" [routerLink]="['/student/lessons', slotId, 'conversation']"
-      >ابدأ المحادثة ←</a
-    >
+    @if (nextStage(); as next) {
+    <a class="learning-button" [routerLink]="next.route">ابدأ {{ next.title }} ←</a>
+    } @else {
+    <a class="learning-button" [routerLink]="['/student/lessons', slotId, 'overview']">عرض الدرس</a>
+    }
   </section>
   } @if (feedback(); as result) {
   <div class="result" [class.error]="!result.correct" role="status">

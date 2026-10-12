@@ -7,7 +7,9 @@
       </a>
       <div class="stage-title">
         <h1 id="vocabulary-title">كلمات وعبارات الدرس</h1>
-        <span>المرحلة 2: الكلمات</span>
+        @if (stage(); as currentStage) {
+        <span>المرحلة {{ currentStage.position }}: {{ currentStage.title }}</span>
+        }
       </div>
     </div>
     @if (material(); as data) { @if (completed() < data.vocabulary.length) {
@@ -130,12 +132,15 @@
   } @else {
   <section class="completion-card" role="status">
     <h2>أنهيت الكلمات</h2>
-    <p>يمكنك الرجوع للكلمات أو بدء المرحلة التالية.</p>
-    <a
-      class="primary-action completion-card__action"
-      [routerLink]="['/student/lessons', slotId, data.shadowingReviewEnabled ? 'shadowing-review' : 'listen-type']"
-      >{{ data.shadowingReviewEnabled ? 'أعد الشادوينج بعد فهم الكلمات' : 'ابدأ استمع واكتب' }} ←</a
-    >
+    @if (nextStage(); as next) {
+    <p>يمكنك مراجعة الكلمات أو بدء المرحلة التالية.</p>
+    <a class="primary-action completion-card__action" [routerLink]="next.route">
+      ابدأ {{ next.title }} ←
+    </a>
+    } @else {
+    <p>أكملت جميع مراحل هذا الدرس.</p>
+    <a class="primary-action completion-card__action" [routerLink]="['/student/lessons', slotId, 'overview']">عرض الدرس</a>
+    }
   </section>
   } } @if (error()) {
   <p role="alert" class="learning-status error">

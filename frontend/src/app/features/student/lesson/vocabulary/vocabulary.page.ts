@@ -12,6 +12,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../../core/auth/auth.service';
 import { AiMaterial, StudentLearningApi } from '../../learning.api';
+import { adjacentStage, stageAt, stageReady } from '../stage-flow';
 
 @Component({
   selector: 'app-student-vocabulary-page',
@@ -41,6 +42,8 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
       ? data.vocabulary[this.completed()]
       : null;
   });
+  readonly stage = computed(() => stageAt(this.material()?.stages, 'vocabulary'));
+  readonly nextStage = computed(() => adjacentStage(this.material()?.stages, 'vocabulary', 1));
   readonly progressPercent = computed(() => {
     const total = this.material()?.vocabulary.length ?? 0;
     return total === 0 ? 0 : Math.round(((this.completed() + 1) / total) * 100);
@@ -60,8 +63,13 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
     this.error.set('');
     try {
       const data = await firstValueFrom(this.api.aiMaterial(this.slotId));
-      this.material.set(data);
-      this.completed.set(data.progress.vocabulary);
+      if (!stageReady(data, 'vocabulary')) {
+        this.material.set(null);
+        this.error.set('أكمل المراحل السابقة قبل الكلمات.');
+      } else {
+        this.material.set(data);
+        this.completed.set(data.progress.vocabulary);
+      }
     } catch (ex) {
       this.error.set(
         (ex as { status?: number }).status === 404

@@ -56,6 +56,19 @@ public static class AdminLessonAiEndpoints
             catch (Exception ex) { return Failure(log, ex, started, "Read"); }
         });
 
+        group.MapGet("/{versionId:guid}/ai/draft", async (Guid versionId, ApplicationDbContext db,
+            HttpContext http) =>
+        {
+            if (!await db.LessonVersions.AnyAsync(x => x.Id == versionId, http.RequestAborted))
+                return Results.NotFound(new { error = "lesson_not_found" });
+            var draft = await db.LessonAiContents.AsNoTracking()
+                .Where(x => x.LessonVersionId == versionId && x.Status == "Draft")
+                .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
+                .FirstOrDefaultAsync(http.RequestAborted);
+            http.Response.Headers.CacheControl = "no-store";
+            return Results.Ok(draft is null ? null : View(draft));
+        });
+
         group.MapPost("/{versionId:guid}/ai", async (Guid versionId, StartAiRequest request, HttpContext http,
             IAntiforgery csrf, ApplicationDbContext db, TextAiRouter ai, ILoggerFactory logs) =>
         {
@@ -193,6 +206,12 @@ public static class AdminLessonAiEndpoints
                 if (job.Status == "Approved" && job.Revision == request.ExpectedRevision) return Results.Ok(View(job));
                 if (job.Status != "Draft" || job.Revision != request.ExpectedRevision ||
                     string.IsNullOrEmpty(job.PayloadJson)) return Results.Conflict(new { error = "ai_draft_changed" });
+                var latestDraftId = await db.LessonAiContents.AsNoTracking()
+                    .Where(x => x.LessonVersionId == versionId && x.Status == "Draft")
+                    .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
+                    .Select(x => x.Id).FirstAsync(http.RequestAborted);
+                if (latestDraftId != jobId)
+                    return Results.Conflict(new { error = "newer_ai_draft_exists" });
                 var segments = await db.LessonSegments.AsNoTracking()
                     .Where(x => x.LessonVersionId == versionId).OrderBy(x => x.Position)
                     .Select(x => new { x.Position, x.Text }).ToArrayAsync(http.RequestAborted);
@@ -212,8 +231,11 @@ public static class AdminLessonAiEndpoints
                     requiredStages = workflowStages?.Where(x => x.Enabled && x.Type is not ("shadowing" or "content"))
                         .Select(x => x.Type).Distinct().ToArray();
                 }
-                if (!LessonMaterialRules.ReadyToApprove(material, requiredStages))
-                    return Results.Conflict(new { error = "review_incomplete" });
+                var missingStages = requiredStages?.Where(stage =>
+                    !LessonMaterialRules.ReadyToApprove(material, [stage]) || !StageHasData(material, stage))
+                    .Distinct().ToArray() ?? [];
+                if (!LessonMaterialRules.ReadyToApprove(material, requiredStages) || missingStages.Length > 0)
+                    return Results.Conflict(new { error = "review_incomplete", missingStages });
                 job.Status = "Approved"; job.ApprovedAtUtc = DateTimeOffset.UtcNow;
                 job.UpdatedAtUtc = job.ApprovedAtUtc.Value;
                 await db.SaveChangesAsync(http.RequestAborted);
@@ -232,6 +254,17 @@ public static class AdminLessonAiEndpoints
         row.Id, row.LessonVersionId, row.Revision, row.Status, row.ProviderName,
         row.ErrorCode, row.CreatedAtUtc, row.ApprovedAtUtc,
         material = row.PayloadJson is null ? null : JsonSerializer.Deserialize<LessonMaterial>(row.PayloadJson, LessonMaterialRules.Json)
+    };
+    private static bool StageHasData(LessonMaterial material, string stage) => stage switch
+    {
+        "vocabulary" => material.Vocabulary.Any(x => x.IncludeForStudent),
+        "listen-type" => material.Dictation?.Any(x => x.Enabled) == true,
+        "grammar" => !string.IsNullOrWhiteSpace(material.GrammarFocus),
+        "vocabulary-quiz" => material.Quiz.Any(x => x.Enabled && x.Type == "vocabulary-card"),
+        "grammar-quiz" => material.Quiz.Any(x => x.Enabled && x.Type == "multiple-choice"),
+        "word-order" => material.Quiz.Any(x => x.Enabled && x.Type == "word-order"),
+        "conversation" => !string.IsNullOrWhiteSpace(material.ConversationScenario),
+        _ => false
     };
     private static async Task<bool> ValidCsrf(IAntiforgery csrf, HttpContext http)
     { try { await csrf.ValidateRequestAsync(http); return true; } catch (AntiforgeryValidationException) { return false; } }

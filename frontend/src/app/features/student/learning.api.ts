@@ -20,6 +20,22 @@ export interface Curriculum {
   items: LessonCard[];
   hasMore: boolean;
 }
+export interface StageOverview {
+  key: string;
+  title: string;
+  description: string;
+  icon: string;
+  position: number;
+  isComplete: boolean;
+  isUnlocked: boolean;
+  route: string;
+}
+export interface StageLink {
+  key: string;
+  title: string;
+  position: number;
+  route: string;
+}
 export interface LessonOverview {
   slotId: string;
   versionId: string;
@@ -32,6 +48,9 @@ export interface LessonOverview {
   completedSegments: number;
   isComplete: boolean;
   hasAiContent: boolean;
+  totalStages: number;
+  completedStages: number;
+  stages: StageOverview[];
 }
 export interface Segment {
   position: number;
@@ -44,6 +63,7 @@ export interface StageProgress {
 }
 
 export interface AiMaterial {
+  stages?: StageLink[] | null;
   vocabulary: {
     word: string;
     meaningAr: string;
@@ -76,13 +96,22 @@ export interface AiMaterial {
   }[];
   progress: {
     vocabulary: number;
+    grammar?: number;
+    vocabularyQuiz?: number;
+    grammarQuiz?: number;
+    wordOrder?: number;
     shadowingReview?: number;
     listenType: number;
     quiz: number;
     conversation: number;
   };
   completed: {
+    shadowing?: boolean;
     vocabulary: boolean;
+    grammar?: boolean;
+    vocabularyQuiz?: boolean;
+    grammarQuiz?: boolean;
+    wordOrder?: boolean;
     shadowingReview?: boolean;
     listenType: boolean;
     quiz: boolean;
@@ -154,6 +183,12 @@ export class StudentLearningApi {
       { position },
     );
   }
+  grammarProgress(slotId: string): Observable<PracticeProgress> {
+    return this.http.put<PracticeProgress>(
+      `${this.base}/slots/${encodeURIComponent(slotId)}/grammar/progress`,
+      {},
+    );
+  }
   shadowingReviewProgress(slotId: string, position: number): Observable<PracticeProgress> {
     return this.http.put<PracticeProgress>(
       `${this.base}/slots/${encodeURIComponent(slotId)}/shadowing-review/progress`,
@@ -176,12 +211,13 @@ export class StudentLearningApi {
     position: number,
     answer: number | string,
     requestId: string,
+    stageKey?: string,
   ): Observable<QuizFeedback> {
     return this.http.post<QuizFeedback>(
       `${this.base}/slots/${encodeURIComponent(slotId)}/quiz/answers`,
       typeof answer === 'string'
-        ? { requestId, position, answer }
-        : { requestId, position, optionIndex: answer },
+        ? { requestId, position, answer, stageKey }
+        : { requestId, position, optionIndex: answer, stageKey },
     );
   }
   conversationTurn(

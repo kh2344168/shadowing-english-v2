@@ -103,6 +103,11 @@ export interface GroupCurriculumState {
   publishedDraftRevision: string | null;
   versionNumber: number | null;
   hasUnpublishedChanges: boolean;
+  aiContentStates?: {
+    lessonVersionId: string;
+    status:
+      'no_ai_content' | 'draft_needs_approval' | 'approved_needs_publish' | 'approved_published';
+  }[];
   lessons: Pick<
     CurriculumLesson,
     'lessonId' | 'lessonVersionId' | 'title' | 'weekNumber' | 'dayNumber' | 'sortOrder'

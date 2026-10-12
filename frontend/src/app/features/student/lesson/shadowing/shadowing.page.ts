@@ -265,6 +265,9 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
 
     try {
       const overview = await firstValueFrom(this.api.overview(this.slotId));
+      if (!this.reviewMode && overview.stages?.some((stage) => stage.key === 'shadowing' && !stage.isUnlocked)) {
+        throw new Error('shadowing_stage_locked');
+      }
       this.overview = overview;
       this.completedSegments = overview.completedSegments;
       this.stageComplete = overview.isComplete;
@@ -908,11 +911,10 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
       await this.router.navigate(['/student/lessons', this.slotId, 'overview']);
       return;
     }
-    if (this.lesson?.hasAiContent) {
-      await this.router.navigate(['/student/lessons', this.slotId, 'vocabulary']);
-      return;
-    }
-    await this.router.navigate(['/student/lessons', this.slotId, 'overview']);
+    const stages = this.overview?.stages ?? [];
+    const index = stages.findIndex((stage) => stage.key === 'shadowing');
+    const next = index >= 0 ? stages[index + 1] : null;
+    await this.router.navigateByUrl(next?.route ?? `/student/lessons/${this.slotId}/overview`);
   }
 
   onMediaMetadataLoaded(): void {

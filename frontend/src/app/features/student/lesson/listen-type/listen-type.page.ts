@@ -15,6 +15,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../../core/auth/auth.service';
 import { AiMaterial, DictationFeedback, StudentLearningApi } from '../../learning.api';
+import { adjacentStage, stageAt, stageReady } from '../stage-flow';
 
 @Component({
   selector: 'app-student-listen-type-page',
@@ -38,6 +39,9 @@ export class StudentListenTypePage implements OnInit, OnDestroy {
   readonly feedback = signal<DictationFeedback | null>(null);
   readonly playing = signal(false);
   readonly slowPlayback = signal(false);
+  readonly stage = computed(() => stageAt(this.material()?.stages, 'listen-type'));
+  readonly previousStage = computed(() => adjacentStage(this.material()?.stages, 'listen-type', -1));
+  readonly nextStage = computed(() => adjacentStage(this.material()?.stages, 'listen-type', 1));
   readonly progressPercent = computed(() => {
     const total = this.material()?.dictation.length ?? 0;
     return total === 0 ? 0 : Math.round(((this.completed() + 1) / total) * 100);
@@ -58,11 +62,8 @@ export class StudentListenTypePage implements OnInit, OnDestroy {
     this.stopAudio();
     try {
       const data = await firstValueFrom(this.api.aiMaterial(this.slotId));
-      if (
-        !data.completed.vocabulary ||
-        (data.shadowingReviewEnabled && !data.completed.shadowingReview)
-      ) {
-        this.error.set('أكمل الكلمات ومراجعة الشادوينج قبل تدريب الاستماع.');
+      if (!stageReady(data, 'listen-type')) {
+        this.error.set('أكمل المراحل السابقة قبل تدريب الاستماع والكتابة.');
         this.material.set(null);
       } else {
         this.material.set(data);

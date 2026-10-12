@@ -32,11 +32,6 @@ export const routes: Routes = [
           import('./features/admin/lessons/lessons.page').then((m) => m.AdminLessonsPage),
       },
       {
-        path: 'lessons/:versionId/ai',
-        loadComponent: () =>
-          import('./features/admin/lessons/ai-review.page').then((m) => m.AdminAiReviewPage),
-      },
-      {
         path: 'lessons/:versionId/workflow',
         loadComponent: () =>
           import('./features/admin/ai-processing/ai-processing.page').then(
@@ -53,7 +48,9 @@ export const routes: Routes = [
       {
         path: 'lessons/:versionId/workflow/:stageId',
         loadComponent: () =>
-          import('./features/admin/lessons/ai-review.page').then((m) => m.AdminAiReviewPage),
+          import('./features/admin/lessons/ai-review.page').then(
+            (m) => m.AdminLessonStageEditorPage,
+          ),
       },
       {
         path: 'ai-processing',
@@ -185,6 +182,16 @@ export const routes: Routes = [
             (m) => m.StudentListenTypePage,
           ),
       },
+      {
+        path: 'lessons/:slotId/grammar',
+        loadComponent: () =>
+          import('./features/student/lesson/grammar/grammar.page').then((m) => m.StudentGrammarPage),
+      },
+      ...(['vocabulary-quiz', 'grammar-quiz', 'word-order'] as const).map((stage) => ({
+        path: `lessons/:slotId/${stage}`,
+        loadComponent: () =>
+          import('./features/student/lesson/quiz/quiz.page').then((m) => m.StudentQuizPage),
+      })),
       {
         path: 'lessons/:slotId/quiz',
         loadComponent: () =>

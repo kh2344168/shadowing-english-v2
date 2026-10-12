@@ -78,6 +78,11 @@ export class LessonAiApi {
   get(versionId: string) {
     return this.http.get<LessonAiJob | null>(`${this.base}/${encodeURIComponent(versionId)}/ai`);
   }
+  latestDraft(versionId: string) {
+    return this.http.get<LessonAiJob | null>(
+      `${this.base}/${encodeURIComponent(versionId)}/ai/draft`,
+    );
+  }
   segments(versionId: string) {
     return this.http.get<LessonSegmentReview[]>(
       `${this.base}/${encodeURIComponent(versionId)}/ai/segments`,

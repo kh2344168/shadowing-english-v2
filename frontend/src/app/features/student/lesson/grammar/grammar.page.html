@@ -1,0 +1,26 @@
+<section class="learning-page ai-stage" dir="rtl" aria-labelledby="grammar-title">
+  <a class="learning-back" [routerLink]="previousStage()?.route || ['/student/lessons', slotId, 'overview']">← المرحلة السابقة</a>
+  <h1 id="grammar-title" class="page-title">{{ stage()?.title || 'قواعد الدرس' }}</h1>
+  @if (loading()) {
+    <p role="status" class="learning-status">جاري تحميل القاعدة...</p>
+  } @else if (material(); as data) {
+    <article class="learning-card">
+      <p>{{ data.grammarFocus }}</p>
+      @if (!complete()) {
+        <button type="button" class="learning-button" [disabled]="busy()" (click)="finish()">
+          {{ busy() ? 'جاري الحفظ...' : 'فهمت القاعدة' }}
+        </button>
+      } @else {
+        <p role="status">أنهيت هذه المرحلة.</p>
+        @if (nextStage(); as next) {
+          <a class="learning-button" [routerLink]="next.route">ابدأ {{ next.title }} ←</a>
+        } @else {
+          <a class="learning-button" [routerLink]="['/student/lessons', slotId, 'overview']">عرض الدرس</a>
+        }
+      }
+    </article>
+  }
+  @if (error()) {
+    <p role="alert" class="learning-status error">{{ error() }}</p>
+  }
+</section>

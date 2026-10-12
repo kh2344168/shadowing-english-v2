@@ -249,16 +249,19 @@ public static class AdminCurriculumsEndpoints
                 var assignment = await db.GroupCurriculumAssignments.SingleOrDefaultAsync(x => x.GroupId == request.GroupId, http.RequestAborted);
                 if (assignment?.PublishedCurriculumVersionId != request.ExpectedVersionId)
                     return op.Fail(409, "publication_changed");
+                var slots = await db.CurriculumDraftLessonSlots.AsNoTracking()
+                    .Where(x => x.CurriculumTemplateId == template.Id).ToArrayAsync(http.RequestAborted);
+                var approvedAi = await LatestApprovedAi(db,
+                    slots.Select(x => x.LessonVersionId).Distinct().ToArray(), http.RequestAborted);
                 if (assignment is not null)
                 {
                     var current = await db.PublishedCurriculumVersions.AsNoTracking()
                         .SingleAsync(x => x.Id == assignment.PublishedCurriculumVersionId, http.RequestAborted);
-                    if (current.CurriculumTemplateId == template.Id && current.SourceDraftRevision == template.DraftRevision)
+                    if (current.CurriculumTemplateId == template.Id && current.SourceDraftRevision == template.DraftRevision &&
+                        !await AiSnapshotChanged(db, current.Id, approvedAi, http.RequestAborted))
                         return op.Fail(409, "no_unpublished_changes");
                 }
                 // Existing progress remains attached to its original immutable published version.
-                var slots = await db.CurriculumDraftLessonSlots.AsNoTracking()
-                    .Where(x => x.CurriculumTemplateId == template.Id).ToArrayAsync(http.RequestAborted);
                 var maxNumber = await db.PublishedCurriculumVersions.Where(x => x.GroupId == request.GroupId && x.CurriculumTemplateId == template.Id)
                     .Select(x => (int?)x.VersionNumber).MaxAsync(http.RequestAborted) ?? 0;
                 var now = DateTimeOffset.UtcNow;
@@ -272,6 +275,7 @@ public static class AdminCurriculumsEndpoints
                 var publishedSlots = slots.Select(x => new PublishedLessonSlot
                 {
                     Id = Guid.NewGuid(), PublishedCurriculumVersionId = version.Id, LessonVersionId = x.LessonVersionId,
+                    AiContentId = approvedAi.TryGetValue(x.LessonVersionId, out var contentId) ? contentId : null,
                     WeekNumber = x.WeekNumber, DayNumber = x.DayNumber, SortOrder = x.SortOrder, AvailableAtUtc = now
                 }).ToArray();
                 db.PublishedLessonSlots.AddRange(publishedSlots);
@@ -283,11 +287,12 @@ public static class AdminCurriculumsEndpoints
                     var previousSlots = await db.PublishedLessonSlots.AsNoTracking()
                         .Where(x => x.PublishedCurriculumVersionId == assignment.PublishedCurriculumVersionId)
                         .ToArrayAsync(http.RequestAborted);
-                    var oldToNew = new Dictionary<Guid, Guid>();
+                    var oldToNew = new Dictionary<Guid, (Guid SlotId, bool SameAiContent)>();
                     foreach (var old in previousSlots)
                     {
                         var currentSlot = publishedSlots.SingleOrDefault(x => x.LessonVersionId == old.LessonVersionId);
-                        if (currentSlot is not null) oldToNew.Add(old.Id, currentSlot.Id);
+                        if (currentSlot is not null)
+                            oldToNew.Add(old.Id, (currentSlot.Id, old.AiContentId == currentSlot.AiContentId));
                     }
                     if (oldToNew.Count > 0)
                     {
@@ -296,14 +301,15 @@ public static class AdminCurriculumsEndpoints
                             .Where(x => x.PublishedCurriculumVersionId == assignment.PublishedCurriculumVersionId &&
                                 previousIds.Contains(x.SlotId))
                             .ToArrayAsync(http.RequestAborted);
-                        db.StudentStageProgress.AddRange(rows.Select(x => new StudentStageProgress
+                        var transferable = rows.Where(x => oldToNew[x.SlotId].SameAiContent || x.StageKey == "shadowing").ToArray();
+                        db.StudentStageProgress.AddRange(transferable.Select(x => new StudentStageProgress
                         {
                             StudentId = x.StudentId, PublishedCurriculumVersionId = version.Id,
-                            SlotId = oldToNew[x.SlotId], StageKey = x.StageKey,
+                            SlotId = oldToNew[x.SlotId].SlotId, StageKey = x.StageKey,
                             CompletedSegments = x.CompletedSegments, IsComplete = x.IsComplete,
                             UpdatedAtUtc = x.UpdatedAtUtc
                         }));
-                        carriedProgressCount = rows.Length;
+                        carriedProgressCount = transferable.Length;
                     }
                     assignment.PublishedCurriculumVersionId = version.Id;
                 }
@@ -355,12 +361,54 @@ public static class AdminCurriculumsEndpoints
             join lesson in db.LessonVersions.AsNoTracking() on slot.LessonVersionId equals lesson.Id
             where slot.PublishedCurriculumVersionId == version.Id
             orderby slot.WeekNumber, slot.DayNumber, slot.SortOrder
-            select new PublishedLesson(lesson.LessonDefinitionId, lesson.Id, lesson.Title, slot.WeekNumber, slot.DayNumber, slot.SortOrder))
+            select new PublishedLesson(lesson.LessonDefinitionId, lesson.Id, lesson.Title, slot.WeekNumber, slot.DayNumber, slot.SortOrder,
+                slot.AiContentId))
             .ToArrayAsync(cancellation);
+        var draftLessonIds = template is null ? [] : await db.CurriculumDraftLessonSlots.AsNoTracking()
+            .Where(x => x.CurriculumTemplateId == template.Id).Select(x => x.LessonVersionId)
+            .Distinct().ToArrayAsync(cancellation);
+        var approvedAi = await LatestApprovedAi(db, draftLessonIds, cancellation);
+        var draftAiLessonIds = draftLessonIds.Length == 0 ? [] : await db.LessonAiContents.AsNoTracking()
+            .Where(x => draftLessonIds.Contains(x.LessonVersionId) && x.Status == "Draft")
+            .Select(x => x.LessonVersionId)
+            .ToArrayAsync(cancellation);
+        var hasDraft = draftAiLessonIds.ToHashSet();
+        var publishedAi = lessons.ToDictionary(x => x.LessonVersionId, x => x.AiContentId);
+        var aiStates = draftLessonIds.Select(id => new LessonAiPublicationState(id,
+            approvedAi.TryGetValue(id, out var approvedId)
+                ? publishedAi.GetValueOrDefault(id) == approvedId && version?.CurriculumTemplateId == template?.Id
+                    ? "approved_published" : "approved_needs_publish"
+                : hasDraft.Contains(id)
+                    ? "draft_needs_approval" : "no_ai_content")).ToArray();
+        var aiChanged = template is not null && version is not null &&
+            version.CurriculumTemplateId == template.Id && version.SourceDraftRevision == template.DraftRevision &&
+            await AiSnapshotChanged(db, version.Id, approvedAi, cancellation);
         return new GroupCurriculumState(group.Id, group.Name, template?.Id, template?.Name, template?.DraftRevision,
             group.CurriculumAssignmentRevision, version?.Id, version?.CurriculumTemplateId, version?.Title,
             version?.SourceDraftRevision, version?.VersionNumber,
-            template is not null && (version is null || version.CurriculumTemplateId != template.Id || version.SourceDraftRevision != template.DraftRevision), lessons);
+            template is not null && (version is null || version.CurriculumTemplateId != template.Id ||
+                version.SourceDraftRevision != template.DraftRevision || aiChanged), lessons, aiStates);
+    }
+
+    private static async Task<Dictionary<Guid, Guid>> LatestApprovedAi(ApplicationDbContext db,
+        Guid[] lessonVersionIds, CancellationToken cancellation)
+    {
+        if (lessonVersionIds.Length == 0) return [];
+        var rows = await db.LessonAiContents.AsNoTracking()
+            .Where(x => lessonVersionIds.Contains(x.LessonVersionId) && x.Status == "Approved")
+            .OrderByDescending(x => x.ApprovedAtUtc).ThenByDescending(x => x.Id)
+            .Select(x => new { x.LessonVersionId, x.Id }).ToArrayAsync(cancellation);
+        return rows.GroupBy(x => x.LessonVersionId).ToDictionary(x => x.Key, x => x.First().Id);
+    }
+
+    private static async Task<bool> AiSnapshotChanged(ApplicationDbContext db, Guid versionId,
+        Dictionary<Guid, Guid> approvedAi, CancellationToken cancellation)
+    {
+        var slots = await db.PublishedLessonSlots.AsNoTracking()
+            .Where(x => x.PublishedCurriculumVersionId == versionId)
+            .Select(x => new { x.LessonVersionId, x.AiContentId }).ToArrayAsync(cancellation);
+        return slots.Any(x => x.AiContentId !=
+            (approvedAi.TryGetValue(x.LessonVersionId, out var contentId) ? contentId : null));
     }
 
     private static bool ValidName(string? name) => name is { Length: >= 2 and <= 160 } && !name.Any(char.IsControl);
@@ -443,10 +491,12 @@ public static class AdminCurriculumsEndpoints
         DateTimeOffset? UpdatedAtUtc, CurriculumLesson[] Lessons);
     public sealed record CurriculumLesson(Guid LessonId, Guid LessonVersionId, string Title, string Description,
         int SegmentCount, int WeekNumber, int DayNumber, int SortOrder);
-    public sealed record PublishedLesson(Guid LessonId, Guid LessonVersionId, string Title, int WeekNumber, int DayNumber, int SortOrder);
+    public sealed record PublishedLesson(Guid LessonId, Guid LessonVersionId, string Title, int WeekNumber, int DayNumber, int SortOrder,
+        Guid? AiContentId);
+    public sealed record LessonAiPublicationState(Guid LessonVersionId, string Status);
     public sealed record GroupCurriculumState(Guid GroupId, string GroupName, Guid? AssignedCurriculumTemplateId,
         string? AssignedCurriculumName, Guid? DraftRevision, Guid AssignmentRevision, Guid? VersionId,
         Guid? PublishedCurriculumTemplateId, string? PublishedTitle, Guid? PublishedDraftRevision, int? VersionNumber,
-        bool HasUnpublishedChanges, PublishedLesson[] Lessons);
+        bool HasUnpublishedChanges, PublishedLesson[] Lessons, LessonAiPublicationState[] AiContentStates);
     public sealed record Publication(Guid VersionId, Guid GroupId, Guid CurriculumTemplateId, Guid SourceDraftRevision, int VersionNumber);
 }

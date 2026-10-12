@@ -155,12 +155,27 @@
         ><small>تعطيل المرحلة يحتفظ بإعداداتها حتى تعيد تفعيلها.</small>
       </p>
     </div>
-    <button type="button" class="save-workflow" [disabled]="!dirty() || saving()" (click)="save()">
-      <span class="material-symbols-outlined" aria-hidden="true">save</span>
-      {{ saving() ? 'جاري الحفظ...' : dirty() ? 'حفظ رحلة الدرس' : 'تم حفظ الرحلة' }}
+    <button
+      type="button"
+      class="save-workflow"
+      [disabled]="!canSaveAndApprove()"
+      (click)="saveAndApprove()"
+    >
+      <span class="material-symbols-outlined" aria-hidden="true">verified</span>
+      {{ saving() ? 'جاري حفظ الرحلة...' : approving() ? 'جاري حفظ واعتماد المحتوى...' : 'حفظ
+      واعتماد محتوى الدرس' }}
     </button>
   </footer>
-  } @if (libraryOpen()) {
+  @if (approvalIssues().length) {
+  <div class="workflow-approval-issues" role="status">
+    <strong>ما الذي ينقص قبل اعتماد محتوى الدرس؟</strong>
+    <ul>
+      @for (issue of approvalIssues(); track issue) {
+      <li>{{ issue }}</li>
+      }
+    </ul>
+  </div>
+  } } @if (libraryOpen()) {
   <div class="dialog-backdrop">
     <section
       class="stage-library"

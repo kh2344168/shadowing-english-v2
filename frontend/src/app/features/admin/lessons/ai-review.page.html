@@ -1,12 +1,9 @@
 <section class="review-page" dir="rtl" aria-labelledby="review-title">
   <header class="review-hero">
     <div>
-      <a
-        [routerLink]="workflowMode ? ['/admin/lessons', versionId, 'workflow'] : ['/admin/lessons']"
-        class="back"
-      >
+      <a [routerLink]="['/admin/lessons', versionId, 'workflow']" class="back">
         <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
-        {{ workflowMode ? 'رحلة الدرس' : 'قائمة الدروس' }}
+        رحلة الدرس
       </a>
       <span class="eyebrow">LESSON ACTIVITY STUDIO</span>
       <h1 id="review-title">{{ pageTitle() }}</h1>
@@ -63,70 +60,20 @@
     <span class="material-symbols-outlined">auto_awesome</span>
     {{ job()?.status === 'Failed' ? 'إعادة المعالجة' : 'إنشاء مسودة بالذكاء الاصطناعي' }}
   </button>
-  } @if (job()?.status === 'Draft' && draft(); as material) { @if (!selectedStage()) {
-  <section class="review-overview" aria-labelledby="stages-title">
-    <div class="overview-heading">
-      <div>
-        <span class="eyebrow">CONTENT PIPELINE</span>
-        <h2 id="stages-title">مراحل المحتوى</h2>
-        <p>افتح كل مرحلة، راجع تفاصيلها، ثم اعتمدها بشكل مستقل.</p>
-      </div>
-      <span class="progress-badge"
-        >{{ reviewedCount() }} من {{ requiredReviewStages().length }} تمت مراجعتها</span
-      >
-    </div>
-    <div class="stage-grid">
-      @for (stage of stages; track stage.key) { @if (requiredReviewStages().includes(stage.key)) {
-      <article class="stage-tile" [class.reviewed]="stageReviewed(stage.key)">
-        <span class="stage-icon material-symbols-outlined">{{ stage.icon }}</span>
-        <div class="stage-index">{{ stageNumber(stage.key) }}</div>
-        <h3>{{ stage.title }}</h3>
-        <p>{{ stage.description }}</p>
-        <small>{{ stageSummary(stage.key) }}</small>
-        <button type="button" (click)="openStage(stage.key)">
-          فتح المرحلة <span class="material-symbols-outlined">arrow_back</span>
-        </button>
-        @if (stageReviewed(stage.key)) {
-        <span class="reviewed-mark"
-          ><span class="material-symbols-outlined">verified</span> تمت المراجعة</span
-        >
-        }
-      </article>
-      } }
-    </div>
-    <div class="overview-actions">
-      <div>
-        <strong
-          >{{ allStagesReviewed() ? 'الدرس جاهز للاعتماد' : 'أكمل مراجعة المراحل المفعلة' }}</strong
-        ><small>يمكنك الرجوع لأي مرحلة وتعديلها لاحقًا.</small>
-      </div>
-      @if (dirty()) {
-      <button type="button" class="secondary" [disabled]="busy()" (click)="save()">
-        حفظ المسودة
-      </button>
-      }
-      <button
-        type="button"
-        [disabled]="busy() || dirty() || !allStagesReviewed()"
-        (click)="approve()"
-      >
-        اعتماد محتوى الدرس
-      </button>
-    </div>
-  </section>
-  } @if (selectedStage(); as activeStage) {
+  } @if (job()?.status === 'Draft' && draft(); as material) { @if (selectedStage(); as activeStage)
+  {
   <div class="stage-heading">
     <div class="stage-heading__icon">
       <span class="material-symbols-outlined">{{ stageIcon(activeStage) }}</span>
     </div>
     <div>
-      <span class="eyebrow">المرحلة {{ stageNumber(activeStage) }}</span>
+      <span class="eyebrow">المرحلة {{ stageNumber() }}</span>
       <h2>{{ stageTitle(activeStage) }}</h2>
       <p>راجع المحتوى كما سيظهر للطالب، ثم احفظ واعتمد المرحلة.</p>
     </div>
     <button type="button" class="secondary back-to-stages" (click)="backToStages()">
       <span class="material-symbols-outlined">grid_view</span>
-      {{ workflowMode ? 'الرجوع لرحلة الدرس' : 'كل المراحل' }}
+      الرجوع لرحلة الدرس
     </button>
   </div>
 

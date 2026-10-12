@@ -417,6 +417,24 @@ describe('AdminCurriculumsPage — independent curriculum flow', () => {
     expect(page.groupState()?.assignedCurriculumTemplateId).toBe(curriculumId);
     noWrites();
   });
+  it('shows AI publication status and enables republish without a draft revision change', async () => {
+    await initialize(
+      { curriculumId, groupId },
+      savedDraft(),
+      assigned({
+        versionId: publicationId,
+        publishedCurriculumTemplateId: curriculumId,
+        publishedDraftRevision: revision,
+        hasUnpublishedChanges: true,
+        aiContentStates: [
+          { lessonVersionId: lessons[0].versionId, status: 'approved_needs_publish' },
+        ],
+      }),
+    );
+    expect(page.canPublish()).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('محتوى معتمد يحتاج إعادة نشر');
+    noWrites();
+  });
   it('explicit Publish sends full curriculum context and updates the visible published state', async () => {
     await initialize({ curriculumId, groupId }, savedDraft(), assigned());
     noWrites();
@@ -497,7 +515,9 @@ describe('AdminCurriculumsPage — independent curriculum flow', () => {
     const request = await writing(publishUrl);
     request.flush({ versionId: publicationId });
     await drain();
-    http.expectOne(groupUrl).flush(assigned({ versionId: publicationId, hasUnpublishedChanges: false }));
+    http
+      .expectOne(groupUrl)
+      .flush(assigned({ versionId: publicationId, hasUnpublishedChanges: false }));
     await publishing;
     expect(page.success()).toContain('تم نشر');
     noWrites();

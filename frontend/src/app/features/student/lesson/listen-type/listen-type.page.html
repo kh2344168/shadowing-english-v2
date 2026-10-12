@@ -3,13 +3,13 @@
     <div class="stage-header__row">
       <a
         class="back-link"
-        [routerLink]="['/student/lessons', slotId, material()?.shadowingReviewEnabled ? 'shadowing-review' : 'vocabulary']"
+        [routerLink]="previousStage()?.route || ['/student/lessons', slotId, 'overview']"
       >
         <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
         <span>المرحلة السابقة</span>
       </a>
       <div class="stage-heading">
-        <span>المرحلة 3</span>
+        @if (stage(); as currentStage) { <span>المرحلة {{ currentStage.position }}</span> }
         <h1 id="dictation-title">استمع واكتب</h1>
       </div>
       <a
@@ -132,10 +132,13 @@
   <section class="completion-card" role="status">
     <span class="material-symbols-outlined completion-card__icon" aria-hidden="true">verified</span>
     <h2>أنهيت الاستماع والكتابة</h2>
-    <p>أحسنت، أصبحت جاهزًا لاختبار الدرس.</p>
-    <a class="check-button" [routerLink]="['/student/lessons', slotId, 'quiz']"
-      >ابدأ الاختبار ←</a
-    >
+    @if (nextStage(); as next) {
+    <p>أحسنت، أصبحت جاهزًا للمرحلة التالية.</p>
+    <a class="check-button" [routerLink]="next.route">ابدأ {{ next.title }} ←</a>
+    } @else {
+    <p>أكملت جميع مراحل هذا الدرس.</p>
+    <a class="check-button" [routerLink]="['/student/lessons', slotId, 'overview']">عرض الدرس</a>
+    }
   </section>
   } } @if (error()) {
   <p role="alert" class="learning-status error">

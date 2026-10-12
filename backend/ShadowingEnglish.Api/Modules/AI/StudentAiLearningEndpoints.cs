@@ -33,7 +33,7 @@ public static class StudentAiLearningEndpoints
                 var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
                 if (data is null) return Missing();
                 var progress = await Progress(db, student.Value, data.VersionId, slotId, http.RequestAborted);
-                if (!Complete(progress, "shadowing")) return Locked("shadowing");
+                if (!CanReadMaterial(data, progress)) return Locked(PreviousStage(data, FirstActivity(data)));
                 var items = await db.LessonSegments.AsNoTracking().Where(x => x.LessonVersionId == data.LessonVersionId)
                     .OrderBy(x => x.Position).Select(x => x.Position).ToArrayAsync(http.RequestAborted);
                 http.Response.Headers.CacheControl = "no-store";
@@ -47,6 +47,11 @@ public static class StudentAiLearningEndpoints
                     data.Material.ConversationGoals, data.Material.AiRole, data.Material.StudentRole,
                     data.Material.OpeningMessage,
                     data.Material.ShadowingReviewEnabled,
+                    stages = data.Workflow?.Select((stage, index) => new
+                    {
+                        key = stage.Type, stage.Title, position = index + 1,
+                        route = StageRoute(slotId, stage.Type)
+                    }),
                     targetPhrases = visible.Select(x => x.Word).Take(8),
                     quiz = ActiveQuiz(data.Material).Select((x, i) => new { index = i + 1,
                         x.Question, x.Options, x.Type }),
@@ -58,6 +63,10 @@ public static class StudentAiLearningEndpoints
                     progress = new
                     {
                         vocabulary = Count(progress, "vocabulary"),
+                        grammar = Count(progress, "grammar"),
+                        vocabularyQuiz = Count(progress, "vocabulary-quiz"),
+                        grammarQuiz = Count(progress, "grammar-quiz"),
+                        wordOrder = Count(progress, "word-order"),
                         shadowingReview = Count(progress, "shadowing-review"),
                         listenType = Count(progress, "listen-type"),
                         quiz = Count(progress, "quiz"),
@@ -65,7 +74,12 @@ public static class StudentAiLearningEndpoints
                     },
                     completed = new
                     {
+                        shadowing = Complete(progress, "shadowing"),
                         vocabulary = Complete(progress, "vocabulary"),
+                        grammar = Complete(progress, "grammar"),
+                        vocabularyQuiz = Complete(progress, "vocabulary-quiz"),
+                        grammarQuiz = Complete(progress, "grammar-quiz"),
+                        wordOrder = Complete(progress, "word-order"),
                         shadowingReview = Complete(progress, "shadowing-review"),
                         listenType = Complete(progress, "listen-type"),
                         quiz = Complete(progress, "quiz"),
@@ -90,7 +104,7 @@ public static class StudentAiLearningEndpoints
                 var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
                 if (data is null) return Missing();
                 var progress = await Progress(db, student.Value, data.VersionId, slotId, http.RequestAborted);
-                if (!Complete(progress, "shadowing")) return Locked("shadowing");
+                if (!CanEnter(data, progress, "vocabulary")) return Locked(PreviousStage(data, "vocabulary"));
                 var total = VisibleVocabulary(data.Material).Length;
                 if (request.Position < 1 || request.Position > total)
                     return Invalid("invalid_position");
@@ -101,6 +115,20 @@ public static class StudentAiLearningEndpoints
                 return result;
             }
             catch (Exception ex) { return Failure(log, ex, "Vocabulary", watch); }
+        }).RequireRateLimiting("student-progress-write");
+
+        group.MapPut("/grammar/progress", async (Guid slotId, HttpContext http, IAntiforgery csrf,
+            ApplicationDbContext db, UserManager<ApplicationUser> users) =>
+        {
+            if (!await ValidCsrf(csrf, http)) return Invalid("invalid_csrf");
+            var student = await StudentId(http, users);
+            if (student is null) return Results.Forbid();
+            var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
+            if (data is null) return Missing();
+            var progress = await Progress(db, student.Value, data.VersionId, slotId, http.RequestAborted);
+            if (!CanEnter(data, progress, "grammar")) return Locked(PreviousStage(data, "grammar"));
+            return await Mark(db, student.Value, data.VersionId, slotId, "grammar", 1, 1,
+                http.RequestAborted);
         }).RequireRateLimiting("student-progress-write");
 
         group.MapPut("/shadowing-review/progress", async (Guid slotId, MarkRequest request, HttpContext http,
@@ -137,9 +165,7 @@ public static class StudentAiLearningEndpoints
                 var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
                 if (data is null) return Missing();
                 var progress = await Progress(db, student.Value, data.VersionId, slotId, http.RequestAborted);
-                if (!Complete(progress, "vocabulary")) return Locked("vocabulary");
-                if (data.Material.ShadowingReviewEnabled && !Complete(progress, "shadowing-review"))
-                    return Locked("shadowing-review");
+                if (!CanEnter(data, progress, "listen-type")) return Locked(PreviousStage(data, "listen-type"));
                 var existing = await db.StudentPracticeAttempts.AsNoTracking()
                     .SingleOrDefaultAsync(x => x.Id == request.RequestId, http.RequestAborted);
                 if (existing is not null) return existing.StudentId == student && existing.SlotId == slotId &&
@@ -192,15 +218,18 @@ public static class StudentAiLearningEndpoints
                 var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
                 if (data is null) return Missing();
                 var progress = await Progress(db, student.Value, data.VersionId, slotId, http.RequestAborted);
-                if (!Complete(progress, "listen-type")) return Locked("listen-type");
+                var stage = data.Workflow is null ? "quiz" : request.StageKey ?? "";
+                if (stage is not ("quiz" or "vocabulary-quiz" or "grammar-quiz" or "word-order"))
+                    return Invalid("invalid_quiz_stage");
+                if (!CanEnter(data, progress, stage)) return Locked(PreviousStage(data, stage));
                 var existing = await db.StudentPracticeAttempts.AsNoTracking()
                     .SingleOrDefaultAsync(x => x.Id == request.RequestId, http.RequestAborted);
                 if (existing is not null) return existing.StudentId == student && existing.SlotId == slotId &&
-                    existing.StageKey == "quiz" && existing.Position == request.Position &&
+                    existing.StageKey == stage && existing.Position == request.Position &&
                     existing.Answer == (request.Answer?.Trim() ?? request.OptionIndex?.ToString() ?? "") ?
                     Results.Content(existing.FeedbackJson, "application/json") : Results.Conflict(new { error = "request_id_conflict" });
-                var activeQuiz = ActiveQuiz(data.Material);
-                if (request.Position != Count(progress, "quiz") + 1 || request.Position > activeQuiz.Length)
+                var activeQuiz = ActiveQuiz(data.Material, stage);
+                if (request.Position != Count(progress, stage) + 1 || request.Position > activeQuiz.Length)
                     return Results.Conflict(new { error = "answer_out_of_order" });
                 var quiz = activeQuiz[request.Position - 1];
                 if (quiz.Type == "word-order" ? !AnswerValid(request.Answer) || request.OptionIndex is not null :
@@ -212,7 +241,7 @@ public static class StudentAiLearningEndpoints
                     correctAnswer = quiz.Type == "word-order" ? quiz.CorrectAnswer : null, quiz.ExplanationAr };
                 var serialized = JsonSerializer.Serialize(feedback, LessonMaterialRules.Json);
                 if (!await StoreAnswer(db, Attempt(request.RequestId, student.Value, data.VersionId, slotId,
-                    "quiz", request.Position, response, serialized), feedback.correct,
+                    stage, request.Position, response, serialized), feedback.correct,
                     activeQuiz.Length, http.RequestAborted))
                     return Results.Conflict(new { error = "answer_out_of_order" });
                 log.LogInformation("Student.Quiz.Answer.Success StudentId={StudentId} SlotId={SlotId} Position={Position} Correct={Correct} DurationMs={DurationMs}",
@@ -231,7 +260,7 @@ public static class StudentAiLearningEndpoints
             var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
             if (data is null) return Missing();
             var progress = await Progress(db, student.Value, data.VersionId, slotId, http.RequestAborted);
-            if (!Complete(progress, "quiz")) return Locked("quiz");
+            if (!CanEnter(data, progress, "conversation")) return Locked(PreviousStage(data, "conversation"));
             var rows = await db.StudentPracticeAttempts.AsNoTracking().Where(x => x.StudentId == student &&
                 x.PublishedCurriculumVersionId == data.VersionId && x.SlotId == slotId &&
                 x.StageKey == "conversation" && x.FeedbackJson != "")
@@ -265,7 +294,7 @@ public static class StudentAiLearningEndpoints
                 var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
                 if (data is null) return Missing();
                 var progress = await Progress(db, student.Value, data.VersionId, slotId, http.RequestAborted);
-                if (!Complete(progress, "quiz")) return Locked("quiz");
+                if (!CanEnter(data, progress, "conversation")) return Locked(PreviousStage(data, "conversation"));
                 var previous = await db.StudentPracticeAttempts.AsNoTracking()
                     .SingleOrDefaultAsync(x => x.Id == request.RequestId, http.RequestAborted);
                 if (previous is not null && previous.StudentId == student && previous.SlotId == slotId &&
@@ -373,12 +402,61 @@ public static class StudentAiLearningEndpoints
 
     private static VocabularyCard[] VisibleVocabulary(LessonMaterial material) =>
         material.Vocabulary.Where(x => x.IncludeForStudent).ToArray();
-    private static QuizCard[] ActiveQuiz(LessonMaterial material) =>
-        material.Quiz.Where(x => x.Enabled).ToArray();
+    private static QuizCard[] ActiveQuiz(LessonMaterial material, string? stage = null) =>
+        material.Quiz.Where(x => x.Enabled && (stage switch
+        {
+            "vocabulary-quiz" => x.Type == "vocabulary-card",
+            "grammar-quiz" => x.Type == "multiple-choice",
+            "word-order" => x.Type == "word-order",
+            _ => true
+        })).ToArray();
+    private static string FirstActivity(ScopedData data) =>
+        data.Workflow?.FirstOrDefault(x => x.Type != "shadowing")?.Type ?? "shadowing";
+    private static bool CanReadMaterial(ScopedData data, StudentStageProgress[] progress) =>
+        data.Workflow is null ? Complete(progress, "shadowing") :
+        data.Workflow.All(x => x.Type == "shadowing") || CanEnter(data, progress, FirstActivity(data));
+    private static bool CanEnter(ScopedData data, StudentStageProgress[] progress, string stage)
+    {
+        if (data.Workflow is null) return stage switch
+        {
+            "vocabulary" => Complete(progress, "shadowing"),
+            "listen-type" => Complete(progress, "vocabulary") &&
+                (!data.Material.ShadowingReviewEnabled || Complete(progress, "shadowing-review")),
+            "quiz" => Complete(progress, "listen-type"),
+            "conversation" => Complete(progress, "quiz"),
+            _ => false
+        };
+        var index = Array.FindIndex(data.Workflow, x => x.Type == stage);
+        return index >= 0 && (Complete(progress, stage) ||
+            data.Workflow.Take(index).All(x => Complete(progress, x.Type)));
+    }
+    private static string PreviousStage(ScopedData data, string stage)
+    {
+        if (data.Workflow is null) return stage switch
+        {
+            "vocabulary" => "shadowing", "listen-type" => "vocabulary",
+            "quiz" => "listen-type", "conversation" => "quiz", _ => stage
+        };
+        var index = Array.FindIndex(data.Workflow, x => x.Type == stage);
+        return index < 0 ? stage : data.Workflow.Take(index).LastOrDefault()?.Type ?? stage;
+    }
+    private static string StageRoute(Guid slotId, string type) => type switch
+    {
+        "shadowing" => $"/student/lessons/{slotId}/shadowing",
+        "vocabulary" => $"/student/lessons/{slotId}/vocabulary",
+        "listen-type" => $"/student/lessons/{slotId}/listen-type",
+        "grammar" => $"/student/lessons/{slotId}/grammar",
+        "vocabulary-quiz" or "grammar-quiz" or "word-order" =>
+            $"/student/lessons/{slotId}/{type}",
+        "conversation" => $"/student/lessons/{slotId}/conversation",
+        _ => $"/student/lessons/{slotId}/overview"
+    };
     private static DictationCard[] SelectedDictation(LessonMaterial material, int[] positions) =>
         material.Dictation is null ? positions.Select(x => new DictationCard(x)).ToArray() :
         material.Dictation.Where(x => x.Enabled && positions.Contains(x.Position)).ToArray();
-    private sealed record ScopedData(Guid VersionId, Guid LessonVersionId, LessonMaterial Material);
+    private sealed record WorkflowStage(string Type, string Title, int Position, bool Enabled);
+    private sealed record ScopedData(Guid VersionId, Guid LessonVersionId, LessonMaterial Material,
+        WorkflowStage[]? Workflow);
     private static async Task<ScopedData?> ScopedContent(ApplicationDbContext db, Guid studentId, Guid slotId,
         CancellationToken cancel)
     {
@@ -392,11 +470,29 @@ public static class StudentAiLearningEndpoints
                 version.GroupId == member.GroupId && version.PublishedAtUtc <= now &&
                 version.AvailableAtUtc <= now && slot.Id == slotId && slot.AvailableAtUtc <= now &&
                 content.Status == "Approved" && content.LessonVersionId == slot.LessonVersionId
-            select new { VersionId = version.Id, slot.LessonVersionId, content.PayloadJson })
+            select new { VersionId = version.Id, slot.LessonVersionId, content.PayloadJson,
+                WorkflowJson = db.LessonWorkflows.Where(x => x.LessonVersionId == slot.LessonVersionId)
+                    .Select(x => x.StagesJson).FirstOrDefault() })
             .SingleOrDefaultAsync(cancel);
         if (row?.PayloadJson is null) return null;
         var material = JsonSerializer.Deserialize<LessonMaterial>(row.PayloadJson, LessonMaterialRules.Json);
-        return material is null ? null : new ScopedData(row.VersionId, row.LessonVersionId, material);
+        WorkflowStage[]? workflow = null;
+        if (row.WorkflowJson is not null)
+        {
+            try
+            {
+                workflow = JsonSerializer.Deserialize<WorkflowStage[]>(row.WorkflowJson, LessonMaterialRules.Json)?
+                    .Where(x => x.Enabled).OrderBy(x => x.Position).ToArray() ?? [];
+            }
+            catch (JsonException) { workflow = []; }
+        }
+        if (material is not null && material.ShadowingReviewEnabled && workflow is not null)
+        {
+            // The lesson workflow defines the student path and has no shadowing-review stage.
+            // Keep the legacy review flag only for lessons without a workflow.
+            material = material with { ShadowingReviewEnabled = false };
+        }
+        return material is null ? null : new ScopedData(row.VersionId, row.LessonVersionId, material, workflow);
     }
     private static Task<StudentStageProgress[]> Progress(ApplicationDbContext db, Guid studentId, Guid versionId,
         Guid slotId, CancellationToken cancel) => db.StudentStageProgress.AsNoTracking()
@@ -499,6 +595,7 @@ public static class StudentAiLearningEndpoints
     }
     public sealed record MarkRequest(int Position);
     public sealed record AnswerRequest(Guid RequestId, int Position, string? Answer);
-    public sealed record QuizAnswerRequest(Guid RequestId, int Position, int? OptionIndex = null, string? Answer = null);
+    public sealed record QuizAnswerRequest(Guid RequestId, int Position, int? OptionIndex = null,
+        string? Answer = null, string? StageKey = null);
     public sealed record ChatRequest(Guid RequestId, string? Message);
 }

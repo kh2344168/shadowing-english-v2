@@ -205,6 +205,10 @@ internal static class AiTextChecks
                 await db.SaveChangesAsync();
             }
             var url = $"/api/admin/lessons/{versionId}/ai/{draftId}";
+            using var latest = await adminClient.GetAsync($"/api/admin/lessons/{versionId}/ai/draft");
+            Assert(latest.StatusCode == HttpStatusCode.OK &&
+                (await latest.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid() == draftId,
+                "latest_existing_draft_not_found");
             using var premature = await adminClient.PostAsJsonAsync(url + "/approve",
                 new { expectedRevision = draftRevision });
             Assert(premature.StatusCode == HttpStatusCode.Conflict &&
@@ -217,6 +221,20 @@ internal static class AiTextChecks
             using var approved = await adminClient.PostAsJsonAsync(url + "/approve",
                 new { expectedRevision = nextRevision });
             Assert(approved.StatusCode == HttpStatusCode.OK, "reviewed_content_not_approved");
+            using var retry = await adminClient.PostAsJsonAsync(url + "/approve",
+                new { expectedRevision = nextRevision });
+            Assert(retry.StatusCode == HttpStatusCode.OK, "approval_retry_not_idempotent");
+            using var noDraft = await adminClient.GetAsync($"/api/admin/lessons/{versionId}/ai/draft");
+            var noDraftBody = (await noDraft.Content.ReadAsStringAsync()).Trim();
+            Assert(noDraft.StatusCode == HttpStatusCode.NoContent ||
+                (noDraft.StatusCode == HttpStatusCode.OK &&
+                    (noDraftBody == "null" || noDraftBody.Length == 0)),
+                $"approved_content_still_returned_as_draft status={noDraft.StatusCode} body={noDraftBody}");
+            using var approvedScope = app.Services.CreateScope();
+            var approvedDb = approvedScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var approvedRow = await approvedDb.LessonAiContents.AsNoTracking().SingleAsync(x => x.Id == draftId);
+            Assert(approvedRow.Status == "Approved" && approvedRow.ApprovedAtUtc is not null,
+                "approval_status_or_timestamp_not_persisted");
         });
         await check("Admin workflow is protected, read-only on open, and concurrency safe", async () =>
         {
@@ -262,6 +280,37 @@ internal static class AiTextChecks
             Assert(stale.StatusCode == HttpStatusCode.Conflict &&
                 (await stale.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString() ==
                 "workflow_changed", "stale_workflow_write_allowed");
+        });
+        await check("Enabled stages with missing data block approval and name the stage", async () =>
+        {
+            var incompleteId = Guid.NewGuid(); var incompleteRevision = Guid.NewGuid();
+            using (var scope = app.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var admin = (await scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>()
+                    .FindByEmailAsync("admin@v2-test.invalid"))!;
+                db.LessonAiContents.Add(new LessonAiContent { Id = incompleteId, LessonVersionId = versionId,
+                    CreatedByAdminId = admin.Id, Revision = incompleteRevision, Status = "Draft",
+                    PayloadJson = JsonSerializer.Serialize(material with { ReviewedStages =
+                        ["vocabulary", "listen-type", "grammar", "vocabulary-quiz", "grammar-quiz",
+                            "word-order", "conversation"] }, LessonMaterialRules.Json),
+                    CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow });
+                await db.SaveChangesAsync();
+            }
+            using var response = await adminClient.PostAsJsonAsync(
+                $"/api/admin/lessons/{versionId}/ai/{incompleteId}/approve",
+                new { expectedRevision = incompleteRevision });
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert(response.StatusCode == HttpStatusCode.Conflict &&
+                body.GetProperty("error").GetString() == "review_incomplete" &&
+                body.GetProperty("missingStages").EnumerateArray()
+                    .Any(x => x.GetString() == "listen-type"),
+                "missing_enabled_stage_not_reported");
+            using var verifyScope = app.Services.CreateScope();
+            var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            Assert((await verifyDb.LessonAiContents.AsNoTracking()
+                .SingleAsync(x => x.Id == incompleteId)).Status == "Draft",
+                "incomplete_draft_was_approved");
         });
         await check("Only the assigned student sees reviewed material, without quiz answers", async () =>
         {

@@ -1,5 +1,5 @@
 <section class="learning-page ai-stage" dir="rtl" aria-labelledby="conversation-title">
-  <a class="learning-back" [routerLink]="['/student/lessons', slotId, 'quiz']">← الاختبار</a>
+  <a class="learning-back" [routerLink]="previousStage()?.route || ['/student/lessons', slotId, 'overview']">← المرحلة السابقة</a>
   <h1 id="conversation-title" class="page-title">محادثة الدرس</h1>
   @if (loading()) {
   <p role="status" class="learning-status">جاري تحميل المحادثة...</p>
@@ -57,6 +57,13 @@
     (log.turns.length >= 10) { انتهت المحادثة. } @else if (!log.remainingToday) { يمكنك استكمال
     الدرس في يوم جديد. }
   </p>
+  @if (log.turns.length >= 10) {
+    @if (nextStage(); as next) {
+      <a class="learning-button" [routerLink]="next.route">ابدأ {{ next.title }} ←</a>
+    } @else {
+      <a class="learning-button" [routerLink]="['/student/lessons', slotId, 'overview']">عرض الدرس</a>
+    }
+  }
   } } @if (error()) {
   <p role="alert" class="learning-status error">
     {{ error() }}

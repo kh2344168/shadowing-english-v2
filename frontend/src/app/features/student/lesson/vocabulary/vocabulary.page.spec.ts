@@ -27,6 +27,10 @@ describe('StudentVocabularyPage', () => {
     http.expectOne('/api/student/learning/slots/s1/ai-material').flush({
       vocabulary: [{ word: 'hello', meaningAr: 'مرحبًا', exampleEn: 'Hello!', exampleAr: 'أهلًا' }],
       progress: { vocabulary: 0 },
+      stages: [
+        { key: 'vocabulary', title: 'الكلمات', position: 2, route: '/student/lessons/s1/vocabulary' },
+        { key: 'listen-type', title: 'اسمع واكتب', position: 7, route: '/student/lessons/s1/listen-type' },
+      ],
     });
     await fixture.whenStable();
     fixture.detectChanges();

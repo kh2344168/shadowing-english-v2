@@ -28,7 +28,7 @@ export class StudentDashboardPage implements OnInit {
   );
 
   stageStars(lesson: LessonCard): number[] {
-    return Array.from({ length: Math.max(1, lesson.totalStages) }, (_, index) => index + 1);
+    return Array.from({ length: Math.max(0, lesson.totalStages) }, (_, index) => index + 1);
   }
 
   ngOnInit(): void {

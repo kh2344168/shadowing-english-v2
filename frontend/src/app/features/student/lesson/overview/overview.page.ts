@@ -20,22 +20,23 @@ export class StudentLessonOverviewPage implements OnInit {
   readonly loading = signal(true);
   readonly error = signal(false);
   readonly missing = signal(false);
+  readonly stages = computed(() => this.lesson()?.stages ?? []);
+  hasStage(key: string): boolean {
+    return this.stages().some((stage) => stage.key === key);
+  }
+  readonly totalStages = computed(() => this.stages().length);
+  readonly completedStages = computed(() => this.stages().filter((stage) => stage.isComplete).length);
+  readonly starList = computed(() =>
+    Array.from({ length: this.totalStages() }, (_, index) => index + 1),
+  );
   readonly progressPercent = computed(() => {
-    const lesson = this.lesson();
-    if (!lesson || lesson.segmentCount < 1) return 0;
-    return Math.min(100, Math.round((lesson.completedSegments / lesson.segmentCount) * 100));
+    const total = this.totalStages();
+    return total === 0 ? 0 : Math.round((this.completedStages() / total) * 100);
   });
   readonly remainingSegments = computed(() => {
     const lesson = this.lesson();
     return lesson ? Math.max(lesson.segmentCount - lesson.completedSegments, 0) : 0;
   });
-  readonly actionLabel = computed(() => {
-    const lesson = this.lesson();
-    if (!lesson) return '';
-    if (lesson.isComplete) return 'راجع تدريب Shadowing';
-    return lesson.completedSegments > 0 ? 'أكمل التدريب' : 'ابدأ التدريب';
-  });
-
   ngOnInit(): void {
     if (!this.slotId) {
       this.missing.set(true);

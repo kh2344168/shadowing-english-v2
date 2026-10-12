@@ -29,14 +29,14 @@ type ReviewStage =
   | 'conversation';
 
 @Component({
-  selector: 'app-admin-ai-review',
+  selector: 'app-admin-lesson-stage-editor',
   standalone: true,
   imports: [FormsModule, RouterLink],
   templateUrl: './ai-review.page.html',
   styleUrl: './ai-review.page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AdminAiReviewPage implements OnInit, OnDestroy {
+export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly api = inject(LessonAiApi);
@@ -44,7 +44,6 @@ export class AdminAiReviewPage implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   readonly versionId = this.route.snapshot.paramMap.get('versionId') ?? '';
   readonly workflowStageId = this.route.snapshot.paramMap.get('stageId');
-  readonly workflowMode = this.workflowStageId !== null;
   readonly providers = signal<string[]>([]);
   readonly job = signal<LessonAiJob | null>(null);
   readonly draft = signal<LessonMaterial | null>(null);
@@ -120,7 +119,7 @@ export class AdminAiReviewPage implements OnInit, OnDestroy {
     clearTimeout(this.pollTimer);
   }
   async load(): Promise<void> {
-    if (!this.versionId || this.destroyed) return;
+    if (!this.versionId || !this.workflowStageId || this.destroyed) return;
     const started = performance.now();
     console.info('[Admin.AiReview.Load.Start]', { versionId: this.versionId });
     clearTimeout(this.pollTimer);
@@ -131,15 +130,13 @@ export class AdminAiReviewPage implements OnInit, OnDestroy {
         firstValueFrom(this.api.providers()),
         firstValueFrom(this.api.get(this.versionId)),
         firstValueFrom(this.api.segments(this.versionId)),
-        this.workflowMode
-          ? firstValueFrom(this.workflowApi.get(this.versionId))
-          : Promise.resolve(null),
+        firstValueFrom(this.workflowApi.get(this.versionId)),
       ]);
       if (this.destroyed) return;
       this.providers.set(providers.configured);
       this.segments.set(segments);
       this.setJob(job);
-      if (workflow && this.workflowStageId) {
+      if (workflow) {
         this.requiredReviewStages.set([
           ...new Set(
             workflow.stages
@@ -148,6 +145,8 @@ export class AdminAiReviewPage implements OnInit, OnDestroy {
               .filter((stage): stage is ReviewStage => !!stage),
           ),
         ]);
+      }
+      if (workflow) {
         const requested = workflow.stages.find((stage) => stage.id === this.workflowStageId);
         this.activeWorkflowStage.set(requested ?? null);
         const reviewStage = requested ? this.toReviewStage(requested.type) : null;
@@ -245,17 +244,11 @@ export class AdminAiReviewPage implements OnInit, OnDestroy {
     this.dirty.set(true);
   }
 
-  openStage(stage: ReviewStage): void {
-    this.error.set('');
-    this.notice.set('');
-    this.selectedStage.set(stage);
-  }
-  stageNumber(stage: ReviewStage): number {
-    if (this.workflowMode) return this.activeWorkflowStage()?.position ?? 1;
-    return this.stages.findIndex(({ key }) => key === stage) + 1;
+  stageNumber(): number {
+    return this.activeWorkflowStage()?.position ?? 1;
   }
   stageTitle(stage: ReviewStage): string {
-    if (this.workflowMode && this.activeWorkflowStage()) return this.activeWorkflowStage()!.title;
+    if (this.activeWorkflowStage()) return this.activeWorkflowStage()!.title;
     return this.stages.find(({ key }) => key === stage)?.title ?? '';
   }
   pageTitle(): string {
@@ -271,31 +264,8 @@ export class AdminAiReviewPage implements OnInit, OnDestroy {
         reviewed.includes('quiz'))
     );
   }
-  allStagesReviewed(): boolean {
-    return this.requiredReviewStages().every((stage) => this.stageReviewed(stage));
-  }
   reviewedCount(): number {
     return this.requiredReviewStages().filter((stage) => this.stageReviewed(stage)).length;
-  }
-  stageSummary(stage: ReviewStage): string {
-    const material = this.draft();
-    if (!material) return '';
-    switch (stage) {
-      case 'vocabulary':
-        return `${material.vocabulary.filter((card) => card.includeForStudent !== false).length} من ${material.vocabulary.length} للطالب`;
-      case 'listen-type':
-        return `${material.dictation?.filter((item) => item.enabled).length ?? 0} جمل مختارة`;
-      case 'grammar':
-        return material.grammarFocus || 'أضف القاعدة المستهدفة';
-      case 'vocabulary-quiz':
-        return `${this.questionsFor('vocabulary-card').filter(({ question }) => question.enabled !== false).length} أسئلة كلمات`;
-      case 'grammar-quiz':
-        return `${this.questionsFor('multiple-choice').filter(({ question }) => question.enabled !== false).length} أسئلة قواعد`;
-      case 'word-order':
-        return `${this.questionsFor('word-order').filter(({ question }) => question.enabled !== false).length} تدريبات ترتيب`;
-      case 'conversation':
-        return material.conversationScenario || 'حدد موقف المحادثة';
-    }
   }
   stageIssues(stage: ReviewStage): string[] {
     const material = this.draft();
@@ -355,16 +325,7 @@ export class AdminAiReviewPage implements OnInit, OnDestroy {
     this.dirty.set(true);
     await this.save();
     if (!this.dirty()) {
-      if (this.workflowMode) {
-        await this.router.navigate(['/admin/lessons', this.versionId, 'workflow']);
-        return;
-      }
-      this.notice.set(
-        'حُفظت مراجعة المرحلة. افتح المرحلة التالية أو اعتمد المحتوى بعد مراجعة الكل.',
-      );
-      this.selectedStage.set(
-        this.requiredReviewStages().find((key) => !this.stageReviewed(key)) ?? null,
-      );
+      await this.router.navigate(['/admin/lessons', this.versionId, 'workflow']);
     }
   }
 
@@ -401,11 +362,7 @@ export class AdminAiReviewPage implements OnInit, OnDestroy {
   }
 
   async backToStages(): Promise<void> {
-    if (this.workflowMode) {
-      await this.router.navigate(['/admin/lessons', this.versionId, 'workflow']);
-      return;
-    }
-    this.selectedStage.set(null);
+    await this.router.navigate(['/admin/lessons', this.versionId, 'workflow']);
   }
   addQuestion(type: 'multiple-choice' | 'vocabulary-card' | 'word-order'): void {
     const material = this.draft();
@@ -566,33 +523,6 @@ export class AdminAiReviewPage implements OnInit, OnDestroy {
           : 'تعذر الحفظ أو تغيّرت المسودة. انسخ تعديلاتك ثم حدّث الصفحة.',
       );
       console.warn('[Admin.AiReview.Save.Failed]', {
-        jobId: job.id,
-        status: (ex as { status?: number }).status ?? null,
-        durationMs: Math.round(performance.now() - started),
-      });
-    } finally {
-      this.busy.set(false);
-    }
-  }
-  async approve(): Promise<void> {
-    const job = this.job();
-    if (!job || job.status !== 'Draft' || this.busy() || this.dirty() || !this.allStagesReviewed())
-      return;
-    const started = performance.now();
-    this.busy.set(true);
-    this.error.set('');
-    console.info('[Admin.AiReview.Approve.Start]', { jobId: job.id, versionId: this.versionId });
-    try {
-      await firstValueFrom(this.auth.csrf());
-      this.setJob(await firstValueFrom(this.api.approve(this.versionId, job)));
-      this.notice.set('تم اعتماد المحتوى. سيظهر للطلاب عند نشر المنهج بهذا المحتوى.');
-      console.info('[Admin.AiReview.Approve.Success]', {
-        jobId: job.id,
-        durationMs: Math.round(performance.now() - started),
-      });
-    } catch (ex) {
-      this.error.set('تعذر اعتماد المسودة. حدّث الحالة وتحقق من التعديلات.');
-      console.warn('[Admin.AiReview.Approve.Failed]', {
         jobId: job.id,
         status: (ex as { status?: number }).status ?? null,
         durationMs: Math.round(performance.now() - started),

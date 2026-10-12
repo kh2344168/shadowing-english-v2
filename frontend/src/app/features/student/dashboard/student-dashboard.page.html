@@ -131,11 +131,11 @@
                         <span class="path-action-card__icon material-symbols-outlined" aria-hidden="true">graphic_eq</span>
                       </div>
                       <p>
-                        الأسبوع {{ lesson.weekNumber }} · اليوم {{ lesson.dayNumber }} · تدرب على الاستماع
-                        والتكرار لتثبيت النطق بثقة وانسيابية.
+                        الأسبوع {{ lesson.weekNumber }} · اليوم {{ lesson.dayNumber }} · تابع مراحل
+                        الدرس بالترتيب الذي أعدّه لك المعلم.
                       </p>
                       <a [routerLink]="['/student/lessons', lesson.slotId, 'overview']">
-                        {{ lesson.completedSegments ? 'كمّل من مكانك' : 'ابدأ الدراسة الأساسية' }}
+                        {{ lesson.completedStages ? 'كمّل من مكانك' : 'ابدأ الدرس' }}
                         <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
                       </a>
                     </article>

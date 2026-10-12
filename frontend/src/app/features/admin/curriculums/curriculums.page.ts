@@ -160,6 +160,26 @@ export class AdminCurriculumsPage implements OnInit {
   );
   readonly failedOperation = signal('');
 
+  aiStatus(lessonVersionId: string): string | null {
+    return (
+      this.groupState()?.aiContentStates?.find((item) => item.lessonVersionId === lessonVersionId)
+        ?.status ?? null
+    );
+  }
+
+  aiStatusLabel(status: string): string {
+    switch (status) {
+      case 'draft_needs_approval':
+        return 'مسودة تحتاج اعتماد';
+      case 'approved_needs_publish':
+        return 'محتوى معتمد يحتاج إعادة نشر';
+      case 'approved_published':
+        return 'المحتوى المعتمد منشور';
+      default:
+        return 'لا يوجد محتوى AI';
+    }
+  }
+
   async ngOnInit(): Promise<void> {
     await Promise.all([this.loadCurriculums(), this.loadLessons(), this.loadGroups()]);
     const query = this.route.snapshot.queryParamMap;
@@ -429,8 +449,9 @@ export class AdminCurriculumsPage implements OnInit {
     this.log('ConfirmPublish', 'Start', started);
     await this.publishCurriculum();
     const success = this.success().startsWith('تم نشر المنهج');
-    this.log('ConfirmPublish', success ? 'Success' : 'Failed', started,
-      { result: success ? 'published' : 'publish_failed' });
+    this.log('ConfirmPublish', success ? 'Success' : 'Failed', started, {
+      result: success ? 'published' : 'publish_failed',
+    });
   }
   async publishCurriculum(): Promise<void> {
     if (this.busy() || this.reviewRequired() || (!this.canPublish() && !this.canRetryPublish()))
@@ -735,7 +756,7 @@ export class AdminCurriculumsPage implements OnInit {
     );
   }
   private readonly messages: Record<string, string> = {
-    no_unpublished_changes: 'المنهج مطابق لآخر نسخة منشورة. عدّل المنهج واحفظه قبل النشر من جديد.',
+    no_unpublished_changes: 'المنهج مطابق لآخر نسخة منشورة، بما فيها محتوى AI المعتمد.',
     slot_conflict: 'الدرس أو موضع الأسبوع واليوم والترتيب موجود بالفعل.',
     lesson_audio_missing: 'لا يمكن نشر المنهج لأن ملفات صوت بعض الدروس غير متاحة.',
     curriculum_empty: 'أضف درسًا محفوظًا للمنهج واحفظه قبل النشر.',

@@ -7,9 +7,11 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
+import { LessonAiApi, LessonAiJob, LessonMaterial } from './lesson-ai.api';
 import {
   LessonStageType,
   LessonWorkflow,
@@ -96,20 +98,63 @@ export class AdminLessonWorkflowPage implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly api = inject(LessonWorkflowApi);
+  private readonly aiApi = inject(LessonAiApi);
   private readonly auth = inject(AuthService);
   @Input() embeddedVersionId: string | null = null;
   @Input() embedded = false;
   private readonly routeVersionId = this.route.snapshot.paramMap.get('versionId') ?? '';
   readonly workflow = signal<LessonWorkflow | null>(null);
+  readonly latestDraft = signal<LessonAiJob | null>(null);
   readonly stages = signal<LessonWorkflowStage[]>([]);
   readonly loading = signal(true);
   readonly saving = signal(false);
+  readonly approving = signal(false);
   readonly dirty = signal(false);
   readonly error = signal('');
   readonly notice = signal('');
+  readonly serverMissingStages = signal<string[]>([]);
   readonly libraryOpen = signal(false);
   readonly library = STAGE_LIBRARY;
   readonly enabledCount = computed(() => this.stages().filter((stage) => stage.enabled).length);
+  readonly approvalIssues = computed(() => {
+    const serverIssues = this.serverMissingStages();
+    const draft = this.latestDraft();
+    if (!draft?.material) {
+      return [
+        ...serverIssues,
+        ...(this.workflow()?.aiStatus === 'Approved'
+          ? []
+          : ['لا توجد مسودة محتوى AI جاهزة للاعتماد. أنشئ المحتوى ثم راجع المراحل المفعّلة.']),
+      ];
+    }
+    const reviewed: string[] = draft.material.reviewedStages ?? [];
+    const localIssues = this.stages()
+      .filter((stage) => stage.enabled && stage.type !== 'shadowing' && stage.type !== 'content')
+      .flatMap((stage) => {
+        const key = this.reviewKey(stage.type);
+        if (!key) return [];
+        const issues: string[] = [];
+        if (
+          !reviewed.includes(key) &&
+          !(
+            reviewed.includes('quiz') &&
+            ['grammar', 'vocabulary-quiz', 'grammar-quiz', 'word-order'].includes(key)
+          )
+        )
+          issues.push('لم تُراجع المرحلة بعد');
+        issues.push(...this.stageDataIssues(draft.material!, stage.type));
+        return issues.length ? [`${stage.title}: ${issues.join('، ')}`] : [];
+      });
+    return [...new Set([...localIssues, ...serverIssues])];
+  });
+  readonly canSaveAndApprove = computed(
+    () =>
+      !!this.workflow() &&
+      !this.loading() &&
+      !this.saving() &&
+      !this.approving() &&
+      (this.dirty() || this.latestDraft()?.status === 'Draft'),
+  );
 
   get versionId(): string {
     return this.embeddedVersionId || this.routeVersionId;
@@ -125,9 +170,14 @@ export class AdminLessonWorkflowPage implements OnInit {
     console.info('[Admin.LessonWorkflow.Load.Start]', { versionId: this.versionId });
     this.loading.set(true);
     this.error.set('');
+    this.serverMissingStages.set([]);
     try {
-      const workflow = await firstValueFrom(this.api.get(this.versionId));
+      const [workflow, draft] = await Promise.all([
+        firstValueFrom(this.api.get(this.versionId)),
+        firstValueFrom(this.aiApi.latestDraft(this.versionId)),
+      ]);
       this.workflow.set(workflow);
+      this.latestDraft.set(draft);
       this.stages.set([...workflow.stages].sort((a, b) => a.position - b.position));
       this.dirty.set(false);
       console.info('[Admin.LessonWorkflow.Load.Success]', {
@@ -234,7 +284,7 @@ export class AdminLessonWorkflowPage implements OnInit {
   }
 
   async open(stage: LessonWorkflowStage): Promise<void> {
-    if (!stage.enabled) return;
+    if (!stage.enabled || this.approving() || this.saving()) return;
     if (this.dirty() && !(await this.save())) return;
     if (stage.type === 'shadowing') {
       await this.router.navigate([
@@ -289,6 +339,112 @@ export class AdminLessonWorkflowPage implements OnInit {
       return false;
     } finally {
       this.saving.set(false);
+    }
+  }
+
+  async saveAndApprove(): Promise<void> {
+    if (!this.canSaveAndApprove()) return;
+    if (!this.validStagePlan()) {
+      this.error.set(
+        'راجع أسماء المراحل وترتيبها؛ الشادوينج الأساسي يجب أن يبقى أول مرحلة مفعّلة.',
+      );
+      return;
+    }
+    this.approving.set(true);
+    this.error.set('');
+    this.notice.set('');
+    this.serverMissingStages.set([]);
+    try {
+      if (this.dirty() && !(await this.save())) return;
+      const draft = await firstValueFrom(this.aiApi.latestDraft(this.versionId));
+      this.latestDraft.set(draft);
+      if (!draft?.material) {
+        this.error.set('حُفظت الرحلة، لكن لا توجد مسودة محتوى AI للاعتماد.');
+        return;
+      }
+      if (this.approvalIssues().length) {
+        this.error.set('حُفظت الرحلة. أكمل المراحل المعروضة أدناه قبل الاعتماد.');
+        return;
+      }
+      await firstValueFrom(this.auth.csrf());
+      await firstValueFrom(this.aiApi.approve(this.versionId, draft));
+      await this.load();
+      if (!this.error())
+        this.notice.set('تم حفظ الرحلة واعتماد محتوى الدرس. أعد نشر المنهج ليظهر للطلاب');
+    } catch (error) {
+      const response = error instanceof HttpErrorResponse ? error : null;
+      const code = response?.error?.error;
+      if (code === 'review_incomplete' && Array.isArray(response?.error?.missingStages)) {
+        const missing = response.error.missingStages as string[];
+        this.serverMissingStages.set(
+          missing.map((type) => {
+            const title = this.stages().find((stage) => stage.type === type)?.title ?? type;
+            return `${title}: مراجعة المرحلة أو بياناتها المطلوبة ناقصة`;
+          }),
+        );
+      }
+      this.error.set(
+        code === 'review_incomplete'
+          ? 'حُفظت الرحلة، لكن مراجعة أو بيانات إحدى المراحل المفعّلة ناقصة. راجع القائمة أدناه.'
+          : code === 'newer_ai_draft_exists' || code === 'ai_draft_changed'
+            ? 'حُفظت الرحلة، لكن مسودة محتوى AI تغيّرت. حدّث الصفحة ثم راجع أحدث مسودة.'
+            : `حُفظت الرحلة، لكن فشل الاعتماد${typeof code === 'string' ? ` (${code})` : ''}. أعد المحاولة.`,
+      );
+    } finally {
+      this.approving.set(false);
+    }
+  }
+
+  private validStagePlan(): boolean {
+    const stages = this.stages();
+    return (
+      stages.length > 0 &&
+      stages.length <= 24 &&
+      stages[0].type === 'shadowing' &&
+      stages[0].enabled &&
+      new Set(stages.map((stage) => stage.id)).size === stages.length &&
+      stages.every(
+        (stage, index) =>
+          !!stage.id &&
+          !!stage.title.trim() &&
+          stage.title.trim().length <= 80 &&
+          stage.position === index + 1,
+      )
+    );
+  }
+
+  private stageDataIssues(material: LessonMaterial, type: LessonStageType): string[] {
+    switch (type) {
+      case 'vocabulary':
+        return material.vocabulary.some((card) => card.includeForStudent !== false)
+          ? []
+          : ['اختر كلمة أو عبارة واحدة على الأقل'];
+      case 'listen-type':
+        return material.dictation?.some((item) => item.enabled)
+          ? []
+          : ['اختر جملة اسمع واكتب واحدة على الأقل'];
+      case 'grammar':
+        return material.grammarFocus?.trim() ? [] : ['اكتب القاعدة المستهدفة'];
+      case 'vocabulary-quiz':
+      case 'grammar-quiz':
+      case 'word-order': {
+        const quizType =
+          type === 'vocabulary-quiz'
+            ? 'vocabulary-card'
+            : type === 'word-order'
+              ? 'word-order'
+              : 'multiple-choice';
+        return material.quiz.some(
+          (question) =>
+            question.enabled !== false && (question.type ?? 'multiple-choice') === quizType,
+        )
+          ? []
+          : ['أضف سؤالًا مفعّلًا لهذه المرحلة'];
+      }
+      case 'conversation':
+        return material.conversationScenario?.trim() ? [] : ['أكمل موقف المحادثة'];
+      default:
+        return [];
     }
   }
 
