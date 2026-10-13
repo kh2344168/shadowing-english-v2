@@ -1,0 +1,92 @@
+name: Build and deploy Shadowing English V2
+
+on:
+  push:
+    branches:
+      - deploy/staging
+  pull_request:
+    branches:
+      - deploy/staging
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shadowing-v2-production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Test frontend
+        run: npm run test:frontend
+
+      - name: Build frontend
+        run: npm run build:frontend
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish API
+        run: dotnet publish backend/ShadowingEnglish.Api/ShadowingEnglish.Api.csproj --configuration Release --output "$RUNNER_TEMP/shadowing-release"
+
+      - name: Add Angular files to the API release
+        run: |
+          test -f frontend/dist/shadowing-english-v2/browser/index.html
+          mkdir -p "$RUNNER_TEMP/shadowing-release/wwwroot"
+          cp -a frontend/dist/shadowing-english-v2/browser/. "$RUNNER_TEMP/shadowing-release/wwwroot/"
+          test -f "$RUNNER_TEMP/shadowing-release/wwwroot/index.html"
+
+      - name: Upload release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadowing-v2-release
+          path: ${{ runner.temp }}/shadowing-release/
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    # Build on every push, but do not publish until Azure configuration is checked.
+    # Set the repository variable AZURE_DEPLOY_ENABLED=true to enable deployment.
+    if: github.ref == 'refs/heads/deploy/staging' && vars.AZURE_DEPLOY_ENABLED == 'true'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download release package
+        uses: actions/download-artifact@v4
+        with:
+          name: shadowing-v2-release
+          path: release
+
+      - name: Sign in to Azure with GitHub OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to the App Service production slot
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: shadowing-english-v2
+          package: release

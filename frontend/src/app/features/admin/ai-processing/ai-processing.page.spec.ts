@@ -314,8 +314,11 @@ describe('AdminAIProcessingPage — approve and save', () => {
         },
       ],
     });
-    await fixture.whenStable();
-    fixture.detectChanges();
+    http.expectOne('/api/admin/lessons/saved-version-1/ai/draft').flush(null);
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+      expect(view.querySelectorAll('.stage-card')).toHaveLength(3);
+    });
 
     expect(page.activeCreationTab()).toBe('activities');
     expect(fixture.nativeElement.querySelector('app-admin-lesson-workflow')).toBeTruthy();

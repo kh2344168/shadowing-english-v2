@@ -75,7 +75,10 @@ describe('AdminLessonStageEditorPage', () => {
         { id: stageId, type: 'vocabulary', title: 'كلمات السفر', position: 2, enabled: true },
       ],
     });
-    await vi.waitFor(() => expect(fixture.componentInstance.loading()).toBe(false));
+    await vi.waitFor(() => {
+      expect(fixture.componentInstance.loading()).toBe(false);
+      expect(fixture.componentInstance.activeWorkflowStage()?.id).toBe(stageId);
+    });
     fixture.detectChanges();
     return { http, fixture, page: fixture.componentInstance };
   }

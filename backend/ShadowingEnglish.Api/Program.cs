@@ -198,6 +198,9 @@ if (args.Contains("--provision-day2-fixture", StringComparer.Ordinal))
 }
 
 app.UseMiddleware<SafeExceptionMiddleware>();
+// The release workflow copies the Angular browser build into the published wwwroot.
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.UseRouting(); // Required before endpoint-specific rate-limiting policies.
 app.UseAuthentication();
 app.UseRateLimiter();
@@ -234,6 +237,11 @@ app.MapGet("/health", (ILogger<Program> logger) =>
 
     return result;
 });
+
+// Keep unknown API paths as 404; client-side Angular routes use index.html.
+app.Map("/api", () => Results.NotFound());
+app.Map("/api/{**unmatched}", () => Results.NotFound());
+app.MapFallbackToFile("index.html");
 
 app.Run();
 
