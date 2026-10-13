@@ -128,8 +128,13 @@ public static class AdminLessonManagementEndpoints
                 var title = form["title"].ToString().Trim();
                 var description = form["description"].ToString().Trim();
                 var texts = JsonSerializer.Deserialize<string[]>(form["segments"].ToString());
+                var sourcePositionsValue = form["sourcePositions"].ToString();
+                var sourcePositions = string.IsNullOrWhiteSpace(sourcePositionsValue)
+                    ? Enumerable.Range(1, texts?.Length ?? 0).ToArray()
+                    : JsonSerializer.Deserialize<int[]>(sourcePositionsValue);
                 if (!Valid(title, 2, 160) || description.Length > 1000 ||
-                    texts is null || texts.Length is < 1 or > 20 || texts.Any(s => !Valid(s?.Trim(), 1, 1000)))
+                    texts is null || texts.Length is < 1 or > 20 || texts.Any(s => !Valid(s?.Trim(), 1, 1000)) ||
+                    sourcePositions is null || sourcePositions.Length != texts.Length)
                     return Reject(log, started, 400, "invalid_lesson");
                 var files = Enumerable.Range(0, texts.Length).Select(i => form.Files.GetFile($"audio{i}")).ToArray();
                 if (form.Files.Count != files.Count(f => f is not null) ||
@@ -156,8 +161,12 @@ public static class AdminLessonManagementEndpoints
                 var oldSegments = await db.LessonSegments.AsNoTracking()
                     .Where(x => x.LessonVersionId == latest.Id)
                     .OrderBy(x => x.Position).ToArrayAsync(http.RequestAborted);
-                if (oldSegments.Length != texts.Length) return Reject(log, started, 409, "segment_count_changed");
-                var unchangedContent = oldSegments.Select((s, i) => s.Text == texts[i]!.Trim() && files[i] is null).All(x => x);
+                if (sourcePositions.Where((position, index) => position < 1 || position > oldSegments.Length ||
+                        (index > 0 && position <= sourcePositions[index - 1])).Any())
+                    return Reject(log, started, 400, "invalid_segments");
+                var selectedSegments = sourcePositions.Select(position => oldSegments[position - 1]).ToArray();
+                var unchangedContent = selectedSegments.Length == oldSegments.Length &&
+                    selectedSegments.Select((s, i) => s.Text == texts[i]!.Trim() && files[i] is null).All(x => x);
                 if (latest.Title == title && latest.Description == description && unchangedContent)
                 {
                     log.LogInformation("Admin.LessonLibrary.Edit.NoChange ActorId={ActorId} LessonId={LessonId} DurationMs={DurationMs}", actor.Id, lessonId, Duration(started));
@@ -169,7 +178,7 @@ public static class AdminLessonManagementEndpoints
                 var rows = new List<LessonSegment>();
                 for (var i = 0; i < texts.Length; i++)
                 {
-                    var key = oldSegments[i].AudioStorageKey;
+                    var key = selectedSegments[i].AudioStorageKey;
                     if (files[i] is not null)
                     {
                         key = $"lesson-{Guid.NewGuid():N}.wav";
