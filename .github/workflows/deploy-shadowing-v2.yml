@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - deploy/staging
+      - codex/azure-v2-deploy
   pull_request:
     branches:
       - deploy/staging
