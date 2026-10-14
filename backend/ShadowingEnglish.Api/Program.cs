@@ -1,4 +1,7 @@
+using System.IO.Compression;
 using System.Security.Claims;
+using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.ResponseCompression;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Http.Features;
@@ -181,6 +184,15 @@ builder.Services.AddAntiforgery(options =>
 builder.Services.Configure<FormOptions>(options =>
     options.MultipartBodyLengthLimit = 45_000_000);
 
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = new[] { "text/css", "text/javascript", "application/javascript" };
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
+builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
 // Foundation only: no database migrations, users, roles, or demo seeds are created at startup.
 var app = builder.Build();
 
@@ -200,7 +212,23 @@ if (args.Contains("--provision-day2-fixture", StringComparer.Ordinal))
 app.UseMiddleware<SafeExceptionMiddleware>();
 // The release workflow copies the Angular browser build into the published wwwroot.
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseResponseCompression();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = context =>
+    {
+        var fileName = context.File.Name;
+        if (Regex.IsMatch(fileName, @"-[A-Z0-9]{8,}\.(js|css)$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            context.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        }
+        else if (string.Equals(fileName, "index.html", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Context.Response.Headers.CacheControl = "no-cache";
+        }
+    }
+});
 app.UseRouting(); // Required before endpoint-specific rate-limiting policies.
 app.UseAuthentication();
 app.UseRateLimiter();
@@ -241,7 +269,10 @@ app.MapGet("/health", (ILogger<Program> logger) =>
 // Keep unknown API paths as 404; client-side Angular routes use index.html.
 app.Map("/api", () => Results.NotFound());
 app.Map("/api/{**unmatched}", () => Results.NotFound());
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", new StaticFileOptions
+{
+    OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-cache"
+});
 
 app.Run();
 
