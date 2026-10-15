@@ -156,6 +156,16 @@ describe('AdminAIToolsPage', () => {
     expect(fixture.componentInstance.encryptionReady()).toBe(true);
   });
 
+  it('explains why adding Pexels is disabled when server-side encryption is missing', async () => {
+    providers.list.mockReturnValueOnce(of({ encryptionReady: false, items: [] }));
+    const fixture = await createPage();
+    const warning = fixture.nativeElement.querySelector('.encryption-warning') as HTMLElement;
+    expect(warning.textContent).toContain('تشفير الخادم غير مهيأ');
+    expect(warning.textContent).toContain('AI_PROVIDER_MASTER_KEY');
+    const addButton = fixture.nativeElement.querySelector('[data-provider-state="available"] button') as HTMLButtonElement;
+    expect(addButton.disabled).toBe(true);
+  });
+
   it('shows real configured counts instead of counting every catalog provider', async () => {
     providers.list.mockReturnValueOnce(of({
       encryptionReady: true,
@@ -206,6 +216,25 @@ describe('AdminAIToolsPage', () => {
     expect(html).not.toContain('endpointUrl');
     expect(html).not.toContain('API endpoint');
     expect(fixture.nativeElement.textContent).toContain('عنوان الـAPI غير قابل للتعديل');
+  });
+
+  it('keeps the provider dialog open when the API key input is clicked or typed into', async () => {
+    const fixture = await createPage();
+    fixture.componentInstance.openAddProvider('image-search', 'pexels');
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('input[name="apiKey"]') as HTMLInputElement;
+    input.click();
+    input.value = 'pexels-test-key';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.providerDialogOpen()).toBe(true);
+    expect((fixture.nativeElement.querySelector('input[name="apiKey"]') as HTMLInputElement).value).toBe('pexels-test-key');
+
+    const backdrop = fixture.nativeElement.querySelector('.modal-backdrop') as HTMLElement;
+    backdrop.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.providerDialogOpen()).toBe(false);
   });
 
   it('requires explicit confirmation before replacing an existing credential', async () => {

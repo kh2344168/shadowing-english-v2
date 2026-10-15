@@ -118,6 +118,12 @@ dd { margin: 0; font-size: .84rem; font-weight: 800; overflow-wrap: anywhere; }
 .protected-manual-provider p { margin: 3px 0 0; color: var(--muted); font-size: .76rem; line-height: 1.65; }
 .protected-badge { border-radius: 999px; padding: 6px 9px; background: #e8edf7; color: #40577f; font-size: .7rem; font-weight: 900; white-space: nowrap; }
 .providers-loading { min-height: 140px; display: grid; place-items: center; align-content: center; gap: 10px; color: var(--muted); background: #fff; border: 1px dashed #cddad8; border-radius: 18px; }
+.encryption-warning { display: flex; align-items: center; gap: 12px; padding: 13px 15px; margin-bottom: 16px; border: 1px solid #e8cd8d; border-radius: 14px; background: #fff9ea; color: #775319; }
+.encryption-warning > .material-symbols-outlined { font-size: 25px; }
+.encryption-warning > div { flex: 1; }
+.encryption-warning strong { display: block; font-size: .85rem; }
+.encryption-warning p { margin: 3px 0 0; font-size: .76rem; line-height: 1.6; }
+.encryption-warning button { white-space: nowrap; }
 .spinner { width: 24px; height: 24px; border-radius: 50%; border: 3px solid #d9e6e4; border-top-color: var(--brand); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

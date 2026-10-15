@@ -109,6 +109,16 @@
         جارٍ تحميل إعدادات المزوّدين...
       </div>
     } @else {
+      @if (!encryptionReady() && !providerError()) {
+        <div class="encryption-warning" role="alert">
+          <span class="material-symbols-outlined" aria-hidden="true">lock</span>
+          <div>
+            <strong>إضافة مفاتيح API متوقفة لأن تشفير الخادم غير مهيأ.</strong>
+            <p>اضبط مفتاح <bdi dir="ltr">AI_PROVIDER_MASTER_KEY</bdi> على الخادم، ثم أعد تشغيل الـAPI وحدّث الحالة هنا. المفتاح لا يوضع في المتصفح أو داخل Git.</p>
+          </div>
+          <button type="button" class="btn btn-secondary" (click)="loadProviders()">تحديث الحالة</button>
+        </div>
+      }
       <section class="provider-overview" aria-label="ملخص المزوّدين الفعليين">
         <article class="overview-card overview-card--local">
           <span class="overview-label">المعالجة المحلية</span>
@@ -450,14 +460,11 @@
   @if (providerDialogOpen()) {
     <div
       class="modal-backdrop"
-      role="button"
-      tabindex="0"
-      aria-label="إغلاق نافذة إعداد المزود"
-      (click)="closeProviderDialog()"
-      (keydown.enter)="closeProviderDialog()"
-      (keydown.space)="closeProviderDialog(); $event.preventDefault()"
+      role="presentation"
+      (click)="onProviderBackdropClick($event)"
+      (keydown.escape)="closeProviderDialog()"
     >
-      <section class="provider-modal" role="dialog" aria-modal="true" aria-labelledby="provider-dialog-title" (mousedown)="$event.stopPropagation()">
+      <section class="provider-modal" role="dialog" aria-modal="true" aria-labelledby="provider-dialog-title">
         <header class="modal-head">
           <div>
             <p class="eyebrow">Secure Provider Configuration</p>

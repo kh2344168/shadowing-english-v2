@@ -450,6 +450,10 @@ export class AdminAIToolsPage implements OnInit, OnDestroy {
     this.replaceConfirmation.set(false);
   }
 
+  onProviderBackdropClick(event: MouseEvent): void {
+    if (event.target === event.currentTarget) this.closeProviderDialog();
+  }
+
   onCapabilityChanged(): void {
     const selected = this.providerCatalog().find(
       (item) => item.capability === this.providerForm.capability && item.implemented,
