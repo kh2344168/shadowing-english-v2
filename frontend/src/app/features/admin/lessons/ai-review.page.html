@@ -87,6 +87,18 @@
       </div>
       <span class="count-chip">{{ material.vocabulary.length }} بطاقة</span>
     </div>
+    <div class="image-provider-notice" [class.image-provider-notice--off]="!imagesConfigured()">
+      <span class="material-symbols-outlined">{{ imagesConfigured() ? 'photo_library' : 'key_off' }}</span>
+      @if (imagesConfigured()) {
+      <span>بحث الصور عبر Pexels مفعّل. اختر صورة لكل بطاقة أو اطلب خيارات أخرى؛ الصور لا تُعتمد قبل الحفظ.</span>
+      } @else {
+      <span>صور الكلمات غير مفعّلة: أضف مفتاح Pexels من <a routerLink="/admin/ai-tools">إعدادات مزودي الصور</a> ثم حدّث الصفحة.</span>
+      }
+      @if (imagesConfigured()) {
+      <button type="button" class="image-provider-notice__action" (click)="fillMissingVocabularyImages()"
+        [disabled]="busy() || imageBusy() !== null">اقترح صورًا لكل البطاقات الفارغة</button>
+      }
+    </div>
     <div class="vocabulary-grid">
       @for (word of material.vocabulary; track $index; let wordIndex = $index) {
       <article class="word-card" [class.word-card--excluded]="word.includeForStudent === false">
@@ -100,6 +112,11 @@
           }
           <span class="visual-fallback material-symbols-outlined">image</span>
           <span class="kind-badge">{{ word.kind === 'chunk' ? 'CHUNK' : 'WORD' }}</span>
+          <button type="button" class="visual-image-button" (click)="suggestVocabularyImage(wordIndex)"
+            [disabled]="!imagesConfigured() || imageBusy() !== null || busy() || !word.word.trim()">
+            <span class="material-symbols-outlined">add_photo_alternate</span>
+            {{ imageBusy() === wordIndex ? 'جاري البحث...' : word.imageUrl ? 'صور بديلة' : 'اختيار صورة' }}
+          </button>
           <label class="include-toggle"
             ><input
               type="checkbox"
@@ -109,6 +126,29 @@
             /><span></span>{{ word.includeForStudent === false ? 'مستبعدة' : 'مع الطالب' }}</label
           >
         </div>
+        @if (imageOptions()[wordIndex]?.length) {
+        <div class="image-picker">
+          <div class="image-picker__heading">
+            <strong>اختر صورة مناسبة لـ {{ word.word }}</strong>
+            <button type="button" (click)="suggestVocabularyImage(wordIndex)" [disabled]="imageBusy() !== null || busy()">
+              {{ imageBusy() === wordIndex ? 'جاري البحث...' : 'صور أخرى' }}
+            </button>
+          </div>
+          <div class="image-picker__grid">
+            @for (option of imageOptions()[wordIndex]; track option.imageUrl) {
+            <div class="image-picker__option">
+              <button type="button" (click)="selectVocabularyImage(wordIndex, option.imageUrl)"
+                [class.image-picker__option--selected]="word.imageUrl === option.imageUrl"
+                [attr.aria-label]="'اختيار صورة من ' + option.photographer">
+                <img [src]="option.imageUrl" [alt]="word.word" loading="lazy" />
+                @if (word.imageUrl === option.imageUrl) { <span class="material-symbols-outlined">check_circle</span> }
+              </button>
+              <a [href]="option.photoUrl" target="_blank" rel="noopener noreferrer">{{ option.photographer }} · Pexels</a>
+            </div>
+            }
+          </div>
+        </div>
+        }
         <div class="word-body">
           <div class="word-head">
             <label class="field field--word"
@@ -461,6 +501,14 @@
       </div>
     </div>
     <h2 id="conversation-title">إعداد المحادثة</h2>
+    <div class="conversation-context-note">
+      <span class="material-symbols-outlined" aria-hidden="true">hub</span>
+      <p>
+        سياق المعلّم الذكي يأتي من موقف المحادثة، أهدافها، القاعدة والكلمات المعتمدة في هذه النسخة
+        من الدرس. اختياراتك هنا تحدد ما يركز عليه في الحوار والتغذية الراجعة، ولا تضيف له معلومات من
+        دروس أخرى.
+      </p>
+    </div>
     <label class="field"
       ><span>الموقف</span
       ><textarea
@@ -503,6 +551,94 @@
         (ngModelChange)="updateGoals($event)"
       ></textarea>
     </label>
+    <div class="conversation-settings">
+      <div class="conversation-settings__heading">
+        <span class="material-symbols-outlined" aria-hidden="true">tune</span>
+        <div>
+          <h3>قواعد نجاح المحادثة</h3>
+          <p>حدد ما يجب أن يتدرّب عليه الطالب قبل اكتمال المرحلة.</p>
+        </div>
+      </div>
+      <div class="edit-grid">
+        <label class="field"
+          ><span>عدد ردود الطالب لإكمال المحادثة</span
+          ><input
+            type="number"
+            min="1"
+            max="20"
+            step="1"
+            [(ngModel)]="material.conversationTurnTarget"
+            name="conversationTurnTarget"
+            (ngModelChange)="changed()"
+          /><small
+            >يُحسب الرد إذا التزم بالزمن المختار. الافتراضي للدروس القديمة: 10؛ وقد يكمل الطالب في
+            يوم آخر إذا تجاوز العدد الحد اليومي للـAI.</small
+          ></label
+        >
+        <label class="field"
+          ><span>الزمن المستهدف</span
+          ><select
+            [(ngModel)]="material.conversationFocusTense"
+            name="conversationFocusTense"
+            (ngModelChange)="changed()"
+          >
+            <option value="">حسب قاعدة الدرس، بلا زمن محدد</option>
+            <option value="present-simple">Present simple</option>
+            <option value="present-continuous">Present continuous</option>
+            <option value="past-simple">Past simple</option>
+            <option value="past-continuous">Past continuous</option>
+            <option value="present-perfect">Present perfect</option>
+            <option value="future-simple">Future simple</option>
+          </select></label
+        >
+      </div>
+      <label class="field"
+        ><span>ما الذي يجب أن يقدر عليه الطالب بعد المحادثة؟</span
+        ><textarea
+          [(ngModel)]="material.conversationLearningOutcome"
+          name="conversationLearningOutcome"
+          maxlength="240"
+          placeholder="مثال: يصف روتينه اليومي باستخدام Present Simple وكلمات الدرس"
+          (ngModelChange)="changed()"
+        ></textarea>
+      </label>
+      <label class="field"
+        ><span>نطاق التصحيح</span
+        ><select
+          [(ngModel)]="material.conversationCorrectionMode"
+          name="conversationCorrectionMode"
+          (ngModelChange)="changed()"
+        >
+          <option value="lesson-only">أخطاء أهداف الدرس فقط</option>
+          <option value="all">كل الأخطاء اللغوية المهمة</option>
+        </select>
+        <small
+          >في وضع الدرس فقط، لا يشتت الطالب بتصحيح أخطاء خارج الزمن والكلمات والقاعدة
+          المستهدفة.</small
+        ></label
+      >
+      <fieldset class="conversation-words">
+        <legend>كلمات وعبارات أريد تشجيع الطالب على استخدامها</legend>
+        <p>إذا قال مرادفًا صحيحًا، يقترح له المعلّم لفظ الدرس دون أن يعتبر كلامه خطأ.</p>
+        <div class="conversation-words__grid">
+          @for (word of material.vocabulary; track word.word) { @if (word.includeForStudent !==
+          false) {
+          <label [class.selected]="conversationWordSelected(word.word)">
+            <input
+              type="checkbox"
+              [checked]="conversationWordSelected(word.word)"
+              (change)="toggleConversationWord(word.word, $any($event.target).checked)"
+            />
+            <span dir="ltr">{{ word.word }}</span>
+          </label>
+          } }
+        </div>
+        <small
+          >يمكنك اختيار حتى 12 كلمة أو عبارة؛ تركها فارغة يعني أن جميع كلمات الدرس المعتمدة متاحة
+          كسياق.</small
+        >
+      </fieldset>
+    </div>
   </section>
   } @if (stageIssues(activeStage).length) {
   <div class="alert alert--warning" role="alert">

@@ -18,10 +18,11 @@ public static class AdminLessonAiEndpoints
         var group = app.MapGroup("/api/admin/lessons")
             .RequireAuthorization(new AuthorizeAttribute { Roles = "Admin" });
 
-        group.MapGet("/ai-providers", (TextAiRouter ai, HttpContext http) =>
+        group.MapGet("/ai-providers", async (TextAiRouter ai, PexelsImageService images, HttpContext http) =>
         {
             http.Response.Headers.CacheControl = "no-store";
-            return Results.Ok(new { configured = ai.ConfiguredProviders() });
+            return Results.Ok(new { configured = ai.ConfiguredProviders(),
+                imagesConfigured = await images.IsConfiguredAsync(http.RequestAborted) });
         });
 
         group.MapGet("/{versionId:guid}/ai/segments", async (Guid versionId, ApplicationDbContext db,
@@ -135,6 +136,36 @@ public static class AdminLessonAiEndpoints
             }
             catch (DbUpdateConcurrencyException) { return Results.Conflict(new { error = "ai_draft_changed" }); }
             catch (Exception ex) { return Failure(log, ex, started, "Edit"); }
+        }).RequireRateLimiting("admin-lesson-write");
+
+        group.MapPost("/{versionId:guid}/ai/{jobId:guid}/vocabulary-image", async (
+            Guid versionId, Guid jobId, VocabularyImageRequest request, HttpContext http,
+            IAntiforgery csrf, ApplicationDbContext db, PexelsImageService images) =>
+        {
+            if (!await ValidCsrf(csrf, http)) return Results.BadRequest(new { error = "invalid_csrf" });
+            var job = await db.LessonAiContents.AsNoTracking().SingleOrDefaultAsync(x =>
+                x.Id == jobId && x.LessonVersionId == versionId, http.RequestAborted);
+            if (job is null) return Results.NotFound(new { error = "ai_job_not_found" });
+            if (job.Status != "Draft" || job.Revision != request.ExpectedRevision ||
+                string.IsNullOrWhiteSpace(job.PayloadJson))
+                return Results.Conflict(new { error = "ai_draft_changed" });
+            var material = JsonSerializer.Deserialize<LessonMaterial>(job.PayloadJson, LessonMaterialRules.Json);
+            if (material is null || request.CardIndex < 0 || request.CardIndex >= material.Vocabulary.Length)
+                return Results.BadRequest(new { error = "invalid_card" });
+            var term = material.Vocabulary[request.CardIndex].Word;
+            if (!await images.IsConfiguredAsync(http.RequestAborted))
+                return Results.Json(new { error = "pexels_not_configured" }, statusCode: 503);
+            if (request.Page is < 1 or > 10)
+                return Results.BadRequest(new { error = "invalid_page" });
+            var result = await images.SearchDetailedAsync(term, request.Page, http.RequestAborted);
+            if (result.Error is "pexels_invalid_key")
+                return Results.Json(new { error = result.Error }, statusCode: 503);
+            if (result.Error is "pexels_rate_limited")
+                return Results.Json(new { error = result.Error }, statusCode: 429);
+            if (result.Error is not null)
+                return Results.Json(new { error = result.Error }, statusCode: 502);
+            if (result.Options.Length == 0) return Results.NotFound(new { error = "image_not_found" });
+            return Results.Ok(new { options = result.Options, provider = "pexels", page = request.Page });
         }).RequireRateLimiting("admin-lesson-write");
 
         group.MapPost("/{versionId:guid}/ai/{jobId:guid}/reopen", async (Guid versionId, Guid jobId,
@@ -279,4 +310,5 @@ public static class AdminLessonAiEndpoints
     public sealed record ReopenAiRequest(Guid RequestId, Guid ExpectedRevision);
     public sealed record UpdateAiRequest(Guid ExpectedRevision, LessonMaterial Material);
     public sealed record ApproveAiRequest(Guid ExpectedRevision);
+    public sealed record VocabularyImageRequest(Guid ExpectedRevision, int CardIndex, int Page = 1);
 }

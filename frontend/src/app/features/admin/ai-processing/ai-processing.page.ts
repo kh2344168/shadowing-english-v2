@@ -16,7 +16,8 @@ import { firstValueFrom } from 'rxjs';
 
 import { AuthService } from '../../../core/auth/auth.service';
 import { AdminLessonWorkflowPage } from '../lessons/lesson-workflow.page';
-import { ShadowingAuthoringApi } from '../shadowing-authoring.api';
+import { LessonWorkflowApi } from '../lessons/lesson-workflow.api';
+import { LessonEditDetails, ShadowingAuthoringApi } from '../shadowing-authoring.api';
 import { ImportedLesson } from './local-lesson';
 import {
   DEFAULT_PROCESSOR_SETTINGS,
@@ -38,9 +39,10 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly client = inject(LocalProcessorClient);
   private readonly authoringApi = inject(ShadowingAuthoringApi);
+  private readonly workflowApi = inject(LessonWorkflowApi);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  private readonly routedVersionId = this.route.snapshot.paramMap.get('versionId') ?? '';
+  private routedVersionId = this.route.snapshot.paramMap.get('versionId') ?? '';
 
   private controller: AbortController | null = null;
   private activeAudio: HTMLAudioElement | null = null;
@@ -89,6 +91,13 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
   readonly job = signal<ProcessorJob | null>(null);
   readonly result = signal<ImportedLesson | null>(null);
+  readonly savedLesson = signal<LessonEditDetails | null>(null);
+  readonly savedLessonLoading = signal(false);
+  readonly savedLessonDirty = signal(false);
+  readonly savedLessonAudio = signal<Record<number, File>>({});
+  readonly savedClipDurations = signal<Record<number, number>>({});
+  private pendingSavedAudio: File | null = null;
+  private savedWaveformRequest = 0;
   // IDs are stable by segment slot/order across WhisperX recut.
   readonly selectedSegmentIndices = signal<ReadonlySet<number>>(new Set<number>());
   readonly previewUrls = signal<string[]>([]);
@@ -111,9 +120,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   readonly error = signal('');
   readonly notice = signal('');
   readonly activeVersionId = signal(this.routedVersionId);
-  readonly activeCreationTab = signal<'shadowing' | 'activities'>(
-    this.routedVersionId ? 'activities' : 'shadowing',
-  );
+  readonly activeCreationTab = signal<'shadowing' | 'activities'>('shadowing');
 
   async ngOnInit(): Promise<void> {
     try {
@@ -130,9 +137,9 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
       this.userId = session.userId;
 
-      // An existing lesson opens directly on the workflow tab. It does not need
-      // the local AI processor and must not restore an unrelated creation draft.
+      // A saved lesson comes from the database; do not restore a local processor draft.
       if (this.routedVersionId) {
+        await this.loadSavedLesson();
         return;
       }
 
@@ -151,6 +158,183 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       await this.connect();
     } catch {
       this.error.set('تعذر التحقق من حساب الأدمن. أعد تسجيل الدخول.');
+    }
+  }
+
+  private async loadSavedLesson(): Promise<void> {
+    this.savedLessonLoading.set(true);
+    this.error.set('');
+    try {
+      const workflow = await firstValueFrom(this.workflowApi.get(this.routedVersionId));
+      const details = await firstValueFrom(this.authoringApi.lessonDetails(workflow.lessonId));
+      if (details.versionId !== this.routedVersionId) {
+        await this.router.navigate(['/admin/lessons', details.versionId, 'workflow'], {
+          replaceUrl: true,
+        });
+        return;
+      }
+      this.urls.forEach((url) => URL.revokeObjectURL(url));
+      this.urls = [];
+      this.savedClipDurations.set({});
+      this.savedLesson.set(details);
+      this.title = details.title;
+      this.description = details.description;
+      this.result.set({
+        manifest: {
+          schemaVersion: 1,
+          profile: 'shadowing-v2-1',
+          jobId: details.versionId,
+          title: details.title,
+          description: details.description,
+          duration: details.segments.length + 1,
+          reviewRequired: true,
+          segments: details.segments.map((segment, index) => ({
+            text: segment.text,
+            start: index,
+            end: index + 1,
+            audioFile: `segment-${String(index + 1).padStart(2, '0')}.wav`,
+            bytes: 0,
+            sha256: '',
+          })),
+        },
+        files: [],
+      });
+      this.previewUrls.set(details.segments.map((segment) => segment.audioUrl));
+      this.selectedSegmentIndices.set(new Set(details.segments.map((_, index) => index)));
+      this.reviewed = true;
+    } catch (error) {
+      this.error.set('تعذر تحميل نصوص الدرس المحفوظة. حاول تحديث الصفحة.');
+      console.warn('[Admin.AILesson.SavedLoad.Failed]', {
+        versionId: this.routedVersionId,
+        status: (error as { status?: number }).status ?? null,
+      });
+    } finally {
+      this.savedLessonLoading.set(false);
+      this.changeDetector.markForCheck();
+    }
+  }
+
+  setSavedAudio(event: Event): void {
+    const file = (event.target as HTMLInputElement).files?.item(0);
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.wav') || file.size <= 12 || file.size > 2_000_000) {
+      this.error.set('التسجيل البديل يجب أن يكون WAV وأقل من 2 MB.');
+      return;
+    }
+    this.pendingSavedAudio = file;
+    this.error.set('');
+    this.savedWaveformRequest += 1;
+    const index = this.editingIndex();
+    if (index !== null) this.showSavedWaveform(file, index);
+  }
+
+  rememberSavedDuration(index: number, event: Event): void {
+    const duration = (event.target as HTMLAudioElement).duration;
+    if (Number.isFinite(duration) && duration > 0) {
+      this.savedClipDurations.update((items) => ({ ...items, [index]: duration }));
+    }
+  }
+
+  private async loadSavedWaveform(index: number): Promise<void> {
+    const request = ++this.savedWaveformRequest;
+    const details = this.savedLesson();
+    const segment = details?.segments[index];
+    if (!details || !segment) return;
+    this.editWaveformLoading.set(true);
+    try {
+      const blob = await firstValueFrom(
+        this.authoringApi.lessonSegmentAudio(details.versionId, segment.position),
+      );
+      if (
+        request !== this.savedWaveformRequest ||
+        this.editingIndex() !== index ||
+        this.savedLesson()?.versionId !== details.versionId
+      )
+        return;
+      this.showSavedWaveform(
+        new File([blob], `segment-${segment.position}.wav`, { type: 'audio/wav' }),
+        index,
+      );
+    } catch {
+      if (request === this.savedWaveformRequest && this.editingIndex() === index) {
+        this.editWaveformLoading.set(false);
+        this.editWaveformError.set('تعذر تحميل صوت المقطع المحفوظ. يمكنك تعديل النص فقط.');
+      }
+    }
+  }
+
+  private showSavedWaveform(file: File, index: number): void {
+    this.releaseEditPreview();
+    this.editWaveformBuffer = null;
+    this.editWaveformSourceFile = null;
+    this.editStart = 0;
+    this.editEnd = 0;
+    this.editPreviewSourceUrl.set(URL.createObjectURL(file));
+    this.editWaveformLoading.set(true);
+    void this.loadEditWaveform(file, index);
+  }
+
+  async saveSavedLesson(): Promise<void> {
+    const details = this.savedLesson();
+    if (!details || !this.savedLessonDirty() || this.lessonSaving()) return;
+    const selected = details.segments.filter((_, index) => this.isSegmentSelected(index));
+    const title = this.title.trim();
+    const description = this.description.trim();
+    if (
+      title.length < 2 ||
+      title.length > 160 ||
+      description.length > 1000 ||
+      selected.length === 0 ||
+      selected.some((segment) => !segment.text.trim() || segment.text.trim().length > 1000)
+    ) {
+      this.error.set('راجع عنوان الدرس والوصف ونصوص المقاطع قبل الحفظ.');
+      return;
+    }
+    this.lessonSaving.set(true);
+    this.error.set('');
+    try {
+      await firstValueFrom(this.auth.csrf());
+      const updated = await firstValueFrom(
+        this.authoringApi.editLesson(
+          details.id,
+          details.versionId,
+          crypto.randomUUID(),
+          title,
+          description,
+          details.segments.flatMap((segment, index) =>
+            this.isSegmentSelected(index)
+              ? [
+                  {
+                    position: segment.position,
+                    text: segment.text,
+                    audio: this.savedLessonAudio()[index] ?? null,
+                  },
+                ]
+              : [],
+          ),
+        ),
+      );
+      const navigated = await this.router.navigate([
+        '/admin/lessons',
+        updated.versionId,
+        'workflow',
+      ]);
+      if (navigated) {
+        this.routedVersionId = updated.versionId;
+        this.activeVersionId.set(updated.versionId);
+        this.savedLessonDirty.set(false);
+        this.savedLessonAudio.set({});
+        await this.loadSavedLesson();
+      }
+    } catch (error) {
+      this.error.set(
+        (error as { status?: number }).status === 409
+          ? 'الدرس اتغير من صفحة أخرى. حدّث الصفحة وافتح أحدث نسخة.'
+          : 'تعذر حفظ التعديلات. النسخة السابقة ما زالت محفوظة.',
+      );
+    } finally {
+      this.lessonSaving.set(false);
+      this.changeDetector.markForCheck();
     }
   }
 
@@ -500,6 +684,16 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     this.editWaveformError.set('');
     this.error.set('');
 
+    if (this.savedLesson()) {
+      this.pendingSavedAudio = null;
+      this.editWaveformBuffer = null;
+      this.editWaveformSourceFile = null;
+      this.editStart = 0;
+      this.editEnd = 0;
+      void this.loadSavedWaveform(index);
+      return;
+    }
+
     const originalMedia = this.sourceMediaJobId === lesson.manifest.jobId ? this.sourceMedia : null;
     if (originalMedia) {
       this.editPreviewSourceUrl.set(URL.createObjectURL(originalMedia));
@@ -520,7 +714,13 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
   closeEditModal(): void {
     if (this.segmentSaving()) return;
+    this.savedWaveformRequest += 1;
+    this.pendingSavedAudio = null;
     this.releaseEditPreview();
+    if (this.savedLesson()) {
+      this.editWaveformBuffer = null;
+      this.editWaveformSourceFile = null;
+    }
     this.stopAudio();
     this.editingIndex.set(null);
   }
@@ -532,6 +732,9 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       return;
     }
     this.editMediaDuration.set(duration);
+    if (this.savedLesson() && (this.editEnd === 0 || this.editEnd > duration)) {
+      this.editEnd = duration;
+    }
     this.configureEditWaveformWindow(duration, false);
     this.editPreviewError.set(
       this.editEnd > duration
@@ -547,6 +750,11 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   }
 
   chooseEditSourceMedia(event: Event): void {
+    if (this.savedLesson()) {
+      this.setSavedAudio(event);
+      (event.target as HTMLInputElement).value = '';
+      return;
+    }
     const started = performance.now();
     const input = event.target as HTMLInputElement;
     const file = input.files?.item(0) ?? null;
@@ -714,12 +922,14 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   }
 
   editStartMinimum(): number {
+    if (this.savedLesson()) return 0;
     const lesson = this.result();
     const index = this.editingIndex();
     return lesson && index !== null && index > 0 ? lesson.manifest.segments[index - 1].start : 0;
   }
 
   editStartMaximum(): number {
+    if (this.savedLesson()) return this.editMediaDuration() ?? 0;
     const lesson = this.result();
     const index = this.editingIndex();
     const duration = this.editMediaDuration() ?? lesson?.manifest.duration ?? 0;
@@ -771,6 +981,11 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   }
 
   private configureEditWaveformWindow(duration: number, expand: boolean): void {
+    if (this.savedLesson()) {
+      this.editWaveformWindowStart = 0;
+      this.editWaveformWindowEnd = duration;
+      return;
+    }
     const lesson = this.result();
     const index = this.editingIndex();
     const clip = lesson && index !== null ? lesson.manifest.segments[index] : null;
@@ -801,9 +1016,10 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       !Number.isFinite(end) ||
       start < 0 ||
       end <= start ||
-      end > lesson.manifest.duration ||
-      (index > 0 && start < lesson.manifest.segments[index - 1].start) ||
-      (index < lesson.manifest.segments.length - 1 &&
+      end > (this.savedLesson() ? (this.editMediaDuration() ?? 0) : lesson.manifest.duration) ||
+      (!this.savedLesson() && index > 0 && start < lesson.manifest.segments[index - 1].start) ||
+      (!this.savedLesson() &&
+        index < lesson.manifest.segments.length - 1 &&
         start > lesson.manifest.segments[index + 1].start)
     )
       return null;
@@ -1043,6 +1259,11 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
       this.editWaveformSourceFile = file;
       this.editWaveformBuffer = buffer;
+      if (this.savedLesson()) {
+        this.editMediaDuration.set(buffer.duration);
+        if (this.editEnd === 0) this.editEnd = buffer.duration;
+        this.savedClipDurations.update((items) => ({ ...items, [segmentIndex]: buffer.duration }));
+      }
       this.configureEditWaveformWindow(buffer.duration, false);
       this.refreshEditWaveform();
       console.info('[Admin.AILesson.SegmentWaveform.Success]', {
@@ -1184,6 +1405,73 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   async saveSegmentEdit(): Promise<void> {
     const lesson = this.result();
     const index = this.editingIndex();
+    if (this.savedLesson()) {
+      if (index === null || this.lessonSaving() || this.segmentSaving()) return;
+      const text = this.editText.trim();
+      if (!text || text.length > 1000) {
+        this.error.set('اكتب نصًا صالحًا للمقطع قبل الحفظ.');
+        return;
+      }
+      const buffer = this.editWaveformBuffer;
+      const range = this.currentEditRange();
+      let audio = this.pendingSavedAudio;
+      if (buffer && range) {
+        const trimmed = range.start > 0.01 || range.end < buffer.duration - 0.01;
+        if (trimmed) {
+          try {
+            audio = this.wavClip(buffer, range.start, range.end, index);
+          } catch {
+            this.error.set('التوقيت المحدد غير صالح أو حجم الصوت بعد القص يتجاوز 2 MB.');
+            return;
+          }
+        }
+      } else if (buffer && !range) {
+        this.error.set('راجع بداية المقطع ونهايته قبل تأكيد التعديل.');
+        return;
+      }
+      this.savedLesson.update((details) =>
+        details
+          ? {
+              ...details,
+              segments: details.segments.map((segment, position) =>
+                position === index ? { ...segment, text } : segment,
+              ),
+            }
+          : null,
+      );
+      if (audio) {
+        this.savedLessonAudio.update((files) => ({ ...files, [index]: audio }));
+        const url = URL.createObjectURL(audio);
+        this.urls.push(url);
+        this.previewUrls.update((items) =>
+          items.map((item, position) => (position === index ? url : item)),
+        );
+        if (buffer && range) {
+          this.savedClipDurations.update((items) => ({
+            ...items,
+            [index]: range.end - range.start,
+          }));
+        }
+      }
+      this.pendingSavedAudio = null;
+      this.result.update((current) =>
+        current
+          ? {
+              ...current,
+              manifest: {
+                ...current.manifest,
+                segments: current.manifest.segments.map((clip, position) =>
+                  position === index ? { ...clip, text } : clip,
+                ),
+              },
+            }
+          : null,
+      );
+      this.savedLessonDirty.set(true);
+      this.closeEditModal();
+      this.notice.set('تم تعديل النص. اضغط حفظ التعديلات أسفل المقاطع لحفظ نسخة الدرس.');
+      return;
+    }
     if (
       !lesson ||
       index === null ||
@@ -1259,6 +1547,41 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     } finally {
       this.segmentSaving.set(false);
     }
+  }
+
+  private wavClip(buffer: AudioBuffer, start: number, end: number, index: number): File {
+    const first = Math.floor(start * buffer.sampleRate);
+    const last = Math.min(buffer.length, Math.ceil(end * buffer.sampleRate));
+    const frames = last - first;
+    const bytes = 44 + frames * 2;
+    if (frames <= 0 || bytes > 2_000_000) throw new Error('invalid_wav_clip');
+    const wav = new ArrayBuffer(bytes);
+    const view = new DataView(wav);
+    const label = (offset: number, value: string) => {
+      for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
+    };
+    label(0, 'RIFF');
+    view.setUint32(4, bytes - 8, true);
+    label(8, 'WAVE');
+    label(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, buffer.sampleRate, true);
+    view.setUint32(28, buffer.sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    label(36, 'data');
+    view.setUint32(40, frames * 2, true);
+    const channels = Array.from({ length: buffer.numberOfChannels }, (_, channel) =>
+      buffer.getChannelData(channel),
+    );
+    for (let frame = 0; frame < frames; frame++) {
+      let sample = 0;
+      for (const channel of channels) sample += channel[first + frame] / channels.length;
+      view.setInt16(44 + frame * 2, Math.round(Math.max(-1, Math.min(1, sample)) * 32767), true);
+    }
+    return new File([wav], `segment-${index + 1}.wav`, { type: 'audio/wav' });
   }
 
   playSegment(index: number): void {
@@ -1355,6 +1678,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
       new Set(checked ? Array.from({ length: count }, (_, i) => i) : []),
     );
     this.reviewed = false;
+    if (this.savedLesson()) this.savedLessonDirty.set(true);
     console.info('[Admin.AILesson.Selection.All]', {
       selectedCount: this.selectedSegmentCount(),
       totalCount: count,
@@ -1373,6 +1697,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     else selected.delete(index);
     this.selectedSegmentIndices.set(selected);
     this.reviewed = false;
+    if (this.savedLesson()) this.savedLessonDirty.set(true);
     console.info('[Admin.AILesson.Selection.Change]', {
       segmentIndex: index,
       included: checked,

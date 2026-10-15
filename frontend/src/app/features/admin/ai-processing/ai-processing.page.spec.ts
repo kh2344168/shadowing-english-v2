@@ -143,6 +143,105 @@ describe('AdminAIProcessingPage — approve and save', () => {
     expect(page.connected()).toBe(false);
   });
 
+  it('shows saved shadowing texts instead of the new-lesson upload form when editing', async () => {
+    Object.defineProperty(page, 'routedVersionId', { value: 'existing-version' });
+    page.activeVersionId.set('existing-version');
+    const loading = page['loadSavedLesson']();
+
+    http.expectOne('/api/admin/lessons/existing-version/workflow').flush({
+      lessonId: 'existing-lesson',
+      versionId: 'existing-version',
+      versionNumber: 1,
+      title: 'Existing lesson',
+      description: '',
+      revision: 'revision-1',
+      aiStatus: null,
+      reviewedStages: [],
+      stages: [],
+    });
+    await Promise.resolve();
+    http.expectOne('/api/admin/shadowing/lessons/existing-lesson').flush({
+      id: 'existing-lesson',
+      versionId: 'existing-version',
+      versionNumber: 1,
+      title: 'Existing lesson',
+      description: 'Saved description',
+      segments: [
+        { position: 1, text: 'This is the saved sentence.', audioUrl: '/audio/1.wav' },
+        { position: 2, text: 'Another saved sentence.', audioUrl: '/audio/2.wav' },
+      ],
+    });
+    await loading;
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const view = fixture.nativeElement as HTMLElement;
+    expect(view.querySelectorAll('.segment-row')).toHaveLength(2);
+    expect(view.querySelector('.drop-zone')).toBeNull();
+    expect(view.textContent).toContain('This is the saved sentence.');
+    view.querySelector<HTMLButtonElement>('.segment-button.edit')!.click();
+    http
+      .expectOne('/api/admin/shadowing/lessons/versions/existing-version/segments/1/audio')
+      .flush(new Blob([new Uint8Array(64)], { type: 'audio/wav' }));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(view.querySelector('.waveform-editor')).toBeTruthy();
+    expect(view.querySelector<HTMLTextAreaElement>('.edit-modal textarea')?.value).toBe(
+      'This is the saved sentence.',
+    );
+
+    page.editText = 'This is the corrected sentence.';
+    await page.saveSegmentEdit();
+    fixture.detectChanges();
+    expect(view.textContent).toContain('This is the corrected sentence.');
+    page.toggleSegmentSelection(1, false);
+    expect(page.selectedSegmentCount()).toBe(1);
+
+    const saving = page.saveSavedLesson();
+    await flushCsrf();
+    const edit = http.expectOne('/api/admin/shadowing/lessons/existing-lesson');
+    expect(edit.request.method).toBe('PUT');
+    expect((edit.request.body as FormData).get('segments')).toBe(
+      '["This is the corrected sentence."]',
+    );
+    expect((edit.request.body as FormData).get('sourcePositions')).toBe('[1]');
+    edit.flush({
+      id: 'existing-lesson',
+      versionId: 'updated-version',
+      title: 'Existing lesson',
+      description: 'Saved description',
+      segmentCount: 1,
+      aiNeedsReview: true,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    http.expectOne('/api/admin/lessons/updated-version/workflow').flush({
+      lessonId: 'existing-lesson',
+      versionId: 'updated-version',
+      versionNumber: 2,
+      title: 'Existing lesson',
+      description: 'Saved description',
+      revision: 'revision-2',
+      aiStatus: null,
+      reviewedStages: [],
+      stages: [],
+    });
+    await Promise.resolve();
+    http.expectOne('/api/admin/shadowing/lessons/existing-lesson').flush({
+      id: 'existing-lesson',
+      versionId: 'updated-version',
+      versionNumber: 2,
+      title: 'Existing lesson',
+      description: 'Saved description',
+      segments: [
+        { position: 1, text: 'This is the corrected sentence.', audioUrl: '/audio/2.wav' },
+      ],
+    });
+    await saving;
+    expect(page.savedLesson()?.versionId).toBe('updated-version');
+  });
+
   it('requires review and waits for an open edit or recut to finish before saving', async () => {
     prepareReviewedLesson();
     page.reviewed = false;

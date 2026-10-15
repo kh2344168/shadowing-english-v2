@@ -68,6 +68,27 @@ internal static class AiTextChecks
                 "legacy_review_rejected");
             Assert(!LessonMaterialRules.ReadyToApprove(v1 with { ReviewedStages =
                 ["vocabulary", "listen-type", "conversation"] }), "partial_review_accepted");
+            var focused = material with { ConversationTurnTarget = 4,
+                ConversationFocusTense = "present-simple", ConversationTargetWords = ["hello"],
+                ConversationLearningOutcome = "Greet a colleague in present simple" };
+            Assert(LessonMaterialRules.Valid(focused, "Hello world") &&
+                LessonMaterialRules.ConversationTurns(focused) == 4 &&
+                LessonMaterialRules.ConversationTurns(material) == 10,
+                "conversation_focus_or_legacy_turn_count_invalid");
+            Assert(!LessonMaterialRules.Valid(focused with { ConversationTurnTarget = 21 }, "Hello world") &&
+                !LessonMaterialRules.Valid(focused with { ConversationFocusTense = "unknown" }, "Hello world") &&
+                !LessonMaterialRules.Valid(focused with { ConversationTargetWords = ["invented"] }, "Hello world"),
+                "invalid_conversation_configuration_accepted");
+            Assert(LessonMaterialRules.ParseFeedback(
+                "{\"reply\":\"How are you?\",\"correction\":\"\",\"betterAnswer\":\"\",\"grammarTip\":\"\"}") is not null,
+                "unnecessary_correction_cannot_be_left_empty");
+            Assert(!LessonMaterialRules.CountsConversationTurn(focused,
+                    new ChatFeedback("Try present simple.", "", "", "", false)) &&
+                LessonMaterialRules.CountsConversationTurn(focused,
+                    new ChatFeedback("Good!", "", "", "", true)) &&
+                LessonMaterialRules.CountsConversationTurn(material,
+                    new ChatFeedback("Good!", "", "", "", null)),
+                "off_tense_reply_counted_or_legacy_reply_blocked");
             return Task.CompletedTask;
         });
         await check("Generated chunks and safe dictation preserve the old model response", () =>
@@ -100,13 +121,14 @@ internal static class AiTextChecks
                 .UseSqlServer("Server=127.0.0.1;Database=NeverConnected;Integrated Security=true;").Options;
             using var model = new ApplicationDbContext(options);
             Assert(!model.Database.HasPendingModelChanges(), "ai_model_snapshot_is_stale");
-            Assert(model.Database.GetMigrations().Last() == "20261011090000_AddLessonWorkflows",
+            Assert(model.Database.GetMigrations().Last() == "20261012090000_SnapshotPublishedLessonWorkflow",
                 "ai_migration_not_registered");
             var script = model.GetService<IMigrator>().GenerateScript();
             Assert(script.Contains("CREATE TABLE [LessonAiContents]") &&
                 script.Contains("CREATE TABLE [StudentPracticeAttempts]") &&
                 script.Contains("[AiContentId]", StringComparison.Ordinal) &&
-                script.Contains("CREATE TABLE [LessonWorkflows]"), "ai_migration_sql_missing");
+                script.Contains("CREATE TABLE [LessonWorkflows]") &&
+                script.Contains("[WorkflowStagesJson]"), "ai_migration_sql_missing");
             return Task.CompletedTask;
         });
         await check("Router falls back after 429 and validates JSON before returning", async () =>
