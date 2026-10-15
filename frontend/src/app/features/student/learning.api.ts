@@ -80,6 +80,9 @@ export interface AiMaterial {
   aiRole?: string | null;
   studentRole?: string | null;
   openingMessage?: string | null;
+  conversationTurnTarget?: number | null;
+  conversationLearningOutcome?: string | null;
+  conversationFocusTense?: string | null;
   targetPhrases?: string[];
   shadowingReviewEnabled?: boolean;
   quiz: {
@@ -138,9 +141,12 @@ export interface ConversationFeedback {
   correction: string;
   betterAnswer: string;
   grammarTip: string;
+  focusMet?: boolean | null;
 }
 export interface ConversationHistory {
-  turns: { message: string; feedback: ConversationFeedback }[];
+  turns: { id: string; message: string; feedback: ConversationFeedback }[];
+  completedTurns?: number;
+  turnTarget?: number;
   remainingToday: number;
 }
 
@@ -234,5 +240,19 @@ export class StudentLearningApi {
     return this.http.get<ConversationHistory>(
       `${this.base}/slots/${encodeURIComponent(slotId)}/conversation/turns`,
     );
+  }
+  transcribeConversation(slotId: string, audio: Blob): Observable<{ text: string }> {
+    const form = new FormData();
+    form.append('audio', audio, 'student.webm');
+    return this.http.post<{ text: string }>(
+      `${this.base}/slots/${encodeURIComponent(slotId)}/conversation/transcribe`,
+      form,
+    );
+  }
+  conversationAudioUrl(slotId: string, voice: string, turnId?: string): string {
+    const path = `${this.base}/slots/${encodeURIComponent(slotId)}/conversation/audio`;
+    const params = new URLSearchParams({ voice });
+    if (turnId) params.set('turnId', turnId);
+    return `${path}?${params}`;
   }
 }
