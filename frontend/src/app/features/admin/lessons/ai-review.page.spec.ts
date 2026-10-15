@@ -36,7 +36,7 @@ describe('AdminLessonStageEditorPage', () => {
     dictation: [{ position: 1, enabled: true, acceptedAnswers: ['Hello there'], hint: null }],
     reviewedStages: [],
   };
-  async function setup(status: 'Draft' | 'Approved') {
+  async function setup(status: 'Draft' | 'Approved', stageType = 'vocabulary') {
     await TestBed.configureTestingModule({
       imports: [AdminLessonStageEditorPage],
       providers: [
@@ -58,7 +58,7 @@ describe('AdminLessonStageEditorPage', () => {
     const http = TestBed.inject(HttpTestingController);
     const fixture = TestBed.createComponent(AdminLessonStageEditorPage);
     fixture.detectChanges();
-    http.expectOne('/api/admin/lessons/ai-providers').flush({ configured: ['Groq'] });
+    http.expectOne('/api/admin/lessons/ai-providers').flush({ configured: ['Groq'], imagesConfigured: true });
     http
       .expectOne(`${base}/ai`)
       .flush({ id: 'job-1', lessonVersionId: versionId, revision: 'rev-1', status, material });
@@ -72,7 +72,13 @@ describe('AdminLessonStageEditorPage', () => {
           position: 1,
           enabled: true,
         },
-        { id: stageId, type: 'vocabulary', title: 'كلمات السفر', position: 2, enabled: true },
+        {
+          id: stageId,
+          type: stageType,
+          title: stageType === 'conversation' ? 'المحادثة' : 'كلمات السفر',
+          position: 2,
+          enabled: true,
+        },
       ],
     });
     await vi.waitFor(() => {
@@ -127,6 +133,67 @@ describe('AdminLessonStageEditorPage', () => {
     fixture.detectChanges();
     expect(page.selectedStage()).toBe('vocabulary');
     expect(fixture.nativeElement.querySelector('#words-title')).not.toBeNull();
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('offers multiple Pexels images and saves only the teacher-selected image', async () => {
+    const { http, fixture, page } = await setup('Draft');
+    const suggesting = page.suggestVocabularyImage(0);
+    await Promise.resolve();
+    const request = http.expectOne(`${base}/ai/job-1/vocabulary-image`);
+    expect(request.request.body).toEqual({ expectedRevision: 'rev-1', cardIndex: 0, page: 1 });
+    request.flush({ options: [
+      { imageUrl: 'https://images.pexels.com/photos/1/test.jpeg', photographer: 'One', photoUrl: 'https://www.pexels.com/photo/1' },
+      { imageUrl: 'https://images.pexels.com/photos/2/test.jpeg', photographer: 'Two', photoUrl: 'https://www.pexels.com/photo/2' },
+    ], provider: 'pexels', page: 1 });
+    await suggesting;
+    expect(page.imageOptions()[0]).toHaveLength(2);
+    expect(page.draft()?.vocabulary[0].imageUrl).toBe(material.vocabulary[0].imageUrl);
+    page.selectVocabularyImage(0, page.imageOptions()[0][1].imageUrl);
+    expect(page.draft()?.vocabulary[0].imageUrl).toContain('/photos/2/');
+    expect(page.dirty()).toBe(true);
+    const nextPage = page.suggestVocabularyImage(0);
+    await Promise.resolve();
+    const nextRequest = http.expectOne(`${base}/ai/job-1/vocabulary-image`);
+    expect(nextRequest.request.body.page).toBe(2);
+    nextRequest.flush({ options: [
+      { imageUrl: 'https://images.pexels.com/photos/3/test.jpeg', photographer: 'Three', photoUrl: 'https://www.pexels.com/photo/3' },
+    ], provider: 'pexels', page: 2 });
+    await nextPage;
+    expect(page.imageOptions()[0][0].imageUrl).toContain('/photos/3/');
+    const saving = page.save();
+    await Promise.resolve();
+    const save = http.expectOne(`${base}/ai/job-1`);
+    expect(save.request.body.material.vocabulary[0].imageUrl).toContain('/photos/2/');
+    save.flush({ ...page.job(), revision: 'rev-2', material: save.request.body.material });
+    await saving;
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('saves the teacher conversation target, tense, vocabulary, and correction scope', async () => {
+    const { http, fixture, page } = await setup('Draft', 'conversation');
+    expect(fixture.nativeElement.textContent).toContain('قواعد نجاح المحادثة');
+    const draft = page.draft()!;
+    draft.conversationTurnTarget = 4;
+    draft.conversationFocusTense = 'present-simple';
+    draft.conversationLearningOutcome = 'Describe a daily routine';
+    draft.conversationCorrectionMode = 'lesson-only';
+    page.toggleConversationWord('Hello', true);
+    expect(page.stageIssues('conversation')).toEqual([]);
+    const saving = page.save();
+    await Promise.resolve();
+    const request = http.expectOne(`${base}/ai/job-1`);
+    expect(request.request.body.material).toMatchObject({
+      conversationTurnTarget: 4,
+      conversationFocusTense: 'present-simple',
+      conversationLearningOutcome: 'Describe a daily routine',
+      conversationCorrectionMode: 'lesson-only',
+      conversationTargetWords: ['Hello'],
+    });
+    request.flush({ ...page.job(), revision: 'rev-2', material: request.request.body.material });
+    await saving;
     http.verify();
     fixture.destroy();
   });

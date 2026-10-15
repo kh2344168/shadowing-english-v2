@@ -2,13 +2,19 @@
   @if (activeCreationTab() === 'shadowing') {
   <header class="page-header">
     <div>
-      <p class="eyebrow">إنشاء الدروس</p>
+      <p class="eyebrow">{{ savedLesson() ? 'تعديل الدرس' : 'إنشاء الدروس' }}</p>
 
-      <h1 id="ai-lesson-title">إنشاء درس الشادوينج</h1>
+      <h1 id="ai-lesson-title">
+        {{ savedLesson() ? 'مراجعة نصوص الشادوينج' : 'إنشاء درس الشادوينج' }}
+      </h1>
 
-      <p>ارفع الصوت والنص، ابدأ المعالجة، ثم راجع كل مقطع قبل اعتماد الدرس.</p>
+      <p>
+        {{ savedLesson() ? 'النصوص والصوت المحفوظان لهذا الدرس؛ افتح تعديل لأي مقطع ثم احفظ
+        التغييرات.' : 'ارفع الصوت والنص، ابدأ المعالجة، ثم راجع كل مقطع قبل اعتماد الدرس.' }}
+      </p>
     </div>
 
+    @if (!shadowingComplete()) {
     <div
       class="processor-status"
       [class.connected]="connected()"
@@ -24,6 +30,7 @@
       <a routerLink="/admin/ai-tools"> إصلاح الاتصال </a>
       }
     </div>
+    }
   </header>
   } @if (error()) {
   <div class="message error-message" role="alert">
@@ -81,6 +88,9 @@
 
   @if (activeCreationTab() === 'shadowing') {
   <div class="tab-workspace tab-workspace--shadowing">
+    @if (savedLessonLoading()) {
+    <p class="message" role="status">جاري تحميل نصوص الدرس المحفوظة...</p>
+    } @if (!shadowingComplete() && !savedLessonLoading()) {
     <section class="setup-section">
       <div class="upload-grid">
         <article class="upload-card" [class.complete]="media">
@@ -288,8 +298,7 @@
         }
       </article>
     </section>
-
-    @if (result(); as lesson) {
+    } @if (result(); as lesson) {
     <section class="segments-section" aria-labelledby="segments-title">
       <div class="segments-header">
         <div>
@@ -354,10 +363,24 @@
           <div class="segment-content">
             <strong dir="ltr"> {{ clip.text }} </strong>
 
+            @if (savedLesson()) {
+            <audio
+              hidden
+              preload="metadata"
+              [src]="previewUrls()[index]"
+              (loadedmetadata)="rememberSavedDuration(index, $event)"
+            ></audio>
+            @if (savedClipDurations()[index]; as duration) {
+            <small dir="ltr"
+              >{{ formatTime(0) }} → {{ formatTime(duration) }} · {{ segmentDuration(0, duration)
+              }}s <span dir="rtl">من الصوت المحفوظ</span></small
+            >
+            } } @else {
             <small dir="ltr">
               {{ formatTime(clip.start) }} → {{ formatTime(clip.end) }} · {{
               segmentDuration(clip.start, clip.end) }}s
             </small>
+            }
           </div>
 
           <div class="segment-actions">
@@ -383,7 +406,7 @@
 
       @if (selectedSegmentCount() === 0) {
       <p class="selection-validation" role="alert">اختر مقطعًا واحدًا على الأقل قبل حفظ الدرس.</p>
-      }
+      } @if (!savedLesson()) {
       <div class="review-confirmation">
         <label>
           <input
@@ -395,18 +418,33 @@
           <span> راجعت النص والصوت للمقاطع المختارة ({{ selectedSegmentCount() }}) </span>
         </label>
       </div>
+      }
 
       <div class="final-action">
         <div role="status" aria-live="polite">
-          <strong>الشادوينج جاهز؟</strong>
+          <strong>{{ savedLesson() ? 'تعديل نصوص الدرس' : 'الشادوينج جاهز؟' }}</strong>
 
+          @if (savedLesson()) {
+          <p>سيتم حفظ النصوص المعدلة في نسخة جديدة من الدرس، مع الاحتفاظ بالنسخة السابقة.</p>
+          } @else {
           <p>
             سيتم حفظ {{ selectedSegmentCount() }} مقطعًا مختارًا في قاعدة البيانات. بعد نجاح الحفظ
             ستُفرّغ الحقول وتنتقل تلقائيًا إلى مراحل الدرس، ولن يُنشر الدرس تلقائيًا.
           </p>
+          }
         </div>
 
         <div class="final-action-actions">
+          @if (savedLesson()) {
+          <button
+            type="button"
+            class="primary-button"
+            (click)="saveSavedLesson()"
+            [disabled]="!savedLessonDirty() || lessonSaving()"
+          >
+            {{ lessonSaving() ? 'جاري حفظ التعديلات...' : 'حفظ التعديلات' }}
+          </button>
+          } @else {
           <button
             type="button"
             class="secondary-button"
@@ -423,6 +461,7 @@
           >
             {{ lessonSaving() ? 'جاري حفظ الدرس...' : 'اعتماد الدرس وحفظه' }}
           </button>
+          }
         </div>
       </div>
     </section>
@@ -515,7 +554,8 @@
             <span class="waveform-message waveform-error">{{ editWaveformError() }}</span>
             } @else if (!editingPreviewUrl()) {
             <span class="waveform-message waveform-error"
-              >الملف الأصلي مطلوب لعرض الموجة ومعاينة الصوت.</span
+              >{{ savedLesson() ? 'جارٍ تحميل صوت المقطع المحفوظ...' : 'الملف الأصلي مطلوب لعرض
+              الموجة ومعاينة الصوت.' }}</span
             >
             } @else {
             <span class="waveform-timeline">
@@ -576,30 +616,34 @@
           @if (!editingPreviewUrl() || editWaveformError()) {
           <div class="waveform-source-required">
             <div>
-              <strong>ملف المصدر غير متاح</strong>
+              <strong
+                >{{ savedLesson() ? 'تعذر تحميل صوت المقطع؟' : 'ملف المصدر غير متاح' }}</strong
+              >
               <small
-                >اختر نفس الملف الأصلي لعرض الكلمات قبل المقطع وبعده. الملف للمعاينة المحلية فقط ولن
-                يعيد تشغيل WhisperX.</small
+                >{{ savedLesson() ? 'يمكنك اختيار ملف WAV بديل لهذا المقطع، أو تعديل النص فقط.' :
+                'اختر نفس الملف الأصلي لعرض الكلمات قبل المقطع وبعده. الملف للمعاينة المحلية فقط ولن
+                يعيد تشغيل WhisperX.' }}</small
               >
             </div>
             <label class="waveform-source-button" for="edit-source-media"
-              >اختيار الملف الأصلي</label
+              >{{ savedLesson() ? 'اختيار صوت بديل' : 'اختيار الملف الأصلي' }}</label
             >
             <input
               id="edit-source-media"
               class="waveform-source-input"
               type="file"
-              accept=".wav,.mp3,.m4a,.mp4,.ogg,.webm,audio/*,video/*"
+              [accept]="savedLesson() ? '.wav,audio/wav' : '.wav,.mp3,.m4a,.mp4,.ogg,.webm,audio/*,video/*'"
               (change)="chooseEditSourceMedia($event)"
               [disabled]="segmentSaving()"
             />
           </div>
           }
 
-          <small class="waveform-instructions">
-            اسحب المقبض الأخضر للبداية والذهبي للنهاية لتضمين كلمات قبل المقطع أو بعده، ثم شغّل
-            الجزء المحدد.
-          </small>
+          <small class="waveform-instructions"
+            >{{ savedLesson() ? 'الموجة للصوت المحفوظ لهذا المقطع فقط. يمكنك قص جزء منه، لكن الصوت
+            الأصلي قبل المقطع وبعده غير محفوظ.' : 'اسحب المقبض الأخضر للبداية والذهبي للنهاية لتضمين
+            كلمات قبل المقطع أو بعده، ثم شغّل الجزء المحدد.' }}</small
+          >
 
           <div class="waveform-controls">
             <button
@@ -660,11 +704,11 @@
             <input
               type="number"
               min="0"
-              [max]="lesson.manifest.duration"
+              [max]="savedLesson() ? editMediaDuration() : lesson.manifest.duration"
               step="0.01"
               [(ngModel)]="editStart"
               (ngModelChange)="onEditRangeChanged()"
-              [disabled]="segmentSaving()"
+              [disabled]="segmentSaving() || (!!savedLesson() && !editMediaDuration())"
             />
 
             <small dir="ltr"> {{ formatTime(editStart) }} </small>
@@ -676,11 +720,11 @@
             <input
               type="number"
               min="0"
-              [max]="lesson.manifest.duration"
+              [max]="savedLesson() ? editMediaDuration() : lesson.manifest.duration"
               step="0.01"
               [(ngModel)]="editEnd"
               (ngModelChange)="onEditRangeChanged()"
-              [disabled]="segmentSaving()"
+              [disabled]="segmentSaving() || (!!savedLesson() && !editMediaDuration())"
             />
 
             <small dir="ltr"> {{ formatTime(editEnd) }} </small>
@@ -688,7 +732,9 @@
         </div>
 
         <p class="modal-help">
-          حفظ التعديل يعيد تجهيز صوت هذا المقطع حسب التوقيت الجديد، ثم يحدثه في القائمة.
+          {{ savedLesson() ? 'تأكيد التعديل يحدث القائمة؛ حفظ التعديلات أسفلها ينشئ نسخة جديدة في
+          قاعدة البيانات.' : 'حفظ التعديل يعيد تجهيز صوت هذا المقطع حسب التوقيت الجديد، ثم يحدثه في
+          القائمة.' }}
         </p>
       </div>
 
@@ -706,7 +752,7 @@
           type="button"
           class="primary-button"
           (click)="saveSegmentEdit()"
-          [disabled]="segmentSaving() || !isEditRangeValid()"
+          [disabled]="segmentSaving() || (!savedLesson() && !isEditRangeValid())"
         >
           {{ segmentSaving() ? 'جاري حفظ التعديل...' : 'حفظ التعديل' }}
         </button>

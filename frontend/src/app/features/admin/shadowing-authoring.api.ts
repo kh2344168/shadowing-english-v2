@@ -137,6 +137,13 @@ export class ShadowingAuthoringApi {
     return this.http.get<LessonEditDetails>(`${this.base}/lessons/${encodeURIComponent(id)}`);
   }
 
+  lessonSegmentAudio(versionId: string, position: number): Observable<Blob> {
+    return this.http.get(
+      `${this.base}/lessons/versions/${encodeURIComponent(versionId)}/segments/${position}/audio`,
+      { responseType: 'blob' },
+    );
+  }
+
   editLesson(
     id: string,
     expectedVersionId: string,
@@ -151,6 +158,7 @@ export class ShadowingAuthoringApi {
     body.append('title', title);
     body.append('description', description);
     body.append('segments', JSON.stringify(segments.map((segment) => segment.text.trim())));
+    body.append('sourcePositions', JSON.stringify(segments.map((segment) => segment.position)));
     segments.forEach((segment, index) => {
       if (segment.audio) body.append(`audio${index}`, segment.audio);
     });

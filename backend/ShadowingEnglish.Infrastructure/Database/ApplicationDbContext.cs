@@ -170,6 +170,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.HasOne<PublishedCurriculumVersion>().WithMany().HasForeignKey(x => x.PublishedCurriculumVersionId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<LessonVersion>().WithMany().HasForeignKey(x => x.LessonVersionId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<LessonAiContent>().WithMany().HasForeignKey(x => x.AiContentId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(x => x.WorkflowStagesJson).HasMaxLength(16000);
         });
         builder.Entity<StudentStageProgress>(entity =>
         {
