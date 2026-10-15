@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ShadowingEnglish.Api.Modules.AI;
@@ -184,6 +185,39 @@ internal static class AiPublicationChecks
             Assert(unchanged.StatusCode == HttpStatusCode.Conflict &&
                 (await unchanged.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString() ==
                 "no_unpublished_changes", "unchanged_ai_allowed_republish");
+        });
+        await check("Workflow edits require republish and cannot change the current student path", async () =>
+        {
+            var oldSlot = await CurrentSlot();
+            using (var scope = app.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var workflow = await db.LessonWorkflows.SingleAsync(x => x.LessonVersionId == lessonId);
+                var stages = JsonNode.Parse(workflow.StagesJson)!.AsArray();
+                stages[1]!["title"] = "مفردات جديدة";
+                workflow.StagesJson = stages.ToJsonString();
+                workflow.Revision = Guid.NewGuid();
+                await db.SaveChangesAsync();
+            }
+            var oldOverview = await student.GetFromJsonAsync<JsonElement>($"/api/student/learning/slots/{oldSlot}");
+            Assert(oldOverview.GetProperty("stages")[1].GetProperty("title").GetString() == "الكلمات",
+                "admin_edit_changed_published_student_path");
+            var group = await Group();
+            Assert(group.GetProperty("hasUnpublishedChanges").GetBoolean(),
+                "workflow_edit_did_not_enable_republish");
+            await Publish(group);
+            var newSlot = await CurrentSlot();
+            var newOverview = await student.GetFromJsonAsync<JsonElement>($"/api/student/learning/slots/{newSlot}");
+            Assert(newOverview.GetProperty("stages")[1].GetProperty("title").GetString() == "مفردات جديدة",
+                "republished_workflow_not_visible_to_student");
+            using var verifyScope = app.Services.CreateScope();
+            var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var snapshots = await verifyDb.PublishedLessonSlots.AsNoTracking()
+                .Where(x => x.Id == oldSlot || x.Id == newSlot)
+                .ToDictionaryAsync(x => x.Id, x => x.WorkflowStagesJson);
+            Assert(JsonNode.Parse(snapshots[oldSlot]!)!.AsArray()[1]!["title"]!.GetValue<string>() == "الكلمات" &&
+                JsonNode.Parse(snapshots[newSlot]!)!.AsArray()[1]!["title"]!.GetValue<string>() == "مفردات جديدة",
+                "workflow_snapshot_was_mutated");
         });
         return failures() == 0 ? 0 : 1;
     }

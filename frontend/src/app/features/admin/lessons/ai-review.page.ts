@@ -16,6 +16,7 @@ import {
   LessonMaterial,
   LessonSegmentReview,
   QuizCard,
+  VocabularyImageOption,
 } from './lesson-ai.api';
 import { LessonStageType, LessonWorkflowApi, LessonWorkflowStage } from './lesson-workflow.api';
 
@@ -45,6 +46,10 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   readonly versionId = this.route.snapshot.paramMap.get('versionId') ?? '';
   readonly workflowStageId = this.route.snapshot.paramMap.get('stageId');
   readonly providers = signal<string[]>([]);
+  readonly imagesConfigured = signal(false);
+  readonly imageBusy = signal<number | null>(null);
+  readonly imageOptions = signal<Record<number, VocabularyImageOption[]>>({});
+  readonly imagePages = signal<Record<number, number>>({});
   readonly job = signal<LessonAiJob | null>(null);
   readonly draft = signal<LessonMaterial | null>(null);
   readonly segments = signal<LessonSegmentReview[]>([]);
@@ -134,6 +139,7 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       ]);
       if (this.destroyed) return;
       this.providers.set(providers.configured);
+      this.imagesConfigured.set(providers.imagesConfigured === true);
       this.segments.set(segments);
       this.setJob(job);
       if (workflow) {
@@ -184,6 +190,8 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   }
   private setJob(job: LessonAiJob | null): void {
     this.job.set(job);
+    this.imageOptions.set({});
+    this.imagePages.set({});
     const material = job?.material ? structuredClone(job.material) : null;
     const needsDictation = !!material && material.dictation == null && job?.status === 'Draft';
     if (needsDictation && material) {
@@ -313,7 +321,26 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
           : [];
       }
       case 'conversation':
-        return material.conversationScenario?.trim() ? [] : ['أكمل موقف المحادثة قبل الاعتماد.'];
+        if (!material.conversationScenario?.trim()) return ['أكمل موقف المحادثة قبل الاعتماد.'];
+        if (
+          material.conversationTurnTarget != null &&
+          (!Number.isInteger(material.conversationTurnTarget) ||
+            material.conversationTurnTarget < 1 ||
+            material.conversationTurnTarget > 20)
+        )
+          return ['حدد عدد ردود الطالب بين 1 و20.'];
+        if ((material.conversationTargetWords?.length ?? 0) > 12)
+          return ['اختر 12 كلمة أو عبارة كحد أقصى.'];
+        if (
+          material.conversationTargetWords?.some(
+            (word) =>
+              !material.vocabulary.some(
+                (card) => card.includeForStudent !== false && card.word === word,
+              ),
+          )
+        )
+          return ['احذف كلمات مستبعدة أو تغير اسمها من أهداف المحادثة.'];
+        return [];
     }
   }
   async reviewStage(): Promise<void> {
@@ -359,6 +386,88 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     material.vocabulary[index].imageUrl = null;
     this.draft.set({ ...material });
     this.changed();
+  }
+
+  async suggestVocabularyImage(index: number): Promise<void> {
+    if (this.busy() || this.imageBusy() !== null || !this.imagesConfigured()) return;
+    const card = this.draft()?.vocabulary[index];
+    if (!card?.word.trim()) return;
+    this.error.set('');
+    this.notice.set('');
+    if (this.dirty() && card.word.trim() !== this.job()?.material?.vocabulary[index]?.word.trim()) {
+      await this.save();
+      if (this.dirty()) return;
+    }
+    const job = this.job();
+    if (!job || job.status !== 'Draft') return;
+    const page = (this.imagePages()[index] ?? 0) + 1;
+    this.imageBusy.set(index);
+    try {
+      await firstValueFrom(this.auth.csrf());
+      const result = await firstValueFrom(this.api.vocabularyImages(this.versionId, job, index, page));
+      this.imageOptions.update((current) => ({ ...current, [index]: result.options }));
+      this.imagePages.update((current) => ({ ...current, [index]: result.page }));
+      this.notice.set('اختر الصورة المناسبة من الاقتراحات، ثم احفظ التعديل.');
+    } catch (ex) {
+      const status = (ex as { status?: number }).status;
+      this.error.set(status === 404 ? 'لم نجد صورة مناسبة لهذه الكلمة في Pexels. يمكنك وضع رابط يدويًا.' :
+        status === 503 ? 'مفتاح Pexels غير صالح أو غير مفعّل. راجعه من إعدادات مزودي الصور.' :
+        status === 429 ? 'وصل Pexels لحد الطلبات المتاح. حاول لاحقًا.' :
+        'تعذر جلب الصورة الآن. تحقق من اتصال Pexels أو أعد المحاولة.');
+    } finally {
+      this.imageBusy.set(null);
+    }
+  }
+
+  selectVocabularyImage(index: number, imageUrl: string): void {
+    const material = this.draft();
+    if (!material?.vocabulary[index]) return;
+    material.vocabulary[index].imageUrl = imageUrl;
+    this.draft.set({ ...material });
+    this.changed();
+    this.notice.set('تم اختيار الصورة. اضغط حفظ لتثبيتها في مسودة الدرس.');
+  }
+
+  async fillMissingVocabularyImages(): Promise<void> {
+    if (this.busy() || this.imageBusy() !== null || !this.imagesConfigured()) return;
+    if (this.dirty()) {
+      await this.save();
+      if (this.dirty()) return;
+    }
+    const job = this.job();
+    if (!job || job.status !== 'Draft') return;
+    this.busy.set(true);
+    this.error.set('');
+    let filled = 0;
+    try {
+      await firstValueFrom(this.auth.csrf());
+      for (let index = 0; index < (this.draft()?.vocabulary.length ?? 0); index++) {
+        const card = this.draft()?.vocabulary[index];
+        if (!card?.word.trim() || card.imageUrl) continue;
+        this.imageBusy.set(index);
+        try {
+          const result = await firstValueFrom(this.api.vocabularyImages(this.versionId, job, index, 1));
+          const image = result.options[0];
+          if (!image) continue;
+          const material = this.draft();
+          if (!material?.vocabulary[index]) continue;
+          material.vocabulary[index].imageUrl = image.imageUrl;
+          this.draft.set({ ...material });
+          this.changed();
+          filled++;
+        } catch {
+          // One missing photo must not prevent suggestions for the remaining cards.
+        }
+      }
+      this.notice.set(filled
+        ? `تم اقتراح ${filled} صورة. راجع كل بطاقة ثم احفظ التعديلات.`
+        : 'لم نجد صورًا مناسبة الآن. تحقق من مفتاح Pexels أو اختر الصور يدويًا.');
+    } catch {
+      this.error.set('تعذر بدء البحث عن الصور. حدّث الصفحة وحاول مرة أخرى.');
+    } finally {
+      this.imageBusy.set(null);
+      this.busy.set(false);
+    }
   }
 
   async backToStages(): Promise<void> {
@@ -435,6 +544,19 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       .split('\n')
       .map((x) => x.trim())
       .filter(Boolean);
+    this.changed();
+  }
+  conversationWordSelected(word: string): boolean {
+    return this.draft()?.conversationTargetWords?.includes(word) ?? false;
+  }
+  toggleConversationWord(word: string, selected: boolean): void {
+    const material = this.draft();
+    if (!material) return;
+    const words = material.conversationTargetWords ?? [];
+    if (selected && !words.includes(word) && words.length >= 12) return;
+    material.conversationTargetWords = selected
+      ? [...new Set([...words, word])]
+      : words.filter((item) => item !== word);
     this.changed();
   }
 

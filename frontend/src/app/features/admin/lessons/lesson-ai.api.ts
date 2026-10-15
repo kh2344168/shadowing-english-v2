@@ -15,6 +15,11 @@ export interface VocabularyCard {
   imageUrl?: string | null;
   repeatForReview?: boolean;
 }
+export interface VocabularyImageOption {
+  imageUrl: string;
+  photographer: string;
+  photoUrl: string;
+}
 export interface DictationCard {
   position: number;
   enabled: boolean;
@@ -44,6 +49,11 @@ export interface LessonMaterial {
   aiRole?: string | null;
   studentRole?: string | null;
   openingMessage?: string | null;
+  conversationTurnTarget?: number | null;
+  conversationLearningOutcome?: string | null;
+  conversationFocusTense?: string | null;
+  conversationTargetWords?: string[] | null;
+  conversationCorrectionMode?: 'lesson-only' | 'all';
   shadowingReviewEnabled?: boolean;
   reviewedStages?: Array<
     | 'vocabulary'
@@ -73,7 +83,13 @@ export class LessonAiApi {
   private readonly http = inject(HttpClient);
   private readonly base = '/api/admin/lessons';
   providers() {
-    return this.http.get<{ configured: string[] }>(`${this.base}/ai-providers`);
+    return this.http.get<{ configured: string[]; imagesConfigured?: boolean }>(`${this.base}/ai-providers`);
+  }
+  vocabularyImages(versionId: string, job: LessonAiJob, cardIndex: number, page: number) {
+    return this.http.post<{ options: VocabularyImageOption[]; provider: 'pexels'; page: number }>(
+      `${this.base}/${encodeURIComponent(versionId)}/ai/${encodeURIComponent(job.id)}/vocabulary-image`,
+      { expectedRevision: job.revision, cardIndex, page },
+    );
   }
   get(versionId: string) {
     return this.http.get<LessonAiJob | null>(`${this.base}/${encodeURIComponent(versionId)}/ai`);

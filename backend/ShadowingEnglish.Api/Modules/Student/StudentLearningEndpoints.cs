@@ -69,7 +69,7 @@ public static class StudentLearningEndpoints
                     join lesson in db.LessonVersions.AsNoTracking() on slot.LessonVersionId equals lesson.Id
                     where slot.PublishedCurriculumVersionId == assigned.Id && slot.AvailableAtUtc <= now
                     orderby slot.WeekNumber, slot.DayNumber, slot.SortOrder, slot.Id
-                    select new { slot.Id, slot.LessonVersionId, slot.WeekNumber,
+                    select new { slot.Id, slot.LessonVersionId, slot.WorkflowStagesJson, slot.WeekNumber,
                         slot.DayNumber, slot.SortOrder, lesson.Title })
                     .Skip(((page ?? 1) - 1) * limit).Take(limit + 1).ToListAsync();
                 var ids = visible.Take(limit).Select(x => x.Id).ToArray();
@@ -78,16 +78,11 @@ public static class StudentLearningEndpoints
                         ids.Contains(x.SlotId))
                     .Select(x => new { x.SlotId, x.StageKey, x.CompletedSegments, x.IsComplete }).ToListAsync();
                 var progressBySlot = progress.ToLookup(x => x.SlotId);
-                var lessonVersionIds = visible.Take(limit).Select(x => x.LessonVersionId).Distinct().ToArray();
-                var workflows = await db.LessonWorkflows.AsNoTracking()
-                    .Where(x => lessonVersionIds.Contains(x.LessonVersionId))
-                    .Select(x => new { x.LessonVersionId, x.StagesJson })
-                    .ToDictionaryAsync(x => x.LessonVersionId, x => x.StagesJson, http.RequestAborted);
                 var cards = visible.Take(limit).Select(x =>
                 {
                     var slotProgress = progressBySlot[x.Id];
                     var shadowing = slotProgress.FirstOrDefault(p => p.StageKey == "shadowing");
-                    var stages = EnabledWorkflowStages(workflows.GetValueOrDefault(x.LessonVersionId));
+                    var stages = EnabledWorkflowStages(x.WorkflowStagesJson);
                     var completedStages = stages.Count(stage =>
                         slotProgress.Any(p => p.StageKey == stage && p.IsComplete));
                     return new LessonCard(x.Id, x.Title, x.WeekNumber, x.DayNumber, x.SortOrder,
@@ -126,10 +121,7 @@ public static class StudentLearningEndpoints
                             x.Status == "Approved")
                         .Select(x => x.PayloadJson).SingleOrDefaultAsync();
                 var hasAiContent = ReadMaterial(aiContentPayload) is not null;
-                var workflowJson = await db.LessonWorkflows.AsNoTracking()
-                    .Where(x => x.LessonVersionId == slot.LessonVersionId)
-                    .Select(x => x.StagesJson).SingleOrDefaultAsync(http.RequestAborted);
-                var stages = BuildStageOverview(slotId, workflowJson, hasAiContent, count > 0, progressByKey);
+                var stages = BuildStageOverview(slotId, slot.WorkflowStagesJson, hasAiContent, count > 0, progressByKey);
                 http.Response.Headers.CacheControl = "no-store";
                 log.LogInformation("Student.Overview.Success StudentId={StudentId} SlotId={SlotId} StageCount={StageCount} DurationMs={DurationMs}",
                     student, slotId, stages.Length, Ms(clock));
@@ -222,12 +214,9 @@ public static class StudentLearningEndpoints
                 if (slot is null) return Missing(log, clock, student.Value, slotId);
                 var total = await db.LessonSegments.AsNoTracking().CountAsync(x => x.LessonVersionId == slot.LessonVersionId);
                 if (total == 0 || request.CompletedSegments > total) return Reject(log, clock, "invalid_progress");
-                var workflowJson = await db.LessonWorkflows.AsNoTracking()
-                    .Where(x => x.LessonVersionId == slot.LessonVersionId)
-                    .Select(x => x.StagesJson).SingleOrDefaultAsync();
-                var enabledStages = EnabledWorkflowStages(workflowJson);
+                var enabledStages = EnabledWorkflowStages(slot.WorkflowStagesJson);
                 var shadowingIndex = Array.IndexOf(enabledStages, "shadowing");
-                if (workflowJson is not null && shadowingIndex < 0)
+                if (slot.WorkflowStagesJson is not null && shadowingIndex < 0)
                     return Reject(log, clock, "stage_not_enabled");
                 if (shadowingIndex > 0)
                 {
@@ -298,7 +287,8 @@ public static class StudentLearningEndpoints
                 version.GroupId == member.GroupId && version.PublishedAtUtc <= now &&
                 version.AvailableAtUtc <= now && slot.Id == slotId && slot.AvailableAtUtc <= now
             select new ScopedLesson(version.Id, lesson.Id, lesson.Title, lesson.Description,
-                slot.WeekNumber, slot.DayNumber, slot.SortOrder, slot.AiContentId)).SingleOrDefaultAsync();
+                slot.WeekNumber, slot.DayNumber, slot.SortOrder, slot.AiContentId,
+                slot.WorkflowStagesJson)).SingleOrDefaultAsync();
     }
 
     private static double Ms(long start) => Stopwatch.GetElapsedTime(start).TotalMilliseconds;
@@ -398,10 +388,10 @@ public static class StudentLearningEndpoints
     private static IResult ProgressConflict(ILogger log, Exception ex, Guid studentId, Guid slotId, long start)
     { log.LogWarning("Student.Progress.Save.Conflict ErrorCode=progress_changed ErrorType={ErrorType} StudentId={StudentId} SlotId={SlotId} DurationMs={DurationMs}", ex.GetType().Name, studentId, slotId, Ms(start)); return Results.Conflict(new { error = "progress_changed" }); }
     private static IResult Fail(ILogger log, Exception ex, string operation, Guid studentId, long start)
-    { log.LogError("Student.{Operation}.Failed ErrorCode=learning_operation_failed ErrorType={ErrorType} StudentId={StudentId} DurationMs={DurationMs}", ex.GetType().Name, operation, studentId, Ms(start)); return Results.Problem(statusCode: 500); }
+    { log.LogError(ex, "Student.{Operation}.Failed ErrorCode=learning_operation_failed ErrorType={ErrorType} StudentId={StudentId} DurationMs={DurationMs}", operation, ex.GetType().Name, studentId, Ms(start)); return Results.Problem(statusCode: 500); }
 
     private sealed record ScopedLesson(Guid VersionId, Guid LessonVersionId, string Title, string Description,
-        int WeekNumber, int DayNumber, int SortOrder, Guid? AiContentId);
+        int WeekNumber, int DayNumber, int SortOrder, Guid? AiContentId, string? WorkflowStagesJson);
     private sealed record LessonCard(Guid SlotId, string Title, int WeekNumber, int DayNumber, int SortOrder,
         int CompletedSegments, int CompletedStages, int TotalStages, bool IsComplete);
     private sealed record CurriculumDto(string? GroupName, Guid? PublishedVersionId, string? CurriculumTitle,

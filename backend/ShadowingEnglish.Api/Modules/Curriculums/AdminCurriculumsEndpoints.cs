@@ -253,12 +253,14 @@ public static class AdminCurriculumsEndpoints
                     .Where(x => x.CurriculumTemplateId == template.Id).ToArrayAsync(http.RequestAborted);
                 var approvedAi = await LatestApprovedAi(db,
                     slots.Select(x => x.LessonVersionId).Distinct().ToArray(), http.RequestAborted);
+                var workflows = await WorkflowSnapshots(db,
+                    slots.Select(x => x.LessonVersionId).Distinct().ToArray(), http.RequestAborted);
                 if (assignment is not null)
                 {
                     var current = await db.PublishedCurriculumVersions.AsNoTracking()
                         .SingleAsync(x => x.Id == assignment.PublishedCurriculumVersionId, http.RequestAborted);
                     if (current.CurriculumTemplateId == template.Id && current.SourceDraftRevision == template.DraftRevision &&
-                        !await AiSnapshotChanged(db, current.Id, approvedAi, http.RequestAborted))
+                        !await ContentSnapshotChanged(db, current.Id, approvedAi, workflows, http.RequestAborted))
                         return op.Fail(409, "no_unpublished_changes");
                 }
                 // Existing progress remains attached to its original immutable published version.
@@ -276,6 +278,7 @@ public static class AdminCurriculumsEndpoints
                 {
                     Id = Guid.NewGuid(), PublishedCurriculumVersionId = version.Id, LessonVersionId = x.LessonVersionId,
                     AiContentId = approvedAi.TryGetValue(x.LessonVersionId, out var contentId) ? contentId : null,
+                    WorkflowStagesJson = workflows.GetValueOrDefault(x.LessonVersionId),
                     WeekNumber = x.WeekNumber, DayNumber = x.DayNumber, SortOrder = x.SortOrder, AvailableAtUtc = now
                 }).ToArray();
                 db.PublishedLessonSlots.AddRange(publishedSlots);
@@ -287,12 +290,13 @@ public static class AdminCurriculumsEndpoints
                     var previousSlots = await db.PublishedLessonSlots.AsNoTracking()
                         .Where(x => x.PublishedCurriculumVersionId == assignment.PublishedCurriculumVersionId)
                         .ToArrayAsync(http.RequestAborted);
-                    var oldToNew = new Dictionary<Guid, (Guid SlotId, bool SameAiContent)>();
+                    var oldToNew = new Dictionary<Guid, (Guid SlotId, bool SameAiContent, bool SameWorkflow)>();
                     foreach (var old in previousSlots)
                     {
                         var currentSlot = publishedSlots.SingleOrDefault(x => x.LessonVersionId == old.LessonVersionId);
                         if (currentSlot is not null)
-                            oldToNew.Add(old.Id, (currentSlot.Id, old.AiContentId == currentSlot.AiContentId));
+                            oldToNew.Add(old.Id, (currentSlot.Id, old.AiContentId == currentSlot.AiContentId,
+                                old.WorkflowStagesJson == currentSlot.WorkflowStagesJson));
                     }
                     if (oldToNew.Count > 0)
                     {
@@ -301,7 +305,8 @@ public static class AdminCurriculumsEndpoints
                             .Where(x => x.PublishedCurriculumVersionId == assignment.PublishedCurriculumVersionId &&
                                 previousIds.Contains(x.SlotId))
                             .ToArrayAsync(http.RequestAborted);
-                        var transferable = rows.Where(x => oldToNew[x.SlotId].SameAiContent || x.StageKey == "shadowing").ToArray();
+                        var transferable = rows.Where(x => oldToNew[x.SlotId].SameWorkflow &&
+                            (oldToNew[x.SlotId].SameAiContent || x.StageKey == "shadowing")).ToArray();
                         db.StudentStageProgress.AddRange(transferable.Select(x => new StudentStageProgress
                         {
                             StudentId = x.StudentId, PublishedCurriculumVersionId = version.Id,
@@ -368,6 +373,7 @@ public static class AdminCurriculumsEndpoints
             .Where(x => x.CurriculumTemplateId == template.Id).Select(x => x.LessonVersionId)
             .Distinct().ToArrayAsync(cancellation);
         var approvedAi = await LatestApprovedAi(db, draftLessonIds, cancellation);
+        var workflows = await WorkflowSnapshots(db, draftLessonIds, cancellation);
         var draftAiLessonIds = draftLessonIds.Length == 0 ? [] : await db.LessonAiContents.AsNoTracking()
             .Where(x => draftLessonIds.Contains(x.LessonVersionId) && x.Status == "Draft")
             .Select(x => x.LessonVersionId)
@@ -382,7 +388,7 @@ public static class AdminCurriculumsEndpoints
                     ? "draft_needs_approval" : "no_ai_content")).ToArray();
         var aiChanged = template is not null && version is not null &&
             version.CurriculumTemplateId == template.Id && version.SourceDraftRevision == template.DraftRevision &&
-            await AiSnapshotChanged(db, version.Id, approvedAi, cancellation);
+            await ContentSnapshotChanged(db, version.Id, approvedAi, workflows, cancellation);
         return new GroupCurriculumState(group.Id, group.Name, template?.Id, template?.Name, template?.DraftRevision,
             group.CurriculumAssignmentRevision, version?.Id, version?.CurriculumTemplateId, version?.Title,
             version?.SourceDraftRevision, version?.VersionNumber,
@@ -401,14 +407,24 @@ public static class AdminCurriculumsEndpoints
         return rows.GroupBy(x => x.LessonVersionId).ToDictionary(x => x.Key, x => x.First().Id);
     }
 
-    private static async Task<bool> AiSnapshotChanged(ApplicationDbContext db, Guid versionId,
-        Dictionary<Guid, Guid> approvedAi, CancellationToken cancellation)
+    private static async Task<Dictionary<Guid, string>> WorkflowSnapshots(ApplicationDbContext db,
+        Guid[] lessonVersionIds, CancellationToken cancellation)
+    {
+        if (lessonVersionIds.Length == 0) return [];
+        return await db.LessonWorkflows.AsNoTracking()
+            .Where(x => lessonVersionIds.Contains(x.LessonVersionId))
+            .ToDictionaryAsync(x => x.LessonVersionId, x => x.StagesJson, cancellation);
+    }
+
+    private static async Task<bool> ContentSnapshotChanged(ApplicationDbContext db, Guid versionId,
+        Dictionary<Guid, Guid> approvedAi, Dictionary<Guid, string> workflows, CancellationToken cancellation)
     {
         var slots = await db.PublishedLessonSlots.AsNoTracking()
             .Where(x => x.PublishedCurriculumVersionId == versionId)
-            .Select(x => new { x.LessonVersionId, x.AiContentId }).ToArrayAsync(cancellation);
+            .Select(x => new { x.LessonVersionId, x.AiContentId, x.WorkflowStagesJson }).ToArrayAsync(cancellation);
         return slots.Any(x => x.AiContentId !=
-            (approvedAi.TryGetValue(x.LessonVersionId, out var contentId) ? contentId : null));
+            (approvedAi.TryGetValue(x.LessonVersionId, out var contentId) ? contentId : null) ||
+            x.WorkflowStagesJson != workflows.GetValueOrDefault(x.LessonVersionId));
     }
 
     private static bool ValidName(string? name) => name is { Length: >= 2 and <= 160 } && !name.Any(char.IsControl);
