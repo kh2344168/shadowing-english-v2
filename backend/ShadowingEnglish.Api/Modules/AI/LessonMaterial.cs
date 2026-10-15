@@ -16,8 +16,12 @@ public sealed record QuizCard(string Question, string[] Options, int CorrectInde
 public sealed record LessonMaterial(VocabularyCard[] Vocabulary, QuizCard[] Quiz, string GrammarFocus,
     string ConversationScenario, DictationCard[]? Dictation = null, string[]? ConversationGoals = null,
     string? AiRole = null, string? StudentRole = null, string? OpeningMessage = null,
-    bool ShadowingReviewEnabled = false, string[]? ReviewedStages = null);
-public sealed record ChatFeedback(string Reply, string Correction, string BetterAnswer, string GrammarTip);
+    bool ShadowingReviewEnabled = false, string[]? ReviewedStages = null,
+    int? ConversationTurnTarget = null, string? ConversationLearningOutcome = null,
+    string? ConversationFocusTense = null, string[]? ConversationTargetWords = null,
+    string ConversationCorrectionMode = "lesson-only");
+public sealed record ChatFeedback(string Reply, string Correction, string BetterAnswer, string GrammarTip,
+    bool? FocusMet = null);
 
 public static class LessonMaterialRules
 {
@@ -30,6 +34,13 @@ public static class LessonMaterialRules
         ["vocabulary", "listen-type", "quiz", "conversation"];
     private static readonly HashSet<string> AcceptedReviewStages =
         [.. DefaultApprovalStages, "quiz"];
+    private static readonly HashSet<string> ConversationTenses =
+        ["present-simple", "present-continuous", "past-simple", "past-continuous",
+            "present-perfect", "future-simple"];
+
+    public static int ConversationTurns(LessonMaterial material) => material.ConversationTurnTarget ?? 10;
+    public static bool CountsConversationTurn(LessonMaterial material, ChatFeedback feedback) =>
+        string.IsNullOrWhiteSpace(material.ConversationFocusTense) || feedback.FocusMet == true;
 
     public static bool ReadyToApprove(LessonMaterial material, IEnumerable<string>? requiredStages = null)
     {
@@ -116,6 +127,16 @@ public static class LessonMaterialRules
             !Field(material.GrammarFocus, 200) || !Field(material.ConversationScenario, 240) ||
             !Optional(material.AiRole, 100) || !Optional(material.StudentRole, 100) ||
             !Optional(material.OpeningMessage, 240) ||
+            material.ConversationTurnTarget is < 1 or > 20 ||
+            !Optional(material.ConversationLearningOutcome, 240) ||
+            (material.ConversationFocusTense is { Length: > 0 } tense && !ConversationTenses.Contains(tense)) ||
+            material.ConversationCorrectionMode is not ("lesson-only" or "all") ||
+            material.ConversationTargetWords is { Length: > 12 } ||
+            material.ConversationTargetWords?.Any(x => !Field(x, 80)) == true ||
+            material.ConversationTargetWords is { } targetWords &&
+                (targetWords.Distinct(StringComparer.OrdinalIgnoreCase).Count() != targetWords.Length ||
+                    targetWords.Any(x => !material.Vocabulary.Any(v => v.IncludeForStudent &&
+                        string.Equals(v.Word, x, StringComparison.OrdinalIgnoreCase)))) ||
             material.ConversationGoals is { Length: > 6 } ||
             material.ConversationGoals?.Any(x => !Field(x, 160)) == true ||
             material.ReviewedStages is { } reviewed &&
@@ -173,8 +194,8 @@ public static class LessonMaterialRules
         try
         {
             var result = JsonSerializer.Deserialize<ChatFeedback>(ObjectOnly(raw), Json);
-            return result is not null && Field(result.Reply, 400) && Field(result.Correction, 300) &&
-                Field(result.BetterAnswer, 300) && Field(result.GrammarTip, 300) ? result : null;
+            return result is not null && Field(result.Reply, 400) && Optional(result.Correction, 300) &&
+                Optional(result.BetterAnswer, 300) && Optional(result.GrammarTip, 300) ? result : null;
         }
         catch (JsonException) { return null; }
     }

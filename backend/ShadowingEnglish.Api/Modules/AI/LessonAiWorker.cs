@@ -16,6 +16,7 @@ public sealed class LessonAiWorker(IServiceScopeFactory scopes, ILogger<LessonAi
                 using var scope = scopes.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
                 var ai = scope.ServiceProvider.GetRequiredService<TextAiRouter>();
+                var images = scope.ServiceProvider.GetRequiredService<PexelsImageService>();
                 if (ai.ConfiguredProviders().Length > 0)
                 {
                     var now = DateTimeOffset.UtcNow;
@@ -30,7 +31,7 @@ public sealed class LessonAiWorker(IServiceScopeFactory scopes, ILogger<LessonAi
                         var claimed = await db.LessonAiContents.Where(x => x.Id == jobId && x.Status == "Pending")
                             .ExecuteUpdateAsync(x => x.SetProperty(row => row.Status, "Generating")
                                 .SetProperty(row => row.UpdatedAtUtc, DateTimeOffset.UtcNow), stoppingToken);
-                        if (claimed == 1) await ProcessAsync(db, ai, jobId, stoppingToken);
+                        if (claimed == 1) await ProcessAsync(db, ai, images, jobId, stoppingToken);
                         continue;
                     }
                 }
@@ -44,7 +45,8 @@ public sealed class LessonAiWorker(IServiceScopeFactory scopes, ILogger<LessonAi
         }
     }
 
-    private async Task ProcessAsync(ApplicationDbContext db, TextAiRouter ai, Guid id, CancellationToken cancel)
+    private async Task ProcessAsync(ApplicationDbContext db, TextAiRouter ai,
+        PexelsImageService images, Guid id, CancellationToken cancel)
     {
         var started = Stopwatch.GetTimestamp();
         try
@@ -91,6 +93,17 @@ public sealed class LessonAiWorker(IServiceScopeFactory scopes, ILogger<LessonAi
                 }
                 else
                 {
+                    if (await images.IsConfiguredAsync(cancel))
+                    {
+                        var cards = material.Vocabulary.ToArray();
+                        for (var index = 0; index < cards.Length; index++)
+                        {
+                            if (!string.IsNullOrWhiteSpace(cards[index].ImageUrl)) continue;
+                            var imageUrl = await images.FindAsync(cards[index].Word, cancel);
+                            if (imageUrl is not null) cards[index] = cards[index] with { ImageUrl = imageUrl };
+                        }
+                        material = material with { Vocabulary = cards };
+                    }
                     job.PayloadJson = JsonSerializer.Serialize(material, LessonMaterialRules.Json);
                     job.ProviderName = completion.Provider;
                     job.ErrorCode = null;
