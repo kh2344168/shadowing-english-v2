@@ -84,6 +84,8 @@ internal static class Runner
             return await CurriculumMigrationChecks.RunAsync(Check, () => failures);
         if (args.SequenceEqual(new[] { "--ai-text-check" }))
             return await AiTextChecks.RunAsync(Check, () => failures);
+        if (args.SequenceEqual(new[] { "--voice-fallback-check" }))
+            return await VoiceFallbackChecks.RunAsync(Check, () => failures);
         if (args.SequenceEqual(new[] { "--ai-publication-check" }))
             return await AiPublicationChecks.RunAsync(Check, () => failures);
         var api = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
