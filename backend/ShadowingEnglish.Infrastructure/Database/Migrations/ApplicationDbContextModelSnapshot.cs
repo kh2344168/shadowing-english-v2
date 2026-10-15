@@ -570,6 +570,10 @@ namespace ShadowingEnglish.Infrastructure.Database.Migrations
                     b.Property<int>("WeekNumber")
                         .HasColumnType("int");
 
+                    b.Property<string>("WorkflowStagesJson")
+                        .HasMaxLength(16000)
+                        .HasColumnType("nvarchar(max)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AiContentId");
