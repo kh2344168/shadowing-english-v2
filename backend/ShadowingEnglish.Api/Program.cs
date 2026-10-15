@@ -88,6 +88,13 @@ builder.Services.AddHttpClient(nameof(TextAiRouter), client =>
     })
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddSingleton<TextAiRouter>();
+builder.Services.AddHttpClient<PexelsImageService>()
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddMemoryCache(options => options.SizeLimit = 30_000_000);
+builder.Services.AddHttpClient<GroqVoiceService>()
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<GeminiSpeechService>()
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHostedService<LessonAiWorker>();
 builder.Services.AddHostedService<LessonMediaDeletionWorker>();
 
@@ -165,6 +172,16 @@ builder.Services.AddRateLimiter(options =>
             AutoReplenishment = true
         }));
 
+    options.AddPolicy("student-voice", context => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 20,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
+
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
@@ -198,6 +215,9 @@ if (args.Contains("--provision-day2-fixture", StringComparer.Ordinal))
 }
 
 app.UseMiddleware<SafeExceptionMiddleware>();
+// The release workflow copies the Angular browser build into the published wwwroot.
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.UseRouting(); // Required before endpoint-specific rate-limiting policies.
 app.UseAuthentication();
 app.UseRateLimiter();
@@ -234,6 +254,11 @@ app.MapGet("/health", (ILogger<Program> logger) =>
 
     return result;
 });
+
+// Keep unknown API paths as 404; client-side Angular routes use index.html.
+app.Map("/api", () => Results.NotFound());
+app.Map("/api/{**unmatched}", () => Results.NotFound());
+app.MapFallbackToFile("index.html");
 
 app.Run();
 
