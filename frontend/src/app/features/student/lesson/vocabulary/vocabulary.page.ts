@@ -35,9 +35,9 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
   readonly flipped = signal(false);
   readonly leaving = signal(false);
   readonly speaking = signal<'word' | 'example' | null>(null);
+  readonly imageFailed = signal(false);
   readonly current = computed(() => {
     const data = this.material();
-    console.log("مرحبا"+data);
     return data && this.completed() < data.vocabulary.length
       ? data.vocabulary[this.completed()]
       : null;
@@ -71,6 +71,7 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
       } else {
         this.material.set(data);
         this.completed.set(data.progress.vocabulary);
+        this.imageFailed.set(false);
       }
     } catch (ex) {
       this.error.set(
@@ -96,6 +97,7 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 280));
       this.completed.set(progress.completed);
       this.flipped.set(false);
+      this.imageFailed.set(false);
     } catch {
       this.error.set('تعذر حفظ التقدم. اضغط تحديث ثم حاول مجددًا.');
     } finally {
@@ -117,7 +119,9 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
     const request = this.speechRequest;
     this.speaking.set(target);
     try {
-      const sound = await firstValueFrom(this.api.vocabularyAudio(this.slotId, this.completed() + 1, target));
+      const sound = await firstValueFrom(
+        this.api.vocabularyAudio(this.slotId, this.completed() + 1, target),
+      );
       if (request !== this.speechRequest) return;
       const url = URL.createObjectURL(sound);
       const audio = new Audio(url);

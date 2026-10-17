@@ -74,6 +74,7 @@ export interface AiMaterial {
     explanation?: string | null;
     extraExample?: string | null;
     usageNote?: string | null;
+    imageUrl?: string | null;
   }[];
   grammarFocus: string;
   conversationScenario: string;
@@ -192,7 +193,8 @@ export class StudentLearningApi {
   }
   vocabularyAudio(slotId: string, position: number, part: 'word' | 'example') {
     return this.http.get(`${this.base}/slots/${encodeURIComponent(slotId)}/vocabulary/audio`, {
-      params: { position, part }, responseType: 'blob',
+      params: { position, part },
+      responseType: 'blob',
     });
   }
   grammarProgress(slotId: string): Observable<PracticeProgress> {

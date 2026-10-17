@@ -26,21 +26,53 @@ describe('StudentVocabularyPage', () => {
     const fixture = TestBed.createComponent(StudentVocabularyPage);
     fixture.detectChanges();
     http.expectOne('/api/student/learning/slots/s1/ai-material').flush({
-      vocabulary: [{ word: 'hello', meaningAr: 'مرحبًا', exampleEn: 'Hello!', exampleAr: 'أهلًا' }],
+      vocabulary: [
+        {
+          word: 'hello',
+          meaningAr: 'مرحبًا',
+          exampleEn: 'Hello!',
+          exampleAr: 'أهلًا',
+          imageUrl: 'https://images.pexels.com/photos/1/test.jpeg',
+        },
+      ],
       progress: { vocabulary: 0 },
       stages: [
-        { key: 'vocabulary', title: 'الكلمات', position: 2, route: '/student/lessons/s1/vocabulary' },
-        { key: 'listen-type', title: 'اسمع واكتب', position: 7, route: '/student/lessons/s1/listen-type' },
+        {
+          key: 'vocabulary',
+          title: 'الكلمات',
+          position: 2,
+          route: '/student/lessons/s1/vocabulary',
+        },
+        {
+          key: 'listen-type',
+          title: 'اسمع واكتب',
+          position: 7,
+          route: '/student/lessons/s1/listen-type',
+        },
       ],
     });
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('hello');
-    vi.stubGlobal('Audio', class { pause() {} play() { return Promise.resolve(); } });
+    const image = fixture.nativeElement.querySelector('.word-image img') as HTMLImageElement;
+    expect(image.getAttribute('src')).toBe('https://images.pexels.com/photos/1/test.jpeg');
+    image.dispatchEvent(new Event('error'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('لا توجد صورة متاحة');
+    vi.stubGlobal(
+      'Audio',
+      class {
+        pause() {}
+        play() {
+          return Promise.resolve();
+        }
+      },
+    );
     vi.stubGlobal('URL', { createObjectURL: () => 'blob:lesson-word', revokeObjectURL: () => {} });
     const playing = fixture.componentInstance.speak('word');
-    const audio = http.expectOne((request) =>
-      request.url === '/api/student/learning/slots/s1/vocabulary/audio');
+    const audio = http.expectOne(
+      (request) => request.url === '/api/student/learning/slots/s1/vocabulary/audio',
+    );
     expect(audio.request.params.get('position')).toBe('1');
     expect(audio.request.params.get('part')).toBe('word');
     audio.flush(new Blob(['wav'], { type: 'audio/wav' }));

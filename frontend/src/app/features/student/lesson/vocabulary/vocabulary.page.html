@@ -44,11 +44,20 @@
         [attr.aria-label]="(data.vocabulary[completed()].kind === 'chunk' ? 'عبارة ' : 'كلمة ') + (completed() + 1)"
       >
         <section class="card-face card-face--front">
-          <div class="image-placeholder" aria-label="مكان صورة الكلمة التي ستُضاف لاحقًا">
-            <span class="material-symbols-outlined" aria-hidden="true">image</span>
-            <strong>صورة الكلمة</strong>
-            <small>ستُضاف من إعدادات الدرس لاحقًا</small>
+          @if (data.vocabulary[completed()].imageUrl && !imageFailed()) {
+          <div class="word-image">
+            <img
+              [src]="data.vocabulary[completed()].imageUrl"
+              [alt]="'صورة توضيحية لـ ' + data.vocabulary[completed()].word"
+              (error)="imageFailed.set(true)"
+            />
           </div>
+          } @else {
+          <div class="image-placeholder" aria-label="لا توجد صورة لهذه الكلمة">
+            <span class="material-symbols-outlined" aria-hidden="true">image</span>
+            <strong>لا توجد صورة متاحة</strong>
+          </div>
+          }
           <div class="word-row" dir="ltr">
             <h2 lang="en">{{ data.vocabulary[completed()].word }}</h2>
             <button
@@ -83,12 +92,16 @@
           <div class="meaning-content">
             <span lang="en" dir="ltr">{{ data.vocabulary[completed()].word }}</span>
             <h2>{{ data.vocabulary[completed()].meaningAr }}</h2>
-            <blockquote lang="en" dir="ltr">{{ data.vocabulary[completed()].exampleEn }}</blockquote>
+            <blockquote lang="en" dir="ltr">
+              {{ data.vocabulary[completed()].exampleEn }}
+            </blockquote>
             <p>{{ data.vocabulary[completed()].exampleAr }}</p>
             @if (data.vocabulary[completed()].explanation) {
             <p class="detail" lang="en" dir="ltr">{{ data.vocabulary[completed()].explanation }}</p>
             } @if (data.vocabulary[completed()].extraExample) {
-            <p class="detail" lang="en" dir="ltr">{{ data.vocabulary[completed()].extraExample }}</p>
+            <p class="detail" lang="en" dir="ltr">
+              {{ data.vocabulary[completed()].extraExample }}
+            </p>
             } @if (data.vocabulary[completed()].usageNote) {
             <p class="detail">{{ data.vocabulary[completed()].usageNote }}</p>
             }
@@ -134,7 +147,11 @@
     </a>
     } @else {
     <p>أكملت جميع مراحل هذا الدرس.</p>
-    <a class="primary-action completion-card__action" [routerLink]="['/student/lessons', slotId, 'overview']">عرض الدرس</a>
+    <a
+      class="primary-action completion-card__action"
+      [routerLink]="['/student/lessons', slotId, 'overview']"
+      >عرض الدرس</a
+    >
     }
   </section>
   } } @if (error()) {
