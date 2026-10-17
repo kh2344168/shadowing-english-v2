@@ -197,13 +197,16 @@ public static class AdminLessonManagementEndpoints
 
                 // Published slots keep pointing at the old version and media; drafts never auto-publish a new edit.
                 db.LessonVersions.Add(new LessonVersion { Id = versionId, LessonDefinitionId = lessonId,
-                    VersionNumber = latest.VersionNumber + 1, Title = title, Description = description, CreatedAtUtc = now });
+                    VersionNumber = latest.VersionNumber + 1, Title = title, Description = description,
+                    LessonType = latest.LessonType, Level = latest.Level, Goal = latest.Goal,
+                    CreatedAtUtc = now });
                 db.LessonSegments.AddRange(rows);
                 definition.Title = title;
-                db.LessonAiContents.Add(new LessonAiContent { Id = Guid.NewGuid(), LessonVersionId = versionId,
-                    CreatedByAdminId = actor.Id, Revision = Guid.NewGuid(), CreatedAtUtc = now, UpdatedAtUtc = now,
-                    Status = approved is null ? "Pending" : "Approved", PayloadJson = approved?.PayloadJson,
-                    ProviderName = approved?.ProviderName, ApprovedAtUtc = approved is null ? null : now });
+                if (approved is not null)
+                    db.LessonAiContents.Add(new LessonAiContent { Id = Guid.NewGuid(), LessonVersionId = versionId,
+                        CreatedByAdminId = actor.Id, Revision = Guid.NewGuid(), CreatedAtUtc = now, UpdatedAtUtc = now,
+                        Status = "Approved", PayloadJson = approved.PayloadJson,
+                        ProviderName = approved.ProviderName, ApprovedAtUtc = now });
                 if (previousWorkflow is not null)
                     db.LessonWorkflows.Add(new LessonWorkflow { LessonVersionId = versionId,
                         Revision = Guid.NewGuid(), StagesJson = previousWorkflow.StagesJson, UpdatedAtUtc = now });

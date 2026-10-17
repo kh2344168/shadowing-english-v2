@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using ShadowingEnglish.Infrastructure.AIProviders;
 
@@ -28,7 +29,9 @@ public sealed class AiProviderConnectionTester(HttpClient http)
 
             if (response.IsSuccessStatusCode)
             {
-                if (configuration.ProviderKey == "groq" && !string.IsNullOrWhiteSpace(configuration.Model))
+                if (configuration.ProviderKey == "groq" &&
+                    configuration.Capability != AiProviderCatalog.Voice &&
+                    !string.IsNullOrWhiteSpace(configuration.Model))
                 {
                     var body = await ReadSafeBodyAsync(response, timeout.Token);
                     if (!ContainsModelId(body, configuration.Model!))
@@ -37,6 +40,13 @@ public sealed class AiProviderConnectionTester(HttpClient http)
                 return new(true, "connected", null);
             }
 
+            if (configuration.Capability == AiProviderCatalog.Voice &&
+                response.StatusCode == HttpStatusCode.BadRequest)
+            {
+                var body = await ReadSafeBodyAsync(response, timeout.Token);
+                if (body.Contains("requires terms acceptance", StringComparison.OrdinalIgnoreCase))
+                    return new(false, "terms_required", "voice_terms_required");
+            }
             return FromStatus(response.StatusCode, !string.IsNullOrWhiteSpace(configuration.Model));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -59,6 +69,18 @@ public sealed class AiProviderConnectionTester(HttpClient http)
         {
             case "groq":
             {
+                if (configuration.Capability == AiProviderCatalog.Voice)
+                {
+                    var speech = new HttpRequestMessage(HttpMethod.Post,
+                        "https://api.groq.com/openai/v1/audio/speech");
+                    speech.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+                    speech.Content = new StringContent(JsonSerializer.Serialize(new
+                    {
+                        model = configuration.Model ?? "canopylabs/orpheus-v1-english",
+                        input = "Hello.", voice = "hannah", response_format = "wav"
+                    }), Encoding.UTF8, "application/json");
+                    return speech;
+                }
                 var request = new HttpRequestMessage(HttpMethod.Get, "https://api.groq.com/openai/v1/models");
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
                 return request;

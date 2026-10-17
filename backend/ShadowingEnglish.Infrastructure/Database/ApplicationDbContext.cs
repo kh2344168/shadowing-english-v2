@@ -108,6 +108,9 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Title).IsRequired().HasMaxLength(160);
             entity.Property(x => x.Description).IsRequired().HasMaxLength(1000);
+            entity.Property(x => x.LessonType).IsRequired().HasMaxLength(16);
+            entity.Property(x => x.Level).IsRequired().HasMaxLength(2);
+            entity.Property(x => x.Goal).IsRequired().HasMaxLength(500);
             entity.HasIndex(x => new { x.LessonDefinitionId, x.VersionNumber }).IsUnique();
             entity.HasOne<LessonDefinition>().WithMany().HasForeignKey(x => x.LessonDefinitionId).OnDelete(DeleteBehavior.Restrict);
         });
@@ -190,6 +193,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.ToTable("LessonAiContents");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Status).IsRequired().HasMaxLength(16);
+            entity.Property(x => x.StageType).HasMaxLength(32);
             entity.Property(x => x.PayloadJson).HasMaxLength(32000);
             entity.Property(x => x.ProviderName).HasMaxLength(32);
             entity.Property(x => x.ErrorCode).HasMaxLength(64);

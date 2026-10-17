@@ -1,10 +1,60 @@
 <section class="ai-lesson-page" dir="rtl" aria-labelledby="ai-lesson-title">
-  @if (activeCreationTab() === 'shadowing') {
+  @if (!activeVersionId()) {
+  <section class="creation-mode-picker" aria-label="اختر طريقة إنشاء الدرس">
+    <div class="creation-mode-heading">
+      <p class="eyebrow">درس جديد</p>
+      <h1 id="ai-lesson-title">كيف تريد إنشاء الدرس؟</h1>
+      <p>اختر مسارًا واحدًا. يمكنك تحديد مراحل الدرس ومراجعتها بعد الإنشاء.</p>
+    </div>
+    <div class="creation-mode-options">
+      <button type="button" class="creation-mode-option" [class.selected]="creationMode() === 'audio'"
+        [attr.aria-pressed]="creationMode() === 'audio'" (click)="selectCreationMode('audio')">
+        <span class="creation-mode-icon" aria-hidden="true">♫</span>
+        <span><strong>إنشاء درس بصوت</strong><small>ارفع الصوت والنص، ثم عالج مقاطع الشادوينج وراجعها.</small></span>
+        <span class="creation-mode-check" aria-hidden="true">{{ creationMode() === 'audio' ? '✓' : '○' }}</span>
+      </button>
+      <button type="button" class="creation-mode-option" [class.selected]="creationMode() === 'text'"
+        [attr.aria-pressed]="creationMode() === 'text'" (click)="selectCreationMode('text')">
+        <span class="creation-mode-icon" aria-hidden="true">Aa</span>
+        <span><strong>إنشاء درس بدون صوت</strong><small>ابدأ بنص أو كلمات، ثم اختر المراحل التي تريدها.</small></span>
+        <span class="creation-mode-check" aria-hidden="true">{{ creationMode() === 'text' ? '✓' : '○' }}</span>
+      </button>
+    </div>
+  </section>
+  }
+  @if (!activeVersionId() && creationMode() === 'text') {
+  <section class="text-lesson-create" aria-label="إنشاء درس مستقل دون صوت">
+    <h2>إنشاء درس من نص أو كلمات</h2>
+    <p>حدد نوع الدرس ومستواه وهدفه. بعد الإنشاء ستختار المراحل وتعالج كل مرحلة بنفسك.</p>
+    <div class="text-lesson-fields">
+      <label>عنوان الدرس <input name="textLessonTitle" [(ngModel)]="title" maxlength="160" /></label>
+      <label>النوع
+        <select name="lessonType" [(ngModel)]="lessonType">
+          <option value="manual">يدوي</option><option value="situation">موقف</option>
+          <option value="clip">مقطع</option>
+        </select>
+      </label>
+      <label>المستوى
+        <select name="lessonLevel" [(ngModel)]="level">
+          <option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option>
+        </select>
+      </label>
+      <label>هدف الدرس <input name="lessonGoal" [(ngModel)]="goal" maxlength="500" /></label>
+      <label>النص أو الكلمات المصدرية
+        <textarea name="lessonSource" [(ngModel)]="sourceText" maxlength="1000" rows="3"></textarea>
+      </label>
+    </div>
+    <button type="button" [disabled]="creatingTextLesson()" (click)="createTextLesson()">
+      {{ creatingTextLesson() ? 'جارٍ إنشاء الدرس...' : 'إنشاء الدرس واختيار المراحل' }}
+    </button>
+  </section>
+  }
+  @if (creationMode() === 'audio' && activeCreationTab() === 'shadowing') {
   <header class="page-header">
     <div>
       <p class="eyebrow">{{ savedLesson() ? 'تعديل الدرس' : 'إنشاء الدروس' }}</p>
 
-      <h1 id="ai-lesson-title">
+      <h1 [attr.id]="activeVersionId() ? 'ai-lesson-title' : null">
         {{ savedLesson() ? 'مراجعة نصوص الشادوينج' : 'إنشاء درس الشادوينج' }}
       </h1>
 
@@ -46,7 +96,9 @@
   </div>
   }
 
+  @if (activeVersionId() || creationMode() === 'audio') {
   <nav class="workflow-steps" aria-label="مراحل إنشاء الدرس">
+    @if (hasShadowingStage()) {
     <button
       type="button"
       class="workflow-step"
@@ -56,11 +108,12 @@
       <span class="step-number"> {{ shadowingComplete() ? '✓' : '1' }} </span>
 
       <div>
-        <small> {{ shadowingComplete() ? 'مكتملة ومحفوظة' : 'المرحلة الأولى' }} </small>
+        <small> {{ shadowingComplete() ? 'محفوظة' : 'إعداد الصوت والنص' }} </small>
 
         <strong> معالجة الشادوينج </strong>
       </div>
     </button>
+    }
 
     <button
       type="button"
@@ -71,14 +124,14 @@
       [disabled]="!shadowingComplete()"
       (click)="selectCreationTab('activities')"
     >
-      <span class="step-number"> @if (shadowingComplete()) { 2 } @else { 🔒 } </span>
+      <span class="step-number">{{ shadowingComplete() ? (hasShadowingStage() ? 2 : 1) : '🔒' }}</span>
 
       <div>
         <small>
-          {{ shadowingComplete() ? 'مفتوحة — اضغط للانتقال' : 'مقفلة حتى انتهاء الشادوينج' }}
+          {{ shadowingComplete() ? 'مفتوحة — اضغط للانتقال' : 'تفتح بعد حفظ الدرس' }}
         </small>
 
-        <strong> معالجة كلمات الدرس </strong>
+        <strong> اختيار مراحل الدرس ومعالجتها </strong>
       </div>
       @if (shadowingComplete()) {
       <span class="unlocked-badge">تم الفتح</span>
@@ -92,6 +145,16 @@
     <p class="message" role="status">جاري تحميل نصوص الدرس المحفوظة...</p>
     } @if (!shadowingComplete() && !savedLessonLoading()) {
     <section class="setup-section">
+      <div class="text-lesson-fields">
+        <label>مستوى المقطع
+          <select name="clipLessonLevel" [(ngModel)]="level">
+            <option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option>
+          </select>
+        </label>
+        <label>هدف الدرس
+          <input name="clipLessonGoal" [(ngModel)]="goal" maxlength="500" />
+        </label>
+      </div>
       <div class="upload-grid">
         <article class="upload-card" [class.complete]="media">
           <div class="card-title">
@@ -759,5 +822,6 @@
       </footer>
     </section>
   </div>
+  }
   }
 </section>

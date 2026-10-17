@@ -8,5 +8,8 @@ public sealed class LessonVersion
     public int VersionNumber { get; set; }
     public string Title { get; set; } = "";
     public string Description { get; set; } = "";
+    public string LessonType { get; set; } = "clip";
+    public string Level { get; set; } = "B1";
+    public string Goal { get; set; } = "";
     public DateTimeOffset CreatedAtUtc { get; set; }
 }

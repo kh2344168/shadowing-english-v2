@@ -27,6 +27,9 @@ export interface LessonWorkflow {
   versionNumber: number;
   title: string;
   description: string;
+  lessonType: 'situation' | 'clip' | 'manual';
+  level: string;
+  goal: string;
   revision: string;
   stages: LessonWorkflowStage[];
   aiStatus: 'Pending' | 'Generating' | 'Draft' | 'Approved' | 'Failed' | null;
@@ -37,6 +40,11 @@ export interface LessonWorkflow {
 export class LessonWorkflowApi {
   private readonly http = inject(HttpClient);
   private readonly base = '/api/admin/lessons';
+
+  create(request: { title: string; lessonType: 'situation' | 'clip' | 'manual'; level: string;
+    goal: string; sourceText: string }) {
+    return this.http.post<{ lessonId: string; versionId: string }>(`${this.base}/definitions`, request);
+  }
 
   get(versionId: string) {
     return this.http.get<LessonWorkflow>(`${this.base}/${encodeURIComponent(versionId)}/workflow`);

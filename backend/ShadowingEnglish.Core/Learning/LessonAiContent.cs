@@ -8,6 +8,8 @@ public sealed class LessonAiContent
     public Guid CreatedByAdminId { get; set; }
     public Guid Revision { get; set; }
     public string Status { get; set; } = "Pending";
+    // Null denotes a legacy whole-lesson generation or an approved copied snapshot.
+    public string? StageType { get; set; }
     public string? PayloadJson { get; set; }
     public string? ProviderName { get; set; }
     public string? ErrorCode { get; set; }

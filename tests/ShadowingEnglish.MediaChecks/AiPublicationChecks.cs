@@ -56,9 +56,7 @@ internal static class AiPublicationChecks
                 LessonVersionId = lessonId, Revision = Guid.NewGuid(), UpdatedAtUtc = DateTimeOffset.UtcNow,
                 StagesJson = JsonSerializer.Serialize(new[]
                 {
-                    new { id = Guid.NewGuid(), type = "shadowing", title = "الشادوينج", position = 1, enabled = true, required = true },
-                    new { id = Guid.NewGuid(), type = "vocabulary", title = "الكلمات", position = 2, enabled = true, required = true },
-                    new { id = Guid.NewGuid(), type = "conversation", title = "المحادثة", position = 3, enabled = true, required = false }
+                    new { id = Guid.NewGuid(), type = "shadowing", title = "الشادوينج", position = 1, enabled = true, required = true }
                 })
             });
             db.LessonAiContents.Add(new LessonAiContent
@@ -115,6 +113,19 @@ internal static class AiPublicationChecks
             Assert(approval.StatusCode == HttpStatusCode.OK &&
                 (await approval.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString() == "Approved",
                 "draft_not_approved");
+            using (var editScope = app.Services.CreateScope())
+            {
+                var editDb = editScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var workflow = await editDb.LessonWorkflows.SingleAsync(x => x.LessonVersionId == lessonId);
+                workflow.StagesJson = JsonSerializer.Serialize(new[]
+                {
+                    new { id = Guid.NewGuid(), type = "shadowing", title = "الشادوينج", position = 1, enabled = true, required = true },
+                    new { id = Guid.NewGuid(), type = "vocabulary", title = "الكلمات", position = 2, enabled = true, required = true },
+                    new { id = Guid.NewGuid(), type = "conversation", title = "المحادثة", position = 3, enabled = true, required = false }
+                });
+                workflow.Revision = Guid.NewGuid();
+                await editDb.SaveChangesAsync();
+            }
             var group = await Group();
             Assert(group.GetProperty("hasUnpublishedChanges").GetBoolean() &&
                 group.GetProperty("aiContentStates")[0].GetProperty("status").GetString() == "approved_needs_publish",
@@ -128,8 +139,12 @@ internal static class AiPublicationChecks
                 await db.PublishedLessonSlots.AnyAsync(x => x.Id == nextSlot && x.AiContentId == firstAiId),
                 "approved_ai_not_pinned_or_old_version_mutated");
             var overview = await student.GetFromJsonAsync<JsonElement>($"/api/student/learning/slots/{nextSlot}");
-            Assert(overview.GetProperty("hasAiContent").GetBoolean() && overview.GetProperty("isComplete").GetBoolean(),
-                "student_ai_or_carried_shadowing_missing");
+            Assert(overview.GetProperty("hasAiContent").GetBoolean(), "student_ai_missing");
+            // This publication also changed the stage plan, so the old shadowing
+            // completion is intentionally not carried across the new snapshot.
+            using var progress = await student.PutAsJsonAsync($"/api/student/learning/slots/{nextSlot}/progress",
+                new { completedSegments = 1 });
+            Assert(progress.StatusCode == HttpStatusCode.OK, "new_shadowing_progress_missing");
             using var vocabulary = await student.GetAsync($"/api/student/learning/slots/{nextSlot}/ai-material");
             Assert(vocabulary.StatusCode == HttpStatusCode.OK, "vocabulary_not_available_after_publish");
         });

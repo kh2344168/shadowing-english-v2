@@ -1,17 +1,24 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  HostListener,
   Input,
+  OnDestroy,
   OnInit,
   computed,
   inject,
   signal,
 } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
-import { LessonAiApi, LessonAiJob, LessonMaterial } from './lesson-ai.api';
+import {
+  LessonAiApi,
+  LessonAiJob,
+  LessonMaterial,
+  StageProcessingStatuses,
+} from './lesson-ai.api';
 import {
   LessonStageType,
   LessonWorkflow,
@@ -89,12 +96,12 @@ const STAGE_LIBRARY: readonly StageDefinition[] = [
 @Component({
   selector: 'app-admin-lesson-workflow',
   standalone: true,
-  imports: [RouterLink],
+  imports: [],
   templateUrl: './lesson-workflow.page.html',
   styleUrl: './lesson-workflow.page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AdminLessonWorkflowPage implements OnInit {
+export class AdminLessonWorkflowPage implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly api = inject(LessonWorkflowApi);
@@ -105,6 +112,7 @@ export class AdminLessonWorkflowPage implements OnInit {
   private readonly routeVersionId = this.route.snapshot.paramMap.get('versionId') ?? '';
   readonly workflow = signal<LessonWorkflow | null>(null);
   readonly latestDraft = signal<LessonAiJob | null>(null);
+  readonly stageStatuses = signal<StageProcessingStatuses>({});
   readonly stages = signal<LessonWorkflowStage[]>([]);
   readonly loading = signal(true);
   readonly saving = signal(false);
@@ -115,24 +123,25 @@ export class AdminLessonWorkflowPage implements OnInit {
   readonly serverMissingStages = signal<string[]>([]);
   readonly libraryOpen = signal(false);
   readonly library = STAGE_LIBRARY;
+  private statusPollTimer?: ReturnType<typeof setTimeout>;
+  private destroyed = false;
   readonly enabledCount = computed(() => this.stages().filter((stage) => stage.enabled).length);
   readonly approvalIssues = computed(() => {
     const serverIssues = this.serverMissingStages();
     const draft = this.latestDraft();
-    if (!draft?.material) {
-      return [
-        ...serverIssues,
-        ...(this.workflow()?.aiStatus === 'Approved'
-          ? []
-          : ['لا توجد مسودة محتوى AI جاهزة للاعتماد. أنشئ المحتوى ثم راجع المراحل المفعّلة.']),
-      ];
-    }
-    const reviewed: string[] = draft.material.reviewedStages ?? [];
     const localIssues = this.stages()
       .filter((stage) => stage.enabled && stage.type !== 'shadowing' && stage.type !== 'content')
       .flatMap((stage) => {
+        const status = this.stageStatuses()[stage.type] ?? 'NotStarted';
+        if (status === 'NotStarted') return [`${stage.title}: لم تبدأ المعالجة بعد`];
+        if (status === 'Pending' || status === 'Generating')
+          return [`${stage.title}: قيد المعالجة، انتظر ظهور النتيجة`];
+        if (status === 'Failed') return [`${stage.title}: فشلت المعالجة، أعد المحاولة من المرحلة`];
+        if (status === 'Approved') return [];
+        if (!draft?.material) return [`${stage.title}: لا توجد مسودة جاهزة للمراجعة`];
         const key = this.reviewKey(stage.type);
         if (!key) return [];
+        const reviewed: string[] = draft.material.reviewedStages ?? [];
         const issues: string[] = [];
         if (
           !reviewed.includes(key) &&
@@ -164,6 +173,23 @@ export class AdminLessonWorkflowPage implements OnInit {
     void this.load();
   }
 
+  ngOnDestroy(): void {
+    this.destroyed = true;
+    clearTimeout(this.statusPollTimer);
+  }
+
+  @HostListener('window:beforeunload', ['$event'])
+  protectUnsavedChanges(event: BeforeUnloadEvent): void {
+    if (!this.dirty()) return;
+    event.preventDefault();
+    event.returnValue = '';
+  }
+
+  async backToLessons(): Promise<void> {
+    if (this.dirty() && !(await this.save())) return;
+    await this.router.navigate(['/admin/lessons']);
+  }
+
   async load(): Promise<void> {
     if (!this.versionId) return;
     const started = performance.now();
@@ -172,12 +198,15 @@ export class AdminLessonWorkflowPage implements OnInit {
     this.error.set('');
     this.serverMissingStages.set([]);
     try {
-      const [workflow, draft] = await Promise.all([
+      const [workflow, draft, statuses] = await Promise.all([
         firstValueFrom(this.api.get(this.versionId)),
         firstValueFrom(this.aiApi.latestDraft(this.versionId)),
+        firstValueFrom(this.aiApi.stageStatuses(this.versionId)),
       ]);
       this.workflow.set(workflow);
       this.latestDraft.set(draft);
+      this.stageStatuses.set(statuses);
+      this.scheduleStatusPoll();
       this.stages.set([...workflow.stages].sort((a, b) => a.position - b.position));
       this.dirty.set(false);
       console.info('[Admin.LessonWorkflow.Load.Success]', {
@@ -197,39 +226,65 @@ export class AdminLessonWorkflowPage implements OnInit {
     }
   }
 
-  definition(type: LessonStageType): StageDefinition {
-    return STAGE_LIBRARY.find((item) => item.type === type) ?? STAGE_LIBRARY[0];
+  private scheduleStatusPoll(): void {
+    clearTimeout(this.statusPollTimer);
+    if (this.destroyed || !Object.values(this.stageStatuses()).some(
+      (status) => status === 'Pending' || status === 'Generating')) return;
+    this.statusPollTimer = setTimeout(async () => {
+      if (this.destroyed) return;
+      try {
+        this.stageStatuses.set(await firstValueFrom(this.aiApi.stageStatuses(this.versionId)));
+        this.latestDraft.set(await firstValueFrom(this.aiApi.latestDraft(this.versionId)));
+      } catch {
+        // The next manual reload still reports connection errors normally.
+      }
+      this.scheduleStatusPoll();
+    }, 3000);
   }
 
-  isCore(stage: LessonWorkflowStage): boolean {
-    return this.stages()[0]?.id === stage.id && stage.type === 'shadowing';
+  definition(type: LessonStageType): StageDefinition {
+    return STAGE_LIBRARY.find((item) => item.type === type) ?? STAGE_LIBRARY[0];
   }
 
   status(stage: LessonWorkflowStage): { label: string; tone: string; icon: string } {
     if (!stage.enabled) return { label: 'غير مفعّلة', tone: 'off', icon: 'toggle_off' };
     if (stage.type === 'shadowing')
       return { label: 'النص والصوت', tone: 'done', icon: 'graphic_eq' };
-    const workflow = this.workflow();
-    if (!workflow?.aiStatus) return { label: 'جاهزة للبدء', tone: 'ready', icon: 'play_circle' };
-    if (workflow.aiStatus === 'Pending' || workflow.aiStatus === 'Generating')
-      return { label: 'قيد المعالجة', tone: 'working', icon: 'hourglass_top' };
-    if (workflow.aiStatus === 'Failed')
-      return { label: 'تحتاج إعادة محاولة', tone: 'error', icon: 'error' };
-    if (workflow.aiStatus === 'Approved')
-      return { label: 'معتمدة', tone: 'done', icon: 'verified' };
-    const reviewKey = this.reviewKey(stage.type);
-    return reviewKey && workflow.reviewedStages.includes(reviewKey)
-      ? { label: 'تمت مراجعتها', tone: 'done', icon: 'check_circle' }
-      : { label: 'تحتاج مراجعة', tone: 'review', icon: 'rate_review' };
+    switch (this.stageStatuses()[stage.type] ?? 'NotStarted') {
+      case 'Pending':
+      case 'Generating':
+        return { label: 'قيد المعالجة', tone: 'working', icon: 'hourglass_top' };
+      case 'Failed':
+        return { label: 'تحتاج إعادة محاولة', tone: 'error', icon: 'error' };
+      case 'Approved':
+        return { label: 'معتمدة', tone: 'done', icon: 'verified' };
+      case 'NeedsReview':
+        return { label: 'تحتاج مراجعة', tone: 'review', icon: 'rate_review' };
+      default:
+        return { label: 'لم تبدأ', tone: 'ready', icon: 'play_circle' };
+    }
+  }
+
+  stageAction(stage: LessonWorkflowStage): string {
+    if (stage.type === 'shadowing') return 'فتح وتعديل';
+    switch (this.stageStatuses()[stage.type] ?? 'NotStarted') {
+      case 'Pending':
+      case 'Generating':
+        return 'متابعة المعالجة';
+      case 'NeedsReview':
+        return 'مراجعة وتعديل';
+      case 'Approved':
+        return 'فتح وتعديل';
+      default:
+        return 'فتح المرحلة';
+    }
   }
 
   toggle(stage: LessonWorkflowStage, enabled: boolean): void {
-    if (this.isCore(stage)) return;
     this.update(stage.id, { enabled });
   }
 
   toggleRequired(stage: LessonWorkflowStage, required: boolean): void {
-    if (this.isCore(stage)) return;
     this.update(stage.id, { required });
   }
 
@@ -243,32 +298,22 @@ export class AdminLessonWorkflowPage implements OnInit {
     const items = [...this.stages()];
     const index = items.findIndex((item) => item.id === stage.id);
     const target = index + direction;
-    if (index < 0 || target < 0 || target >= items.length || this.isCore(stage) || target === 0)
+    if (index < 0 || target < 0 || target >= items.length)
       return;
     [items[index], items[target]] = [items[target], items[index]];
     this.setStages(items);
   }
 
-  duplicate(stage: LessonWorkflowStage): void {
-    if (this.stages().length >= 24) return;
-    const items = [...this.stages()];
-    const index = items.findIndex((item) => item.id === stage.id);
-    items.splice(index + 1, 0, {
-      ...stage,
-      id: crypto.randomUUID(),
-      title: `${stage.title} إضافي`,
-      required: false,
-    });
-    this.setStages(items);
+  canAdd(type: LessonStageType): boolean {
+    return this.stages().length < 24 && !this.stages().some((stage) => stage.type === type);
   }
 
   remove(stage: LessonWorkflowStage): void {
-    if (this.isCore(stage)) return;
     this.setStages(this.stages().filter((item) => item.id !== stage.id));
   }
 
   add(definition: StageDefinition): void {
-    if (this.stages().length >= 24) return;
+    if (!this.canAdd(definition.type)) return;
     this.setStages([
       ...this.stages(),
       {
@@ -345,9 +390,7 @@ export class AdminLessonWorkflowPage implements OnInit {
   async saveAndApprove(): Promise<void> {
     if (!this.canSaveAndApprove()) return;
     if (!this.validStagePlan()) {
-      this.error.set(
-        'راجع أسماء المراحل وترتيبها؛ الشادوينج الأساسي يجب أن يبقى أول مرحلة مفعّلة.',
-      );
+      this.error.set('اختر مرحلة واحدة على الأقل وراجع أسماء المراحل وترتيبها.');
       return;
     }
     this.approving.set(true);
@@ -358,12 +401,12 @@ export class AdminLessonWorkflowPage implements OnInit {
       if (this.dirty() && !(await this.save())) return;
       const draft = await firstValueFrom(this.aiApi.latestDraft(this.versionId));
       this.latestDraft.set(draft);
-      if (!draft?.material) {
-        this.error.set('حُفظت الرحلة، لكن لا توجد مسودة محتوى AI للاعتماد.');
-        return;
-      }
       if (this.approvalIssues().length) {
         this.error.set('حُفظت الرحلة. أكمل المراحل المعروضة أدناه قبل الاعتماد.');
+        return;
+      }
+      if (!draft?.material) {
+        this.notice.set('تم حفظ الرحلة. المراحل المختارة معتمدة بالفعل؛ أعد نشر المنهج ليظهر الترتيب للطلاب.');
         return;
       }
       await firstValueFrom(this.auth.csrf());
@@ -400,8 +443,7 @@ export class AdminLessonWorkflowPage implements OnInit {
     return (
       stages.length > 0 &&
       stages.length <= 24 &&
-      stages[0].type === 'shadowing' &&
-      stages[0].enabled &&
+      stages.some((stage) => stage.enabled) &&
       new Set(stages.map((stage) => stage.id)).size === stages.length &&
       stages.every(
         (stage, index) =>

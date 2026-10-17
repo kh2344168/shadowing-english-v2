@@ -47,7 +47,7 @@
             {{ completedStages() }} / {{ totalStages() }} نجوم مكتملة
           </span>
           <span class="lesson-context__divider" aria-hidden="true"></span>
-          <span class="lesson-context__mode">مسار الاستماع النشط</span>
+          <span class="lesson-context__mode">مراحل الدرس</span>
         </div>
       </div>
     </nav>
@@ -58,10 +58,10 @@
         <div class="lesson-summary-card__content">
           <div class="lesson-summary-card__badges">
             <div>
-              <span>الدراسة الأساسية</span>
+              <span>رحلة التعلّم</span>
               <small>
                 <i class="material-symbols-outlined" aria-hidden="true">schedule</i>
-                {{ data.segmentCount }} جمل
+                {{ data.totalStages }} مراحل
               </small>
             </div>
             <em>الأسبوع {{ data.weekNumber }} · اليوم {{ data.dayNumber }}</em>
@@ -72,7 +72,7 @@
             <p>
               {{
                 data.description ||
-                  'تدرّب على الاستماع والترديد الصوتي حتى تثبت الجمل في ذاكرتك وتستخدمها بثقة.'
+                  'تدرّب على المراحل التي اختارها المدرّس واستخدم ما تعلمته بثقة.'
               }}
             </p>
           </div>
@@ -169,6 +169,7 @@
               >
                 <div class="lesson-stage__heading" [class.lesson-stage__heading--center]="last">
                   <h2>{{ stage.title }}</h2>
+                  <span>{{ stage.required ? 'إجبارية' : 'اختيارية' }}</span>
                   @if (stage.isComplete) {
                     <span>مكتمل</span>
                   } @else if (!stage.isUnlocked) {

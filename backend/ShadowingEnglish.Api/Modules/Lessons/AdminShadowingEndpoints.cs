@@ -104,6 +104,11 @@ public static class AdminShadowingEndpoints
                 var form = await http.Request.ReadFormAsync(http.RequestAborted);
                 var title = form["title"].ToString().Trim();
                 var description = form["description"].ToString().Trim();
+                var level = form["level"].ToString();
+                var goal = form["goal"].ToString().Trim();
+                if (string.IsNullOrEmpty(level)) level = "B1";
+                if (goal.Length > 500 || level is not ("A1" or "A2" or "B1" or "B2" or "C1" or "C2"))
+                    return Error(log, started, 400, "invalid_lesson_definition");
                 var requestIdText = form["requestId"].ToString();
                 var texts = JsonSerializer.Deserialize<string[]>(form["segments"].ToString());
                 if (!Guid.TryParse(requestIdText, out var requestId) || requestId == Guid.Empty ||
@@ -134,6 +139,7 @@ public static class AdminShadowingEndpoints
                     var segments = await db.LessonSegments.AsNoTracking()
                         .Where(x => x.LessonVersionId == version.Id).OrderBy(x => x.Position).ToListAsync();
                     if (version.Title != title || version.Description != description ||
+                        version.Level != level || version.Goal != goal ||
                         segments.Count != texts.Length ||
                         segments.Where((segment, index) => segment.Text != texts[index].Trim()).Any() ||
                         !await SameAudioAsync(media, segments, audio, http.RequestAborted))
@@ -159,15 +165,20 @@ public static class AdminShadowingEndpoints
                 db.LessonDefinitions.Add(new LessonDefinition { Id = requestId, Title = title });
                 db.LessonVersions.Add(new LessonVersion { Id = versionId, LessonDefinitionId = requestId,
                     VersionNumber = 1, Title = title, Description = description,
+                    LessonType = "clip", Level = level, Goal = goal,
                     CreatedAtUtc = DateTimeOffset.UtcNow });
                 db.LessonSegments.AddRange(rows);
-                // Generated material is a separate background draft; it never publishes the lesson.
-                var now = DateTimeOffset.UtcNow;
-                db.LessonAiContents.Add(new LessonAiContent
+                // New audio lessons start with one chosen stage; other activities are opt-in.
+                db.LessonWorkflows.Add(new LessonWorkflow
                 {
-                    Id = Guid.NewGuid(), LessonVersionId = versionId, CreatedByAdminId = actor.Id,
-                    Status = "Pending", Revision = Guid.NewGuid(), CreatedAtUtc = now, UpdatedAtUtc = now
+                    LessonVersionId = versionId, Revision = Guid.NewGuid(), UpdatedAtUtc = DateTimeOffset.UtcNow,
+                    StagesJson = JsonSerializer.Serialize(new[]
+                    {
+                        new AdminLessonWorkflowEndpoints.WorkflowStage(Guid.NewGuid(), "shadowing",
+                            "Shadowing الأساسي", 1, true, true)
+                    }, new JsonSerializerOptions(JsonSerializerDefaults.Web))
                 });
+                // Activity generation is explicit from its editor; creating Shadowing never queues AI.
                 databaseSaveStarted = true;
                 await db.SaveChangesAsync(http.RequestAborted);
                 committed = true;

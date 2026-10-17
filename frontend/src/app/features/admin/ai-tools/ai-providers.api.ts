@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-export type AiProviderCapability = 'text' | 'image-generation' | 'image-search';
+export type AiProviderCapability = 'text' | 'image-generation' | 'image-search' | 'voice';
 export type AiProviderStatus =
   | 'not_configured'
   | 'untested'
@@ -12,6 +12,7 @@ export type AiProviderStatus =
   | 'rate_limited'
   | 'unavailable'
   | 'model_unavailable'
+  | 'terms_required'
   | 'connection_failed';
 
 export interface AiProviderCatalogItem {

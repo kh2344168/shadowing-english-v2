@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using ShadowingEnglish.Api.Modules.Media;
+using ShadowingEnglish.Api.Modules.AI;
+using ShadowingEnglish.Api.Modules.Lessons;
 using ShadowingEnglish.Core.Learning;
 using ShadowingEnglish.Infrastructure.Database;
 using ShadowingEnglish.Infrastructure.Identity;
@@ -215,7 +217,6 @@ public static class AdminCurriculumsEndpoints
                 var previous = await db.PublishedCurriculumVersions.AsNoTracking()
                     .SingleOrDefaultAsync(x => x.Id == request.RequestId, http.RequestAborted);
                 if (previous is not null) return PublicationRetry(previous, request, hash, op);
-                if (!media.IsConfigured) return op.Fail(503, "media_storage_not_configured");
                 var observedDraft = await db.CurriculumTemplates.AsNoTracking()
                     .SingleOrDefaultAsync(x => x.Id == request.CurriculumTemplateId, http.RequestAborted);
                 if (observedDraft is null) return op.Fail(404, "curriculum_not_found");
@@ -227,12 +228,20 @@ public static class AdminCurriculumsEndpoints
                 if (await db.LessonVersions.CountAsync(x => lessonIds.Contains(x.Id) &&
                     db.LessonDefinitions.Any(d => d.Id == x.LessonDefinitionId && !d.IsArchived), http.RequestAborted) != lessonIds.Length)
                     return op.Fail(409, "lesson_archived");
+                var authoringWorkflows = await WorkflowSnapshots(db, lessonIds, http.RequestAborted);
+                var mediaLessonIds = lessonIds.Where(id => !authoringWorkflows.TryGetValue(id, out var json) ||
+                    NeedsLessonAudio(json)).ToArray();
+                if (mediaLessonIds.Length > 0 && !media.IsConfigured)
+                    return op.Fail(503, "media_storage_not_configured");
                 var audio = await db.LessonSegments.AsNoTracking().Where(x => lessonIds.Contains(x.LessonVersionId))
                     .Select(x => new { x.LessonVersionId, x.AudioStorageKey }).ToArrayAsync(http.RequestAborted);
-                if (lessonIds.Any(id => audio.All(x => x.LessonVersionId != id)) ||
-                    audio.Any(x => !ShadowingMediaKeys.IsValid(x.AudioStorageKey))) return op.Fail(409, "lesson_audio_missing");
+                if (mediaLessonIds.Any(id => audio.All(x => x.LessonVersionId != id)) ||
+                    audio.Where(x => mediaLessonIds.Contains(x.LessonVersionId))
+                        .Any(x => !ShadowingMediaKeys.IsValid(x.AudioStorageKey)))
+                    return op.Fail(409, "lesson_audio_missing");
                 // Media I/O precedes SQL locks. Revision is rechecked inside the transaction below.
-                foreach (var key in audio.Select(x => x.AudioStorageKey).Distinct())
+                foreach (var key in audio.Where(x => mediaLessonIds.Contains(x.LessonVersionId))
+                    .Select(x => x.AudioStorageKey).Distinct())
                     if (!await media.ExistsAsync(key, http.RequestAborted)) return op.Fail(409, "lesson_audio_missing");
                 await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, http.RequestAborted);
                 previous = await db.PublishedCurriculumVersions.AsNoTracking()
@@ -255,6 +264,27 @@ public static class AdminCurriculumsEndpoints
                     slots.Select(x => x.LessonVersionId).Distinct().ToArray(), http.RequestAborted);
                 var workflows = await WorkflowSnapshots(db,
                     slots.Select(x => x.LessonVersionId).Distinct().ToArray(), http.RequestAborted);
+                foreach (var lessonId in lessonIds)
+                {
+                    if (!workflows.TryGetValue(lessonId, out var workflowJson)) continue;
+                    var stages = ReadEnabledStages(workflowJson);
+                    if (stages.Length == 0) return op.Fail(409, "lesson_stages_missing");
+                    if (stages.Any(x => x != "shadowing") && !approvedAi.ContainsKey(lessonId))
+                        return op.Fail(409, "lesson_stage_not_approved");
+                    if (stages.Any(x => x != "shadowing"))
+                    {
+                        var contentId = approvedAi[lessonId];
+                        var payload = await db.LessonAiContents.AsNoTracking()
+                            .Where(x => x.Id == contentId).Select(x => x.PayloadJson)
+                            .SingleAsync(http.RequestAborted);
+                        var material = payload is null ? null :
+                            JsonSerializer.Deserialize<LessonMaterial>(payload, LessonMaterialRules.Json);
+                        if (material is null || !LessonMaterialRules.ReadyToApprove(material,
+                            stages.Where(x => x != "shadowing")) ||
+                            stages.Where(x => x != "shadowing").Any(x => !StageHasData(material, x)))
+                            return op.Fail(409, "lesson_stage_not_approved");
+                    }
+                }
                 if (assignment is not null)
                 {
                     var current = await db.PublishedCurriculumVersions.AsNoTracking()
@@ -415,6 +445,32 @@ public static class AdminCurriculumsEndpoints
             .Where(x => lessonVersionIds.Contains(x.LessonVersionId))
             .ToDictionaryAsync(x => x.LessonVersionId, x => x.StagesJson, cancellation);
     }
+
+    private static string[] ReadEnabledStages(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<AdminLessonWorkflowEndpoints.WorkflowStage[]>(json,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web))?
+                .Where(x => x.Enabled).OrderBy(x => x.Position).Select(x => x.Type).ToArray() ?? [];
+        }
+        catch (JsonException) { return []; }
+    }
+
+    private static bool NeedsLessonAudio(string json) =>
+        ReadEnabledStages(json).Any(x => x is "shadowing" or "listen-type");
+
+    private static bool StageHasData(LessonMaterial material, string stage) => stage switch
+    {
+        "vocabulary" => material.Vocabulary.Any(x => x.IncludeForStudent),
+        "listen-type" => material.Dictation?.Any(x => x.Enabled) == true,
+        "grammar" => !string.IsNullOrWhiteSpace(material.GrammarFocus),
+        "vocabulary-quiz" => material.Quiz.Any(x => x.Enabled && x.Type == "vocabulary-card"),
+        "grammar-quiz" => material.Quiz.Any(x => x.Enabled && x.Type == "multiple-choice"),
+        "word-order" => material.Quiz.Any(x => x.Enabled && x.Type == "word-order"),
+        "conversation" => !string.IsNullOrWhiteSpace(material.ConversationScenario),
+        _ => false
+    };
 
     private static async Task<bool> ContentSnapshotChanged(ApplicationDbContext db, Guid versionId,
         Dictionary<Guid, Guid> approvedAi, Dictionary<Guid, string> workflows, CancellationToken cancellation)

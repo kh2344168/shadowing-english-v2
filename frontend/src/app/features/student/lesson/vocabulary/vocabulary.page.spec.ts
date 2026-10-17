@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
+import { vi } from 'vitest';
 import { AuthService } from '../../../../core/auth/auth.service';
 import { StudentVocabularyPage } from './vocabulary.page';
 
@@ -35,6 +36,15 @@ describe('StudentVocabularyPage', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('hello');
+    vi.stubGlobal('Audio', class { pause() {} play() { return Promise.resolve(); } });
+    vi.stubGlobal('URL', { createObjectURL: () => 'blob:lesson-word', revokeObjectURL: () => {} });
+    const playing = fixture.componentInstance.speak('word');
+    const audio = http.expectOne((request) =>
+      request.url === '/api/student/learning/slots/s1/vocabulary/audio');
+    expect(audio.request.params.get('position')).toBe('1');
+    expect(audio.request.params.get('part')).toBe('word');
+    audio.flush(new Blob(['wav'], { type: 'audio/wav' }));
+    await playing;
     (
       fixture.nativeElement.querySelector('[data-testid="known-button"]') as HTMLButtonElement
     ).click();
@@ -50,5 +60,7 @@ describe('StudentVocabularyPage', () => {
       fixture.nativeElement.querySelector('a[href="/student/lessons/s1/listen-type"]'),
     ).toBeTruthy();
     http.verify();
+    fixture.destroy();
+    vi.unstubAllGlobals();
   });
 });

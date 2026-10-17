@@ -143,6 +143,45 @@ describe('AdminAIProcessingPage — approve and save', () => {
     expect(page.connected()).toBe(false);
   });
 
+  it('shows separate audio and no-audio creation paths without mixing their forms', () => {
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('.creation-mode-picker')).toBeTruthy();
+    expect(root.querySelector('.upload-grid')).toBeTruthy();
+    expect(root.querySelector('.text-lesson-create')).toBeNull();
+
+    page.selectCreationMode('text');
+    fixture.detectChanges();
+    expect(root.querySelector('.text-lesson-create')).toBeTruthy();
+    expect(root.querySelector('.upload-grid')).toBeNull();
+    expect(root.querySelector('.workflow-steps')).toBeNull();
+
+    page.selectCreationMode('audio');
+    fixture.detectChanges();
+    expect(root.querySelector('.upload-grid')).toBeTruthy();
+    expect(root.querySelector('.text-lesson-create')).toBeNull();
+  });
+
+  it('creates an A1 vocabulary lesson from text without uploading audio or starting AI', async () => {
+    page.title = 'Everyday words';
+    page.lessonType = 'manual';
+    page.level = 'A1';
+    page.goal = 'Use simple greetings';
+    page.sourceText = 'hello, goodbye, please';
+    const creating = page.createTextLesson();
+    await flushCsrf();
+    const request = http.expectOne('/api/admin/lessons/definitions');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({
+      title: 'Everyday words', lessonType: 'manual', level: 'A1',
+      goal: 'Use simple greetings', sourceText: 'hello, goodbye, please',
+    });
+    request.flush({ lessonId: jobId, versionId: 'vocabulary-version' });
+    await creating;
+    expect(router.navigate).toHaveBeenCalledWith(['/admin/lessons', 'vocabulary-version', 'workflow']);
+    expect(client.start).not.toHaveBeenCalled();
+    expect(http.match('/api/admin/shadowing/lessons')).toEqual([]);
+  });
+
   it('shows saved shadowing texts instead of the new-lesson upload form when editing', async () => {
     Object.defineProperty(page, 'routedVersionId', { value: 'existing-version' });
     page.activeVersionId.set('existing-version');
@@ -157,7 +196,10 @@ describe('AdminAIProcessingPage — approve and save', () => {
       revision: 'revision-1',
       aiStatus: null,
       reviewedStages: [],
-      stages: [],
+      stages: [{
+        id: 'shadowing-stage', type: 'shadowing', title: 'معالجة الشادوينج',
+        position: 1, enabled: true, required: true,
+      }],
     });
     await Promise.resolve();
     http.expectOne('/api/admin/shadowing/lessons/existing-lesson').flush({
@@ -414,6 +456,11 @@ describe('AdminAIProcessingPage — approve and save', () => {
       ],
     });
     http.expectOne('/api/admin/lessons/saved-version-1/ai/draft').flush(null);
+    http.expectOne('/api/admin/lessons/saved-version-1/ai/stages/statuses').flush({
+      shadowing: 'Approved',
+      vocabulary: 'NotStarted',
+      'listen-type': 'NotStarted',
+    });
     await fixture.whenStable();
     fixture.detectChanges();
     await fixture.whenStable();

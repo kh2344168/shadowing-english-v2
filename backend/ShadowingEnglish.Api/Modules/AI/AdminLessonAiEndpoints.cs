@@ -18,12 +18,42 @@ public static class AdminLessonAiEndpoints
         var group = app.MapGroup("/api/admin/lessons")
             .RequireAuthorization(new AuthorizeAttribute { Roles = "Admin" });
 
-        group.MapGet("/ai-providers", async (TextAiRouter ai, PexelsImageService images, HttpContext http) =>
+        group.MapGet("/ai-providers", async (TextAiRouter ai, PexelsImageService images,
+            GeminiSpeechService geminiVoice, GroqVoiceService groqVoice, HttpContext http) =>
         {
             http.Response.Headers.CacheControl = "no-store";
             return Results.Ok(new { configured = ai.ConfiguredProviders(),
-                imagesConfigured = await images.IsConfiguredAsync(http.RequestAborted) });
+                imagesConfigured = await images.IsConfiguredAsync(http.RequestAborted),
+                voiceConfigured = geminiVoice.IsConfigured ||
+                    await groqVoice.IsConfiguredAsync(http.RequestAborted) });
         });
+
+        group.MapGet("/{versionId:guid}/ai/voice", async (Guid versionId, string text,
+            string? voice, ApplicationDbContext db, GeminiSpeechService geminiVoice,
+            GroqVoiceService groqVoice, HttpContext http) =>
+        {
+            if (!await db.LessonVersions.AnyAsync(x => x.Id == versionId, http.RequestAborted))
+                return Results.NotFound(new { error = "lesson_not_found" });
+            if (string.IsNullOrWhiteSpace(text) || text.Length > 200)
+                return Results.BadRequest(new { error = "invalid_voice_text" });
+            if (!geminiVoice.IsConfigured && !await groqVoice.IsConfiguredAsync(http.RequestAborted))
+                return Results.Json(new { error = "voice_not_configured" }, statusCode: 503);
+            var selectedVoice = GeminiSpeechService.NormalizeVoice(voice);
+            var audio = await geminiVoice.SpeakAsync(text, selectedVoice, http.RequestAborted);
+            if (audio is null)
+            {
+                var result = await groqVoice.SpeakDetailedAsync(text, selectedVoice, http.RequestAborted);
+                if (result.Audio is null)
+                    return Results.Json(new
+                    {
+                        error = result.ErrorCode == "voice_terms_required"
+                            ? "voice_terms_required" : "speech_unavailable"
+                    }, statusCode: 503);
+                audio = result.Audio;
+            }
+            http.Response.Headers.CacheControl = "private, max-age=3600";
+            return Results.File(audio, "audio/wav");
+        }).RequireRateLimiting("student-voice");
 
         group.MapGet("/{versionId:guid}/ai/segments", async (Guid versionId, ApplicationDbContext db,
             HttpContext http) =>
@@ -46,8 +76,13 @@ public static class AdminLessonAiEndpoints
             {
                 if (!await db.LessonVersions.AnyAsync(x => x.Id == versionId, http.RequestAborted))
                     return Results.NotFound(new { error = "lesson_not_found" });
-                var row = await db.LessonAiContents.AsNoTracking().Where(x => x.LessonVersionId == versionId)
-                    .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
+                var row = await db.LessonAiContents.AsNoTracking().Where(x => x.LessonVersionId == versionId &&
+                    x.Status != "Failed")
+                    .OrderByDescending(x => x.UpdatedAtUtc).ThenByDescending(x => x.Id)
+                    .FirstOrDefaultAsync(http.RequestAborted);
+                row ??= await db.LessonAiContents.AsNoTracking()
+                    .Where(x => x.LessonVersionId == versionId)
+                    .OrderByDescending(x => x.UpdatedAtUtc).ThenByDescending(x => x.Id)
                     .FirstOrDefaultAsync(http.RequestAborted);
                 http.Response.Headers.CacheControl = "no-store";
                 log.LogInformation("Admin.AiContent.Read.Success VersionId={VersionId} Status={Status} DurationMs={DurationMs}",
@@ -70,42 +105,111 @@ public static class AdminLessonAiEndpoints
             return Results.Ok(draft is null ? null : View(draft));
         });
 
-        group.MapPost("/{versionId:guid}/ai", async (Guid versionId, StartAiRequest request, HttpContext http,
-            IAntiforgery csrf, ApplicationDbContext db, TextAiRouter ai, ILoggerFactory logs) =>
+        group.MapGet("/{versionId:guid}/ai/stages/statuses", async (Guid versionId,
+            ApplicationDbContext db, HttpContext http) =>
         {
-            var started = Stopwatch.GetTimestamp(); var log = logs.CreateLogger("Admin.LessonAI");
-            log.LogInformation("Admin.AiContent.Queue.Start VersionId={VersionId} TraceId={TraceId}", versionId, http.TraceIdentifier);
+            if (!await db.LessonVersions.AnyAsync(x => x.Id == versionId, http.RequestAborted))
+                return Results.NotFound(new { error = "lesson_not_found" });
+            var latest = await db.LessonAiContents.AsNoTracking()
+                .Where(x => x.LessonVersionId == versionId)
+                .OrderByDescending(x => x.UpdatedAtUtc).ThenByDescending(x => x.Id)
+                .FirstOrDefaultAsync(http.RequestAborted);
+            var contentRow = latest?.Status == "Failed"
+                ? await db.LessonAiContents.AsNoTracking()
+                    .Where(x => x.LessonVersionId == versionId && x.Status != "Failed" &&
+                        x.PayloadJson != null)
+                    .OrderByDescending(x => x.UpdatedAtUtc).ThenByDescending(x => x.Id)
+                    .FirstOrDefaultAsync(http.RequestAborted)
+                : latest;
+            var material = ReadMaterial(contentRow?.PayloadJson ?? latest?.PayloadJson);
+            var statuses = LessonMaterialRules.GeneratableStages.ToDictionary(stage => stage, stage =>
+            {
+                if (latest?.StageType == stage && latest.Status is "Pending" or "Generating")
+                    return latest.Status;
+                // A failed retry must not erase an earlier reviewed version of the
+                // same stage. Only report Failed when there is no usable fallback.
+                if (latest?.StageType == stage && latest.Status == "Failed" &&
+                    (material is null || !LessonMaterialRules.HasStageData(material, stage)))
+                    return "Failed";
+                if (material is null || !LessonMaterialRules.HasStageData(material, stage))
+                    return "NotStarted";
+                return LessonMaterialRules.ReadyToApprove(material, [stage]) ? "Approved" : "NeedsReview";
+            });
+            http.Response.Headers.CacheControl = "no-store";
+            return Results.Ok(statuses);
+        });
+
+        group.MapPost("/{versionId:guid}/ai/stages/{stageType}/generate", async (
+            Guid versionId, string stageType, StartAiRequest request, HttpContext http,
+            IAntiforgery csrf, ApplicationDbContext db, TextAiRouter ai) =>
+        {
             if (!await ValidCsrf(csrf, http)) return Results.BadRequest(new { error = "invalid_csrf" });
             if (!Guid.TryParse(http.User.FindFirstValue(ClaimTypes.NameIdentifier), out var adminId) ||
-                request.RequestId == Guid.Empty) return Results.BadRequest(new { error = "invalid_request" });
-            if (ai.ConfiguredProviders().Length == 0)
+                request.RequestId == Guid.Empty || !LessonMaterialRules.GeneratableStages.Contains(stageType))
+                return Results.BadRequest(new { error = "invalid_stage_request" });
+            if (request.VocabularyTargetCount is < 1 or > 20 ||
+                (stageType != "vocabulary" && request.VocabularyTargetCount is not null))
+                return Results.BadRequest(new { error = "invalid_vocabulary_count" });
+            if (stageType != "listen-type" && ai.ConfiguredProviders().Length == 0)
                 return Results.Json(new { error = "ai_providers_not_configured" }, statusCode: 503);
-            try
+            var existing = await db.LessonAiContents.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Id == request.RequestId, http.RequestAborted);
+            if (existing is not null)
+                return existing.LessonVersionId == versionId && existing.StageType == stageType
+                    ? Results.Ok(View(existing)) : Results.Conflict(new { error = "request_id_conflict" });
+            if (!await db.LessonVersions.AnyAsync(x => x.Id == versionId, http.RequestAborted))
+                return Results.NotFound(new { error = "lesson_not_found" });
+            var workflowJson = await db.LessonWorkflows.AsNoTracking()
+                .Where(x => x.LessonVersionId == versionId).Select(x => x.StagesJson)
+                .SingleOrDefaultAsync(http.RequestAborted);
+            AdminLessonWorkflowEndpoints.WorkflowStage[]? workflow;
+            try { workflow = workflowJson is null ? null : JsonSerializer.Deserialize<
+                AdminLessonWorkflowEndpoints.WorkflowStage[]>(workflowJson, LessonMaterialRules.Json); }
+            catch (JsonException) { return Results.Conflict(new { error = "invalid_workflow_data" }); }
+            if (workflow?.Any(x => x.Enabled && x.Type == stageType) != true)
+                return Results.Conflict(new { error = "stage_not_enabled" });
+            var segments = await db.LessonSegments.AsNoTracking()
+                .Where(x => x.LessonVersionId == versionId).OrderBy(x => x.Position)
+                .Select(x => new { x.Text, x.AudioStorageKey }).ToArrayAsync(http.RequestAborted);
+            if (segments.Length == 0 || segments.All(x => string.IsNullOrWhiteSpace(x.Text)))
+                return Results.Conflict(new { error = "lesson_source_missing" });
+            if (stageType == "listen-type" && !segments.Any(x => !string.IsNullOrWhiteSpace(x.AudioStorageKey)))
+                return Results.Conflict(new { error = "stage_audio_missing" });
+            if (await db.LessonAiContents.AnyAsync(x => x.LessonVersionId == versionId &&
+                (x.Status == "Pending" || x.Status == "Generating"), http.RequestAborted))
+                return Results.Conflict(new { error = "ai_job_in_progress" });
+            var baseline = await db.LessonAiContents.AsNoTracking()
+                .Where(x => x.LessonVersionId == versionId && x.PayloadJson != null &&
+                    (x.Status == "Draft" || x.Status == "Approved"))
+                .OrderByDescending(x => x.UpdatedAtUtc).ThenByDescending(x => x.Id)
+                .Select(x => x.PayloadJson).FirstOrDefaultAsync(http.RequestAborted);
+            var now = DateTimeOffset.UtcNow;
+            if (stageType == "vocabulary" && request.VocabularyTargetCount is { } targetCount)
             {
-                var existing = await db.LessonAiContents.AsNoTracking()
-                    .SingleOrDefaultAsync(x => x.Id == request.RequestId, http.RequestAborted);
-                if (existing is not null) return existing.LessonVersionId == versionId ? Results.Ok(View(existing)) :
-                    Results.Conflict(new { error = "request_id_conflict" });
-                if (!await db.LessonVersions.AnyAsync(x => x.Id == versionId, http.RequestAborted))
-                    return Results.NotFound(new { error = "lesson_not_found" });
-                if (await db.LessonAiContents.AnyAsync(x => x.LessonVersionId == versionId &&
-                    (x.Status == "Pending" || x.Status == "Generating"), http.RequestAborted))
-                    return Results.Conflict(new { error = "ai_job_in_progress" });
-                var now = DateTimeOffset.UtcNow;
-                var job = new LessonAiContent
-                {
-                    Id = request.RequestId, LessonVersionId = versionId, CreatedByAdminId = adminId,
-                    Revision = Guid.NewGuid(), Status = "Pending", CreatedAtUtc = now, UpdatedAtUtc = now
-                };
-                db.LessonAiContents.Add(job);
-                await db.SaveChangesAsync(http.RequestAborted);
-                log.LogInformation("Admin.AiContent.Queue.Success JobId={JobId} VersionId={VersionId} DurationMs={DurationMs}",
-                    job.Id, versionId, Ms(started));
-                return Results.Json(View(job), statusCode: 202);
+                LessonMaterial prior;
+                try { prior = baseline is null ? LessonMaterialRules.EmptyDraft() :
+                    JsonSerializer.Deserialize<LessonMaterial>(baseline, LessonMaterialRules.Json) ??
+                        LessonMaterialRules.EmptyDraft(); }
+                catch (JsonException) { return Results.Conflict(new { error = "invalid_previous_material" }); }
+                baseline = JsonSerializer.Serialize(prior with { VocabularyTargetCount = targetCount },
+                    LessonMaterialRules.Json);
             }
+            var job = new LessonAiContent
+            {
+                Id = request.RequestId, LessonVersionId = versionId, CreatedByAdminId = adminId,
+                StageType = stageType, Revision = Guid.NewGuid(), Status = "Pending",
+                PayloadJson = baseline, CreatedAtUtc = now, UpdatedAtUtc = now
+            };
+            db.LessonAiContents.Add(job);
+            try { await db.SaveChangesAsync(http.RequestAborted); }
             catch (DbUpdateException) { return Results.Conflict(new { error = "ai_job_changed" }); }
-            catch (Exception ex) { return Failure(log, ex, started, "Queue"); }
+            return Results.Json(View(job), statusCode: 202);
         }).RequireRateLimiting("admin-lesson-write");
+
+        // Legacy all-at-once generation is deliberately retired. Existing generated
+        // content remains readable; new work must explicitly select one stage.
+        group.MapPost("/{versionId:guid}/ai", () =>
+            Results.Json(new { error = "use_stage_generation" }, statusCode: 410));
 
         group.MapPut("/{versionId:guid}/ai/{jobId:guid}", async (Guid versionId, Guid jobId,
             UpdateAiRequest request, HttpContext http, IAntiforgery csrf, ApplicationDbContext db, ILoggerFactory logs) =>
@@ -122,6 +226,8 @@ public static class AdminLessonAiEndpoints
                 if (job is null) return Results.NotFound(new { error = "ai_job_not_found" });
                 if (job.Status != "Draft" || job.Revision != request.ExpectedRevision)
                     return Results.Conflict(new { error = "ai_draft_changed" });
+                if (await IsSuperseded(db, versionId, job.Id, http.RequestAborted))
+                    return Results.Conflict(new { error = "newer_ai_job_exists" });
                 var segments = await db.LessonSegments.AsNoTracking()
                     .Where(x => x.LessonVersionId == versionId).OrderBy(x => x.Position)
                     .Select(x => new { x.Position, x.Text }).ToArrayAsync(http.RequestAborted);
@@ -237,6 +343,8 @@ public static class AdminLessonAiEndpoints
                 if (job.Status == "Approved" && job.Revision == request.ExpectedRevision) return Results.Ok(View(job));
                 if (job.Status != "Draft" || job.Revision != request.ExpectedRevision ||
                     string.IsNullOrEmpty(job.PayloadJson)) return Results.Conflict(new { error = "ai_draft_changed" });
+                if (await IsSuperseded(db, versionId, job.Id, http.RequestAborted))
+                    return Results.Conflict(new { error = "newer_ai_job_exists" });
                 var latestDraftId = await db.LessonAiContents.AsNoTracking()
                     .Where(x => x.LessonVersionId == versionId && x.Status == "Draft")
                     .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
@@ -263,7 +371,8 @@ public static class AdminLessonAiEndpoints
                         .Select(x => x.Type).Distinct().ToArray();
                 }
                 var missingStages = requiredStages?.Where(stage =>
-                    !LessonMaterialRules.ReadyToApprove(material, [stage]) || !StageHasData(material, stage))
+                    !LessonMaterialRules.ReadyToApprove(material, [stage]) ||
+                    !LessonMaterialRules.HasStageData(material, stage))
                     .Distinct().ToArray() ?? [];
                 if (!LessonMaterialRules.ReadyToApprove(material, requiredStages) || missingStages.Length > 0)
                     return Results.Conflict(new { error = "review_incomplete", missingStages });
@@ -282,21 +391,22 @@ public static class AdminLessonAiEndpoints
 
     private static object View(LessonAiContent row) => new
     {
-        row.Id, row.LessonVersionId, row.Revision, row.Status, row.ProviderName,
+        row.Id, row.LessonVersionId, row.Revision, row.Status, row.StageType, row.ProviderName,
         row.ErrorCode, row.CreatedAtUtc, row.ApprovedAtUtc,
         material = row.PayloadJson is null ? null : JsonSerializer.Deserialize<LessonMaterial>(row.PayloadJson, LessonMaterialRules.Json)
     };
-    private static bool StageHasData(LessonMaterial material, string stage) => stage switch
+    private static LessonMaterial? ReadMaterial(string? payload)
     {
-        "vocabulary" => material.Vocabulary.Any(x => x.IncludeForStudent),
-        "listen-type" => material.Dictation?.Any(x => x.Enabled) == true,
-        "grammar" => !string.IsNullOrWhiteSpace(material.GrammarFocus),
-        "vocabulary-quiz" => material.Quiz.Any(x => x.Enabled && x.Type == "vocabulary-card"),
-        "grammar-quiz" => material.Quiz.Any(x => x.Enabled && x.Type == "multiple-choice"),
-        "word-order" => material.Quiz.Any(x => x.Enabled && x.Type == "word-order"),
-        "conversation" => !string.IsNullOrWhiteSpace(material.ConversationScenario),
-        _ => false
-    };
+        if (payload is null) return null;
+        try { return JsonSerializer.Deserialize<LessonMaterial>(payload, LessonMaterialRules.Json); }
+        catch (JsonException) { return null; }
+    }
+    private static async Task<bool> IsSuperseded(ApplicationDbContext db, Guid versionId,
+        Guid jobId, CancellationToken cancel) =>
+        await db.LessonAiContents.AsNoTracking().Where(x => x.LessonVersionId == versionId &&
+            x.Status != "Failed")
+            .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
+            .Select(x => x.Id).FirstAsync(cancel) != jobId;
     private static async Task<bool> ValidCsrf(IAntiforgery csrf, HttpContext http)
     { try { await csrf.ValidateRequestAsync(http); return true; } catch (AntiforgeryValidationException) { return false; } }
     private static double Ms(long start) => Stopwatch.GetElapsedTime(start).TotalMilliseconds;
@@ -306,7 +416,7 @@ public static class AdminLessonAiEndpoints
             action, ex.GetType().Name, Ms(start));
         return Results.Problem(statusCode: 500, title: "ai_content_operation_failed");
     }
-    public sealed record StartAiRequest(Guid RequestId);
+    public sealed record StartAiRequest(Guid RequestId, int? VocabularyTargetCount = null);
     public sealed record ReopenAiRequest(Guid RequestId, Guid ExpectedRevision);
     public sealed record UpdateAiRequest(Guid ExpectedRevision, LessonMaterial Material);
     public sealed record ApproveAiRequest(Guid ExpectedRevision);

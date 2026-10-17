@@ -7,10 +7,10 @@
   <header class="workflow-hero">
     <div class="hero-copy">
       @if (!embedded) {
-      <a routerLink="/admin/lessons" class="back-link">
+      <button type="button" class="back-link" (click)="backToLessons()" [disabled]="saving() || approving()">
         <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
         مكتبة الدروس
-      </a>
+      </button>
       }
       <span class="eyebrow">LESSON JOURNEY BUILDER</span>
       <h1 id="workflow-title">رحلة تجهيز الدرس</h1>
@@ -39,7 +39,7 @@
   <div class="workflow-toolbar">
     <div>
       <h2>مراحل الطالب</h2>
-      <p>فعّل ما تحتاجه، كرّر أي تدريب، وغيّر الترتيب قبل النشر.</p>
+      <p>اختر المراحل ورتّبها، ثم افتح كل مرحلة لتبدأ معالجتها بنفسك وتراجع نتيجتها.</p>
     </div>
     <button type="button" class="add-stage" (click)="libraryOpen.set(true)">
       <span class="material-symbols-outlined" aria-hidden="true">add_circle</span>
@@ -57,7 +57,7 @@
           <button
             type="button"
             (click)="move(stage, -1)"
-            [disabled]="index === 0 || isCore(stage)"
+            [disabled]="index === 0"
             aria-label="تحريك لأعلى"
           >
             <span class="material-symbols-outlined" aria-hidden="true">keyboard_arrow_up</span>
@@ -65,7 +65,7 @@
           <button
             type="button"
             (click)="move(stage, 1)"
-            [disabled]="index === stages().length - 1 || isCore(stage)"
+            [disabled]="index === stages().length - 1"
             aria-label="تحريك لأسفل"
           >
             <span class="material-symbols-outlined" aria-hidden="true">keyboard_arrow_down</span>
@@ -98,7 +98,6 @@
             <input
               type="checkbox"
               [checked]="stage.enabled"
-              [disabled]="isCore(stage)"
               (change)="toggle(stage, $any($event.target).checked)"
             />
             <span class="switch" aria-hidden="true"></span>
@@ -108,7 +107,7 @@
             <input
               type="checkbox"
               [checked]="stage.required"
-              [disabled]="isCore(stage) || !stage.enabled"
+              [disabled]="!stage.enabled"
               (change)="toggleRequired(stage, $any($event.target).checked)"
             />
             إجبارية للطالب
@@ -118,19 +117,10 @@
 
       <div class="stage-actions">
         <button type="button" class="open-stage" [disabled]="!stage.enabled" (click)="open(stage)">
-          فتح وتعديل
+          {{ stageAction(stage) }}
           <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
         </button>
-        @if (!isCore(stage)) {
         <div class="more-actions">
-          <button
-            type="button"
-            (click)="duplicate(stage)"
-            title="تكرار المرحلة"
-            aria-label="تكرار المرحلة"
-          >
-            <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
-          </button>
           <button
             type="button"
             class="delete-action"
@@ -141,7 +131,6 @@
             <span class="material-symbols-outlined" aria-hidden="true">delete</span>
           </button>
         </div>
-        }
       </div>
     </li>
     }
@@ -152,7 +141,7 @@
       <span class="material-symbols-outlined" aria-hidden="true">info</span>
       <p>
         <strong>لن يظهر أي تغيير للطلاب قبل نشر المنهج.</strong
-        ><small>تعطيل المرحلة يحتفظ بإعداداتها حتى تعيد تفعيلها.</small>
+        ><small>كل مرحلة تُعالج وحدها عند طلبك؛ إضافة مرحلة لا تبدأ معالجة بقية المراحل.</small>
       </p>
     </div>
     <button
@@ -187,7 +176,7 @@
         <div>
           <span class="eyebrow">ACTIVITY LIBRARY</span>
           <h2 id="stage-library-title">إضافة مرحلة للرحلة</h2>
-          <p>يمكنك إضافة نفس النوع أكثر من مرة وتسميته كما تريد.</p>
+          <p>أضف المرحلة التي تحتاجها. النوع الموجود في الرحلة لا يُضاف ثانيةً لأن نسختيه ستشتركان في نفس المحتوى.</p>
         </div>
         <button
           type="button"
@@ -200,12 +189,12 @@
       </header>
       <div class="library-grid">
         @for (item of library; track item.type) {
-        <button type="button" class="library-card" (click)="add(item)">
+        <button type="button" class="library-card" [disabled]="!canAdd(item.type)" (click)="add(item)">
           <span class="stage-icon" [attr.data-tone]="item.color"
             ><span class="material-symbols-outlined" aria-hidden="true">{{ item.icon }}</span></span
           >
-          <span><strong>{{ item.title }}</strong><small>{{ item.description }}</small></span>
-          <span class="material-symbols-outlined add-icon" aria-hidden="true">add</span>
+          <span><strong>{{ item.title }}</strong><small>{{ canAdd(item.type) ? item.description : 'مضافة بالفعل — افتحها من رحلة الدرس' }}</small></span>
+          <span class="material-symbols-outlined add-icon" aria-hidden="true">{{ canAdd(item.type) ? 'add' : 'check' }}</span>
         </button>
         }
       </div>

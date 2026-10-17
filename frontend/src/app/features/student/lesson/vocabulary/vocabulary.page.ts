@@ -35,9 +35,9 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
   readonly flipped = signal(false);
   readonly leaving = signal(false);
   readonly speaking = signal<'word' | 'example' | null>(null);
-  readonly speechSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
   readonly current = computed(() => {
     const data = this.material();
+    console.log("مرحبا"+data);
     return data && this.completed() < data.vocabulary.length
       ? data.vocabulary[this.completed()]
       : null;
@@ -49,7 +49,9 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
     return total === 0 ? 0 : Math.round(((this.completed() + 1) / total) * 100);
   });
 
-  private activeUtterance: SpeechSynthesisUtterance | null = null;
+  private activeAudio: HTMLAudioElement | null = null;
+  private activeAudioUrl: string | null = null;
+  private speechRequest = 0;
 
   ngOnInit(): void {
     void this.load();
@@ -108,27 +110,26 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
     this.flipped.set(true);
   }
 
-  speak(target: 'word' | 'example'): void {
+  async speak(target: 'word' | 'example'): Promise<void> {
     const item = this.current();
-    if (!item || !this.speechSupported) return;
-    const text = target === 'word' ? item.word : item.exampleEn;
+    if (!item) return;
     this.stopSpeech();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'en-US';
-    utterance.rate = target === 'word' ? 0.82 : 0.88;
-    utterance.pitch = 1;
-    utterance.onstart = () => {
-      if (this.activeUtterance === utterance) this.speaking.set(target);
-    };
-    const finish = () => {
-      if (this.activeUtterance !== utterance) return;
-      this.activeUtterance = null;
-      this.speaking.set(null);
-    };
-    utterance.onend = finish;
-    utterance.onerror = finish;
-    this.activeUtterance = utterance;
-    window.speechSynthesis.speak(utterance);
+    const request = this.speechRequest;
+    this.speaking.set(target);
+    try {
+      const sound = await firstValueFrom(this.api.vocabularyAudio(this.slotId, this.completed() + 1, target));
+      if (request !== this.speechRequest) return;
+      const url = URL.createObjectURL(sound);
+      const audio = new Audio(url);
+      this.activeAudio = audio;
+      this.activeAudioUrl = url;
+      audio.onended = () => this.stopSpeech();
+      await audio.play();
+    } catch {
+      if (request !== this.speechRequest) return;
+      this.stopSpeech();
+      this.error.set('الصوت الطبيعي غير متاح الآن. أبلغ المدرّس لتفعيل مزود الصوت أو حاول لاحقًا.');
+    }
   }
 
   @HostListener('window:keydown', ['$event'])
@@ -143,8 +144,11 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
   }
 
   private stopSpeech(): void {
-    if (this.speechSupported) window.speechSynthesis.cancel();
-    this.activeUtterance = null;
+    this.speechRequest++;
+    this.activeAudio?.pause();
+    this.activeAudio = null;
+    if (this.activeAudioUrl) URL.revokeObjectURL(this.activeAudioUrl);
+    this.activeAudioUrl = null;
     this.speaking.set(null);
   }
 }

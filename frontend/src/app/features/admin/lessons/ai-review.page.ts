@@ -1,12 +1,14 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  HostListener,
   inject,
   OnDestroy,
   OnInit,
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
@@ -16,6 +18,7 @@ import {
   LessonMaterial,
   LessonSegmentReview,
   QuizCard,
+  StageProcessingStatus,
   VocabularyImageOption,
 } from './lesson-ai.api';
 import { LessonStageType, LessonWorkflowApi, LessonWorkflowStage } from './lesson-workflow.api';
@@ -47,6 +50,13 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   readonly workflowStageId = this.route.snapshot.paramMap.get('stageId');
   readonly providers = signal<string[]>([]);
   readonly imagesConfigured = signal(false);
+  readonly voiceConfigured = signal(false);
+  readonly voiceBusy = signal(false);
+  readonly voiceTermsRequired = signal(false);
+  readonly vocabularyTargetCount = signal(12);
+  selectedVoice = 'Kore';
+  private previewAudio: HTMLAudioElement | null = null;
+  private previewAudioUrl: string | null = null;
   readonly imageBusy = signal<number | null>(null);
   readonly imageOptions = signal<Record<number, VocabularyImageOption[]>>({});
   readonly imagePages = signal<Record<number, number>>({});
@@ -55,10 +65,12 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   readonly segments = signal<LessonSegmentReview[]>([]);
   readonly loading = signal(true);
   readonly busy = signal(false);
+  readonly globalProcessing = signal(false);
   readonly dirty = signal(false);
   readonly error = signal('');
   readonly notice = signal('');
   readonly selectedStage = signal<ReviewStage | null>(null);
+  readonly stageStatus = signal<StageProcessingStatus>('NotStarted');
   readonly activeWorkflowStage = signal<LessonWorkflowStage | null>(null);
   readonly requiredReviewStages = signal<ReviewStage[]>([
     'vocabulary',
@@ -122,6 +134,13 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroyed = true;
     clearTimeout(this.pollTimer);
+    this.stopVoice();
+  }
+  @HostListener('window:beforeunload', ['$event'])
+  protectUnsavedChanges(event: BeforeUnloadEvent): void {
+    if (!this.dirty()) return;
+    event.preventDefault();
+    event.returnValue = '';
   }
   async load(): Promise<void> {
     if (!this.versionId || !this.workflowStageId || this.destroyed) return;
@@ -131,17 +150,22 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     this.loading.set(true);
     this.error.set('');
     try {
-      const [providers, job, segments, workflow] = await Promise.all([
+      const [providers, latestJob, savedDraft, segments, workflow, statuses] = await Promise.all([
         firstValueFrom(this.api.providers()),
         firstValueFrom(this.api.get(this.versionId)),
+        firstValueFrom(this.api.latestDraft(this.versionId)),
         firstValueFrom(this.api.segments(this.versionId)),
         firstValueFrom(this.workflowApi.get(this.versionId)),
+        firstValueFrom(this.api.stageStatuses(this.versionId)),
       ]);
       if (this.destroyed) return;
       this.providers.set(providers.configured);
       this.imagesConfigured.set(providers.imagesConfigured === true);
+      this.voiceConfigured.set(providers.voiceConfigured === true);
       this.segments.set(segments);
-      this.setJob(job);
+      this.globalProcessing.set(
+        latestJob?.status === 'Pending' || latestJob?.status === 'Generating',
+      );
       if (workflow) {
         this.requiredReviewStages.set([
           ...new Set(
@@ -156,12 +180,29 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
         const requested = workflow.stages.find((stage) => stage.id === this.workflowStageId);
         this.activeWorkflowStage.set(requested ?? null);
         const reviewStage = requested ? this.toReviewStage(requested.type) : null;
-        if (reviewStage && job?.status === 'Draft') this.selectedStage.set(reviewStage);
+        const stageStatus = requested ? statuses[requested.type] ?? 'NotStarted' : 'NotStarted';
+        const useSavedDraft = stageStatus !== 'Pending' && stageStatus !== 'Generating' &&
+          stageStatus !== 'Failed' && latestJob?.status !== 'Draft' &&
+          latestJob?.status !== 'Approved' && !!savedDraft;
+        const job = useSavedDraft ? savedDraft : latestJob;
+        this.setJob(job);
+        this.stageStatus.set(stageStatus);
+        this.selectedStage.set(
+          reviewStage && job?.status === 'Draft' &&
+          (stageStatus === 'NeedsReview' || stageStatus === 'Approved')
+            ? reviewStage
+            : null,
+        );
+        if (stageStatus === 'Pending' || stageStatus === 'Generating') {
+          this.pollTimer = setTimeout(() => {
+            if (!this.destroyed) void this.load();
+          }, 3000);
+        }
       }
       console.info('[Admin.AiReview.Load.Success]', {
         versionId: this.versionId,
-        status: job?.status ?? 'None',
-        errorCode: job?.status === 'Failed' ? job.errorCode : null,
+        status: latestJob?.status ?? 'None',
+        errorCode: latestJob?.status === 'Failed' ? latestJob.errorCode : null,
         durationMs: Math.round(performance.now() - started),
       });
     } catch (ex) {
@@ -193,7 +234,10 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     this.imageOptions.set({});
     this.imagePages.set({});
     const material = job?.material ? structuredClone(job.material) : null;
-    const needsDictation = !!material && material.dictation == null && job?.status === 'Draft';
+    if (material?.vocabularyTargetCount) this.vocabularyTargetCount.set(material.vocabularyTargetCount);
+    const needsDictation = !!material && job?.stageType == null &&
+      this.activeWorkflowStage()?.type === 'listen-type' && !material.vocabularyOnly &&
+      material.dictation == null && job?.status === 'Draft';
     if (needsDictation && material) {
       material.dictation = this.segments()
         .filter(({ text }) => text.trim().length <= 600)
@@ -205,16 +249,39 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
         }));
     }
     const needsReviewInit =
-      !!material && job?.status === 'Draft' && material.reviewedStages == null;
+      !!material && job?.stageType == null && job?.status === 'Draft' &&
+      material.reviewedStages == null;
     if (needsReviewInit && material) material.reviewedStages = [];
     this.draft.set(material);
     this.dirty.set(needsDictation || needsReviewInit);
     if (job?.status !== 'Draft') this.selectedStage.set(null);
-    clearTimeout(this.pollTimer);
-    if (job && (job.status === 'Pending' || job.status === 'Generating')) {
-      this.pollTimer = setTimeout(() => {
-        if (!this.destroyed) void this.load();
-      }, 3000);
+  }
+
+  stageIsProcessing(): boolean {
+    return this.stageStatus() === 'Pending' || this.stageStatus() === 'Generating';
+  }
+
+  canGenerateStage(): boolean {
+    return this.activeWorkflowStage()?.type === 'listen-type' || this.providers().length > 0;
+  }
+
+  stageCanEdit(): boolean {
+    return !this.globalProcessing() && !!this.draft() && this.job()?.status === 'Draft' &&
+      (this.stageStatus() === 'NeedsReview' || this.stageStatus() === 'Approved');
+  }
+
+  stagePreview(): string {
+    const material = this.draft();
+    switch (this.activeWorkflowStage()?.type) {
+      case 'vocabulary':
+        return material?.vocabulary.filter((card) => card.includeForStudent !== false)
+          .slice(0, 6).map((card) => card.word).join(' · ') || 'الكلمات محفوظة.';
+      case 'conversation':
+        return material?.conversationScenario || 'موقف المحادثة محفوظ.';
+      case 'grammar':
+        return material?.grammarFocus || 'شرح القاعدة محفوظ.';
+      default:
+        return 'محتوى هذه المرحلة محفوظ؛ سيعود محررها بعد انتهاء المعالجة الحالية.';
     }
   }
   failureReason(code: string | null): string {
@@ -373,6 +440,16 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     this.draft.set({ ...material });
     this.changed();
   }
+  visibleVocabularyCount(): number {
+    return this.draft()?.vocabulary.filter((card) => card.includeForStudent !== false).length ?? 0;
+  }
+  setVocabularySelection(include: boolean): void {
+    const material = this.draft();
+    if (!material) return;
+    material.vocabulary = material.vocabulary.map((card) => ({ ...card, includeForStudent: include }));
+    this.draft.set({ ...material });
+    this.changed();
+  }
   removeVocabulary(index: number): void {
     const material = this.draft();
     if (!material || material.vocabulary.length <= 1) return;
@@ -400,7 +477,7 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     }
     const job = this.job();
     if (!job || job.status !== 'Draft') return;
-    const page = (this.imagePages()[index] ?? 0) + 1;
+    const page = ((this.imagePages()[index] ?? 0) % 10) + 1;
     this.imageBusy.set(index);
     try {
       await firstValueFrom(this.auth.csrf());
@@ -471,7 +548,18 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   }
 
   async backToStages(): Promise<void> {
+    if (this.dirty()) {
+      await this.save();
+      if (this.dirty()) return;
+    }
     await this.router.navigate(['/admin/lessons', this.versionId, 'workflow']);
+  }
+  async openImageSettings(): Promise<void> {
+    if (this.dirty()) {
+      await this.save();
+      if (this.dirty()) return;
+    }
+    await this.router.navigate(['/admin/ai-tools']);
   }
   addQuestion(type: 'multiple-choice' | 'vocabulary-card' | 'word-order'): void {
     const material = this.draft();
@@ -516,14 +604,60 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   stageIcon(stage: ReviewStage): string {
     return this.stages.find(({ key }) => key === stage)?.icon ?? 'auto_awesome';
   }
-  speak(text: string): void {
+  private stopVoice(): void {
+    this.previewAudio?.pause();
+    this.previewAudio = null;
+    if (this.previewAudioUrl) URL.revokeObjectURL(this.previewAudioUrl);
+    this.previewAudioUrl = null;
+  }
+  async speak(text: string): Promise<void> {
     const value = text.trim();
-    if (!value || typeof speechSynthesis === 'undefined') return;
-    speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(value);
-    utterance.lang = 'en-US';
-    utterance.rate = 0.82;
-    speechSynthesis.speak(utterance);
+    if (!value || this.voiceBusy()) return;
+    if (!this.voiceConfigured()) {
+      this.error.set('الصوت الطبيعي غير مفعّل. أضف مفتاح Gemini Voice أو Groq Voice من إعدادات الخادم.');
+      return;
+    }
+    this.voiceBusy.set(true);
+    this.voiceTermsRequired.set(false);
+    this.error.set('');
+    this.stopVoice();
+    try {
+      const sound = await firstValueFrom(this.api.voice(this.versionId, value, this.selectedVoice));
+      if (this.destroyed) return;
+      const url = URL.createObjectURL(sound);
+      const audio = new Audio(url);
+      this.previewAudioUrl = url;
+      this.previewAudio = audio;
+      audio.onended = () => this.stopVoice();
+      await audio.play();
+    } catch (error) {
+      this.stopVoice();
+      if (await this.voiceErrorCode(error) === 'voice_terms_required') {
+        this.voiceTermsRequired.set(true);
+        this.error.set('مفتاح الصوت محفوظ، لكن Groq يتطلب قبول شروط نموذج Orpheus من مالك الحساب قبل تشغيل النطق.');
+      } else {
+        this.error.set('تعذر تشغيل الصوت الطبيعي الآن. راجع إعدادات مزود الصوت أو حاول مرة أخرى.');
+      }
+    } finally {
+      this.voiceBusy.set(false);
+    }
+  }
+  private async voiceErrorCode(error: unknown): Promise<string | null> {
+    if (!(error instanceof HttpErrorResponse)) return null;
+    if (error.error instanceof Blob) {
+      try {
+        const body = typeof error.error.text === 'function' ? await error.error.text() :
+          await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result ?? ''));
+            reader.onerror = () => reject(reader.error);
+            reader.readAsText(error.error);
+          });
+        const result = JSON.parse(body);
+        return typeof result?.error === 'string' ? result.error : null;
+      } catch { return null; }
+    }
+    return typeof error.error?.error === 'string' ? error.error.error : null;
   }
   updateAnswers(position: number, value: string): void {
     const item = this.draft()?.dictation?.find((x) => x.position === position);
@@ -561,24 +695,40 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   }
 
   async generate(): Promise<void> {
-    if (this.busy() || !this.providers().length || !this.versionId) return;
+    const stage = this.activeWorkflowStage();
+    if (this.busy() || this.globalProcessing() || !this.canGenerateStage() || !this.versionId || !stage ||
+      this.stageIsProcessing()) return;
+    if (this.dirty()) {
+      this.error.set('احفظ تعديلات هذه المرحلة أولًا قبل إعادة معالجتها.');
+      return;
+    }
     const started = performance.now();
     this.busy.set(true);
     this.error.set('');
     this.notice.set('');
-    console.info('[Admin.AiReview.Generate.Start]', { versionId: this.versionId });
+    console.info('[Admin.AiReview.Generate.Start]', { versionId: this.versionId, stageType: stage.type });
     try {
       await firstValueFrom(this.auth.csrf());
-      const job = await firstValueFrom(this.api.start(this.versionId, crypto.randomUUID()));
+      const job = await firstValueFrom(
+        this.api.generateStage(this.versionId, stage.type, crypto.randomUUID(),
+          stage.type === 'vocabulary' ? this.vocabularyTargetCount() : undefined),
+      );
       this.setJob(job);
-      this.notice.set('بدأت معالجة الكلمات والتمارين. ستظهر المسودة هنا بعد قليل.');
+      this.globalProcessing.set(true);
+      this.stageStatus.set('Pending');
+      this.selectedStage.set(null);
+      this.notice.set(`بدأت معالجة ${stage.title} فقط. انتظر قليلًا؛ ستظهر النتيجة هنا للمراجعة.`);
+      clearTimeout(this.pollTimer);
+      this.pollTimer = setTimeout(() => {
+        if (!this.destroyed) void this.load();
+      }, 3000);
       console.info('[Admin.AiReview.Generate.Success]', {
         versionId: this.versionId,
         jobId: job.id,
         durationMs: Math.round(performance.now() - started),
       });
     } catch (ex) {
-      this.error.set('تعذر بدء المعالجة. حدّث الحالة وحاول مجددًا.');
+      this.error.set('تعذر بدء معالجة هذه المرحلة. حدّث الحالة وحاول مجددًا.');
       console.warn('[Admin.AiReview.Generate.Failed]', {
         versionId: this.versionId,
         status: (ex as { status?: number }).status ?? null,
@@ -590,7 +740,7 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   }
   async reopenApproved(): Promise<void> {
     const approved = this.job();
-    if (!approved || approved.status !== 'Approved' || this.busy()) return;
+    if (!approved || approved.status !== 'Approved' || this.busy() || this.globalProcessing()) return;
     const started = performance.now();
     this.busy.set(true);
     this.error.set('');
@@ -624,7 +774,8 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   async save(): Promise<void> {
     const job = this.job(),
       draft = this.draft();
-    if (!job || !draft || job.status !== 'Draft' || !this.dirty() || this.busy()) return;
+    if (!job || !draft || job.status !== 'Draft' || !this.dirty() || this.busy() ||
+      this.globalProcessing()) return;
     const started = performance.now();
     this.busy.set(true);
     this.error.set('');

@@ -42,6 +42,11 @@ describe('AdminAIToolsPage', () => {
       requiresAccountId: false, supportsProjectId: false, models: [], defaultPriority: 2,
       unavailableReason: 'secure_adapter_pending',
     },
+    {
+      providerKey: 'groq', displayName: 'Groq Voice', capability: 'voice', implemented: true,
+      requiresAccountId: false, supportsProjectId: false, models: ['canopylabs/orpheus-v1-english'],
+      defaultPriority: 1, unavailableReason: null,
+    },
   ];
 
   const configuredGroq: AiProviderConfig = {
@@ -154,6 +159,16 @@ describe('AdminAIToolsPage', () => {
     expect(text).toContain('••••••••9X2K');
     expect(text).not.toContain('sk-super-secret-key');
     expect(fixture.componentInstance.encryptionReady()).toBe(true);
+  });
+
+  it('offers a separate natural-voice key with the supported speech model', async () => {
+    const fixture = await createPage();
+    expect(fixture.nativeElement.textContent).toContain('أصوات الكلمات الطبيعية');
+    fixture.componentInstance.openAddProvider('voice');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.providerForm.capability).toBe('voice');
+    expect(fixture.componentInstance.providerForm.providerKey).toBe('groq');
+    expect(fixture.componentInstance.providerForm.model).toBe('canopylabs/orpheus-v1-english');
   });
 
   it('explains why adding Pexels is disabled when server-side encryption is missing', async () => {

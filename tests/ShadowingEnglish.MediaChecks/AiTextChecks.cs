@@ -109,10 +109,45 @@ internal static class AiTextChecks
             Assert(prepared?.Dictation is { Length: 1 } && prepared.Dictation[0].Position == 1,
                 "long_sentence_made_all_generated_activities_fail");
             Assert(LessonMaterialRules.PrepareDraft(generated!,
-                [new LessonTranscriptSegment(1, new string('a', 601))]) is null,
-                "impossible_dictation_must_fail_before_marking_draft");
+                [new LessonTranscriptSegment(1, new string('a', 601))])?.Dictation is null,
+                "non_dictation_lesson_should_not_require_audio_activity");
             Assert(prepared is not null && !LessonMaterialRules.ReadyToApprove(prepared),
                 "unreviewed_generated_draft_can_be_approved");
+            return Task.CompletedTask;
+        });
+        await check("Generating one stage preserves reviewed edits in the other stages", () =>
+        {
+            const string source = "Hello world";
+            LessonTranscriptSegment[] segments = [new(1, source)];
+            const string vocabularyJson = """
+                {"vocabulary":[{"word":"Hello","meaningAr":"مرحبًا","exampleEn":"Hello world","exampleAr":"مرحبًا بالعالم"}]}
+                """;
+            var vocabulary = LessonMaterialRules.MergeStageGenerated("vocabulary", vocabularyJson,
+                LessonMaterialRules.EmptyDraft(), source, segments);
+            Assert(vocabulary?.Vocabulary.Length == 1 && vocabulary.Quiz.Length == 0 &&
+                vocabulary.GrammarFocus == "", "vocabulary_generation_touched_other_stages");
+            var reviewed = vocabulary! with { ReviewedStages = ["vocabulary"], Vocabulary =
+                [vocabulary.Vocabulary[0] with { ImageUrl = "https://example.invalid/teacher-choice.jpg" }] };
+            var grammar = LessonMaterialRules.MergeStageGenerated("grammar",
+                "{\"grammarFocus\":\"Use a greeting in a short sentence.\"}",
+                reviewed, source, segments);
+            Assert(grammar?.GrammarFocus == "Use a greeting in a short sentence." &&
+                grammar.Vocabulary[0].ImageUrl == "https://example.invalid/teacher-choice.jpg" &&
+                grammar.ReviewedStages?.SequenceEqual(["vocabulary"]) == true,
+                "grammar_regeneration_lost_vocabulary_edits_or_review");
+            var conversationFocused = reviewed with
+            {
+                ConversationTargetWords = ["Hello"],
+                ReviewedStages = ["vocabulary", "conversation"]
+            };
+            var newVocabulary = LessonMaterialRules.MergeStageGenerated("vocabulary",
+                "{\"vocabulary\":[{\"word\":\"world\",\"meaningAr\":\"العالم\",\"exampleEn\":\"Hello world\",\"exampleAr\":\"مرحبًا بالعالم\"}]}",
+                conversationFocused, source, segments);
+            Assert(newVocabulary is not null &&
+                newVocabulary.Vocabulary.Any(card => card.Word == "Hello" &&
+                    card.ImageUrl == "https://example.invalid/teacher-choice.jpg") &&
+                newVocabulary.ReviewedStages?.SequenceEqual(["conversation"]) == true,
+                "vocabulary_regeneration_broke_teacher_conversation_focus");
             return Task.CompletedTask;
         });
         await check("SQL Server migration metadata matches the current AI model", () =>
@@ -121,7 +156,7 @@ internal static class AiTextChecks
                 .UseSqlServer("Server=127.0.0.1;Database=NeverConnected;Integrated Security=true;").Options;
             using var model = new ApplicationDbContext(options);
             Assert(!model.Database.HasPendingModelChanges(), "ai_model_snapshot_is_stale");
-            Assert(model.Database.GetMigrations().Last() == "20261012090000_SnapshotPublishedLessonWorkflow",
+            Assert(model.Database.GetMigrations().Last() == "20261016090000_AddLessonAiStageType",
                 "ai_migration_not_registered");
             var script = model.GetService<IMigrator>().GenerateScript();
             Assert(script.Contains("CREATE TABLE [LessonAiContents]") &&
@@ -210,6 +245,23 @@ internal static class AiTextChecks
         using var other = await app.LoginAsync("other");
         using var adminClient = await app.LoginAsync("admin");
         var path = $"/api/student/learning/slots/{slotId}";
+        await check("Vocabulary count survives material serialization", () =>
+        {
+            var configured = material with { VocabularyTargetCount = 7 };
+            var restored = JsonSerializer.Deserialize<LessonMaterial>(
+                JsonSerializer.Serialize(configured, LessonMaterialRules.Json), LessonMaterialRules.Json);
+            Assert(restored?.VocabularyTargetCount == 7 &&
+                LessonMaterialRules.Valid(restored, "Hello world"), "vocabulary_count_not_persisted");
+            return Task.CompletedTask;
+        });
+        await check("Vocabulary audio stays student-scoped and requires a configured natural voice", async () =>
+        {
+            using var outsider = await other.GetAsync(path + "/vocabulary/audio?position=1&part=word");
+            Assert(outsider.StatusCode == HttpStatusCode.NotFound, "vocabulary_audio_leaked_to_other_student");
+            using var configured = await studentClient.GetAsync(path + "/vocabulary/audio?position=1&part=word");
+            Assert(configured.StatusCode == HttpStatusCode.ServiceUnavailable,
+                "vocabulary_audio_should_require_voice_provider");
+        });
         await check("Admin approval requires four saved review decisions", async () =>
         {
             var draftId = Guid.NewGuid(); var draftRevision = Guid.NewGuid();
@@ -334,6 +386,42 @@ internal static class AiTextChecks
                 .SingleAsync(x => x.Id == incompleteId)).Status == "Draft",
                 "incomplete_draft_was_approved");
         });
+        await check("Listen-and-type starts on demand and preserves other reviewed stages", async () =>
+        {
+            using var legacy = await adminClient.PostAsJsonAsync(
+                $"/api/admin/lessons/{versionId}/ai", new { requestId = Guid.NewGuid() });
+            Assert((int)legacy.StatusCode == 410, "legacy_bulk_generation_still_enabled");
+            var requestId = Guid.NewGuid();
+            using var queued = await adminClient.PostAsJsonAsync(
+                $"/api/admin/lessons/{versionId}/ai/stages/listen-type/generate",
+                new { requestId });
+            Assert(queued.StatusCode == HttpStatusCode.Accepted,
+                "stage_generation_not_queued_without_ai_provider");
+            LessonAiContent? completed = null;
+            for (var attempt = 0; attempt < 60; attempt++)
+            {
+                using var scope = app.Services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                completed = await db.LessonAiContents.AsNoTracking()
+                    .SingleAsync(x => x.Id == requestId);
+                if (completed.Status is "Draft" or "Failed") break;
+                await Task.Delay(100);
+            }
+            Assert(completed?.Status == "Draft" && completed.StageType == "listen-type",
+                "stage_generation_not_completed");
+            var generated = JsonSerializer.Deserialize<LessonMaterial>(completed!.PayloadJson!, LessonMaterialRules.Json);
+            Assert(generated?.Dictation is { Length: 1 } &&
+                generated.Vocabulary[0].Word == "hello" &&
+                generated.ReviewedStages?.Contains("vocabulary") == true &&
+                generated.ReviewedStages.Contains("listen-type") == false,
+                "stage_generation_changed_other_reviewed_content");
+            using var statuses = await adminClient.GetAsync(
+                $"/api/admin/lessons/{versionId}/ai/stages/statuses");
+            var statusJson = await statuses.Content.ReadFromJsonAsync<JsonElement>();
+            Assert(statuses.StatusCode == HttpStatusCode.OK &&
+                statusJson.GetProperty("listen-type").GetString() == "NeedsReview",
+                "generated_stage_not_marked_for_review");
+        });
         await check("Only the assigned student sees reviewed material, without quiz answers", async () =>
         {
             using var wrongStudent = await other.GetAsync(path + "/ai-material");
@@ -453,7 +541,8 @@ internal static class AiTextChecks
         {
             using var edit = await adminClient.PutAsJsonAsync(
                 $"/api/admin/lessons/{versionId}/ai/{contentId}", new { expectedRevision = revision, material });
-            Assert(edit.StatusCode == HttpStatusCode.Conflict, "approved_material_edited");
+            Assert(edit.StatusCode == HttpStatusCode.Conflict,
+                $"approved_material_edited_status_{(int)edit.StatusCode}");
         });
         return failures() == 0 ? 0 : 1;
     }

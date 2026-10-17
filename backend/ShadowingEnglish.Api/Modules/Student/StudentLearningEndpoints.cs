@@ -83,11 +83,13 @@ public static class StudentLearningEndpoints
                     var slotProgress = progressBySlot[x.Id];
                     var shadowing = slotProgress.FirstOrDefault(p => p.StageKey == "shadowing");
                     var stages = EnabledWorkflowStages(x.WorkflowStagesJson);
+                    var requiredStages = RequiredWorkflowStages(x.WorkflowStagesJson);
                     var completedStages = stages.Count(stage =>
                         slotProgress.Any(p => p.StageKey == stage && p.IsComplete));
                     return new LessonCard(x.Id, x.Title, x.WeekNumber, x.DayNumber, x.SortOrder,
                         shadowing?.CompletedSegments ?? 0, completedStages, stages.Length,
-                        stages.Length > 0 && completedStages == stages.Length);
+                        stages.Length > 0 && requiredStages.All(stage =>
+                            slotProgress.Any(p => p.StageKey == stage && p.IsComplete)));
                 }).ToArray();
                 http.Response.Headers.CacheControl = "no-store";
                 log.LogInformation("Student.Curriculum.Success StudentId={StudentId} VersionId={VersionId} Count={Count} DurationMs={DurationMs}",
@@ -127,7 +129,10 @@ public static class StudentLearningEndpoints
                     student, slotId, stages.Length, Ms(clock));
                 return Results.Ok(new OverviewDto(slotId, slot.VersionId, slot.Title, slot.Description,
                     slot.WeekNumber, slot.DayNumber, slot.SortOrder, count,
-                    shadowingProgress?.CompletedSegments ?? 0, shadowingProgress?.IsComplete ?? false,
+                    shadowingProgress?.CompletedSegments ?? 0,
+                    slot.WorkflowStagesJson is null ? shadowingProgress?.IsComplete ?? false :
+                        RequiredWorkflowStages(slot.WorkflowStagesJson).All(stage =>
+                            progressByKey.TryGetValue(stage, out var item) && item.IsComplete),
                     hasAiContent, stages.Length, stages.Count(x => x.IsComplete), stages));
             }
             catch (Exception ex) { return Fail(log, ex, "Overview", student.Value, clock); }
@@ -224,7 +229,8 @@ public static class StudentLearningEndpoints
                         x.StudentId == student.Value && x.PublishedCurriculumVersionId == slot.VersionId &&
                         x.SlotId == slotId && x.IsComplete)
                         .Select(x => x.StageKey).ToArrayAsync();
-                    if (enabledStages.Take(shadowingIndex).Any(x => !prior.Contains(x)))
+                    if (RequiredWorkflowStages(slot.WorkflowStagesJson).TakeWhile(x => x != "shadowing")
+                        .Any(x => !prior.Contains(x)))
                         return Results.Conflict(new { error = "stage_locked" });
                 }
                 var progress = await db.StudentStageProgress.SingleOrDefaultAsync(x =>
@@ -309,6 +315,18 @@ public static class StudentLearningEndpoints
         catch (JsonException) { return []; }
     }
 
+    private static string[] RequiredWorkflowStages(string? workflowJson)
+    {
+        if (string.IsNullOrWhiteSpace(workflowJson)) return ["shadowing"];
+        try
+        {
+            return JsonSerializer.Deserialize<WorkflowStage[]>(workflowJson, LessonMaterialRules.Json)?
+                .Where(x => x.Enabled && x.Required).OrderBy(x => x.Position)
+                .Select(x => x.Type).ToArray() ?? [];
+        }
+        catch (JsonException) { return []; }
+    }
+
     private static StageOverviewDto[] BuildStageOverview(Guid slotId, string? workflowJson,
         bool hasAiContent, bool hasSegments, Dictionary<string, StudentStageProgress> progressByKey)
     {
@@ -330,9 +348,9 @@ public static class StudentLearningEndpoints
             var hasContent = stage.Type == "shadowing" ? hasSegments : hasAiContent;
             var isUnlocked = previousComplete && hasContent;
             result.Add(new StageOverviewDto(stage.Type, stage.Title, StageDescription(stage.Type),
-                StageIcon(stage.Type), index + 1, isComplete, isUnlocked || isComplete,
+                StageIcon(stage.Type), index + 1, stage.Required, isComplete, isUnlocked || isComplete,
                 StageRoute(slotId, stage.Type)));
-            previousComplete &= isComplete;
+            if (stage.Required) previousComplete &= isComplete;
         }
         return [.. result];
     }
@@ -402,7 +420,7 @@ public static class StudentLearningEndpoints
     private sealed record WorkflowStage(Guid Id, string Type, string Title, int Position,
         bool Enabled, bool Required);
     private sealed record StageOverviewDto(string Key, string Title, string Description, string Icon,
-        int Position, bool IsComplete, bool IsUnlocked, string Route);
+        int Position, bool Required, bool IsComplete, bool IsUnlocked, string Route);
     private sealed record SegmentDto(int Position, string Text, string AudioUrl);
     private sealed record SaveProgressRequest(int CompletedSegments);
     private sealed record ProgressDto(int CompletedSegments, bool IsComplete);

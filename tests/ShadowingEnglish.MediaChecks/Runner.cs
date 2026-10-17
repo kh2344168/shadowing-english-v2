@@ -88,6 +88,8 @@ internal static class Runner
             return await VoiceFallbackChecks.RunAsync(Check, () => failures);
         if (args.SequenceEqual(new[] { "--ai-publication-check" }))
             return await AiPublicationChecks.RunAsync(Check, () => failures);
+        if (args.SequenceEqual(new[] { "--shadowing-save-check" }))
+            return await ShadowingSaveChecks.RunAsync(Check, () => failures);
         var api = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
         Assert(File.Exists(Path.Combine(api, "ShadowingEnglish.Api.csproj")), "Run from the V2 root.");
         await Check("Uncaught exceptions return redacted diagnostics", async () =>

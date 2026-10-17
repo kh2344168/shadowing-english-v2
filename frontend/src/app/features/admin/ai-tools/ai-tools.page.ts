@@ -755,6 +755,7 @@ export class AdminAIToolsPage implements OnInit, OnDestroy {
       case 'rate_limited': return 'تم تجاوز الحد المجاني';
       case 'unavailable': return 'المزود غير متاح مؤقتًا';
       case 'model_unavailable': return 'النموذج المحدد غير متاح';
+      case 'terms_required': return 'يلزم قبول شروط نموذج الصوت';
       case 'connection_failed': return 'تعذر الاتصال';
       case 'untested': return 'لم يتم الاختبار';
       default: return 'غير مُعد';
@@ -767,6 +768,7 @@ export class AdminAIToolsPage implements OnInit, OnDestroy {
       case 'rate_limit_exceeded': return 'تم تجاوز الحد المجاني أو حد الاستخدام';
       case 'provider_unavailable': return 'المزود غير متاح مؤقتًا';
       case 'model_unavailable': return 'النموذج المحدد غير متاح';
+      case 'voice_terms_required': return 'يلزم قبول شروط نموذج Orpheus في حساب Groq ثم إعادة الاختبار';
       case 'connection_timeout': return 'انتهت مهلة الاتصال';
       case 'provider_not_configured': return 'لم تتم إضافة بيانات الاعتماد';
       case 'credential_encryption_not_configured': return 'تشفير مفاتيح المزود غير مهيأ على الخادم';
@@ -781,6 +783,7 @@ export class AdminAIToolsPage implements OnInit, OnDestroy {
       case 'text': return 'Text AI';
       case 'image-generation': return 'Image Generation';
       case 'image-search': return 'Image Search';
+      case 'voice': return 'Natural Voice';
     }
   }
 

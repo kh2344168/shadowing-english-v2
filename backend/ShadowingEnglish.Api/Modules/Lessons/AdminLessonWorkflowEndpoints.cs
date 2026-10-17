@@ -25,6 +25,45 @@ public static class AdminLessonWorkflowEndpoints
         var group = app.MapGroup("/api/admin/lessons")
             .RequireAuthorization(new AuthorizeAttribute { Roles = "Admin" });
 
+        group.MapPost("/definitions", async (CreateLessonRequest request, ApplicationDbContext db,
+            IAntiforgery antiforgery, HttpContext http) =>
+        {
+            try { await antiforgery.ValidateRequestAsync(http); }
+            catch (AntiforgeryValidationException) { return Results.BadRequest(new { error = "invalid_csrf" }); }
+            var title = request.Title?.Trim() ?? "";
+            var goal = request.Goal?.Trim() ?? "";
+            var source = request.SourceText?.Trim() ?? "";
+            if (title.Length is < 2 or > 160 || goal.Length is < 2 or > 500 ||
+                request.LessonType is not ("situation" or "clip" or "manual") ||
+                request.Level is not ("A1" or "A2" or "B1" or "B2" or "C1" or "C2") ||
+                source.Length is < 2 or > 1000)
+                return Results.BadRequest(new { error = "invalid_lesson_definition" });
+            var lessonId = Guid.NewGuid();
+            var versionId = Guid.NewGuid();
+            var now = DateTimeOffset.UtcNow;
+            db.LessonDefinitions.Add(new LessonDefinition { Id = lessonId, Title = title });
+            db.LessonVersions.Add(new LessonVersion
+            {
+                Id = versionId, LessonDefinitionId = lessonId, VersionNumber = 1,
+                Title = title, Description = goal, Goal = goal, LessonType = request.LessonType,
+                Level = request.Level, CreatedAtUtc = now
+            });
+            db.LessonSegments.Add(new LessonSegment
+            {
+                Id = Guid.NewGuid(), LessonVersionId = versionId, Position = 1,
+                Text = source, AudioStorageKey = ""
+            });
+            var firstStage = Stage(versionId, "vocabulary", "الكلمات والـ Chunks", 1, true, true);
+            db.LessonWorkflows.Add(new LessonWorkflow
+            {
+                LessonVersionId = versionId, Revision = Guid.NewGuid(),
+                StagesJson = JsonSerializer.Serialize(new[] { firstStage }, Json), UpdatedAtUtc = now
+            });
+            await db.SaveChangesAsync(http.RequestAborted);
+            return Results.Created($"/api/admin/lessons/{versionId}/workflow",
+                new { lessonId, versionId });
+        }).RequireRateLimiting("admin-lesson-write");
+
         group.MapGet("/{versionId:guid}/workflow", async (Guid versionId, ApplicationDbContext db,
             HttpContext http, ILoggerFactory loggers) =>
         {
@@ -63,6 +102,9 @@ public static class AdminLessonWorkflowEndpoints
                     versionNumber = lesson.Version.VersionNumber,
                     lesson.Version.Title,
                     lesson.Version.Description,
+                    lesson.Version.LessonType,
+                    lesson.Version.Level,
+                    lesson.Version.Goal,
                     revision = workflow?.Revision ?? Guid.Empty,
                     stages,
                     aiStatus = ai?.Status,
@@ -95,6 +137,12 @@ public static class AdminLessonWorkflowEndpoints
                 var normalized = Normalize(request.Stages);
                 if (normalized is null)
                     return Reject(log, started, versionId, 400, "invalid_workflow", "Save");
+                // Material and review state are keyed by stage type. Keep legacy duplicate
+                // workflows readable, but do not accept new active duplicates until content
+                // is stored per workflow-stage ID.
+                if (normalized.Where(x => x.Enabled).GroupBy(x => x.Type)
+                    .Any(group => group.Count() > 1))
+                    return Reject(log, started, versionId, 400, "duplicate_stage_type", "Save");
                 var lessonExists = await (from version in db.LessonVersions.AsNoTracking()
                     join definition in db.LessonDefinitions.AsNoTracking()
                         on version.LessonDefinitionId equals definition.Id
@@ -174,17 +222,15 @@ public static class AdminLessonWorkflowEndpoints
         // Older saved plans had a technical "content" step. It is now folded into the
         // first Shadowing step so teachers see the real learning journey only.
         var visible = stages.Where(x => x.Type != "content").OrderBy(x => x.Position).ToArray();
-        var coreShadowing = visible.FirstOrDefault(x => x.Type == "shadowing");
-        if (coreShadowing is null) return null;
-        var ordered = new[] { coreShadowing }.Concat(visible.Where(x => x.Id != coreShadowing.Id)).ToArray();
+        var ordered = visible;
         if (ordered.Select(x => x.Position).Distinct().Count() != ordered.Length ||
-            ordered[0].Type != "shadowing" ||
+            !ordered.Any(x => x.Enabled) ||
             ordered.Any(x => x.Id == Guid.Empty || !Types.Contains(x.Type) ||
                 string.IsNullOrWhiteSpace(x.Title) || x.Title.Trim().Length > 80)) return null;
         return ordered.Select((x, index) => x with
         {
             Title = x.Title.Trim(), Position = index + 1,
-            Enabled = index == 0 || x.Enabled, Required = index == 0 || x.Required
+            Required = x.Enabled && x.Required
         }).ToArray();
     }
 
@@ -231,6 +277,8 @@ public static class AdminLessonWorkflowEndpoints
         (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
 
     public sealed record SaveWorkflowRequest(Guid ExpectedRevision, WorkflowStage[] Stages);
+    public sealed record CreateLessonRequest(string Title, string LessonType, string Level,
+        string Goal, string SourceText);
     public sealed record WorkflowStage(Guid Id, string Type, string Title, int Position,
         bool Enabled, bool Required);
 }

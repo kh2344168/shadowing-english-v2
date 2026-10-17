@@ -19,7 +19,8 @@ public sealed record LessonMaterial(VocabularyCard[] Vocabulary, QuizCard[] Quiz
     bool ShadowingReviewEnabled = false, string[]? ReviewedStages = null,
     int? ConversationTurnTarget = null, string? ConversationLearningOutcome = null,
     string? ConversationFocusTense = null, string[]? ConversationTargetWords = null,
-    string ConversationCorrectionMode = "lesson-only");
+    string ConversationCorrectionMode = "lesson-only", bool VocabularyOnly = false,
+    int? VocabularyTargetCount = null);
 public sealed record ChatFeedback(string Reply, string Correction, string BetterAnswer, string GrammarTip,
     bool? FocusMet = null);
 
@@ -34,6 +35,8 @@ public static class LessonMaterialRules
         ["vocabulary", "listen-type", "quiz", "conversation"];
     private static readonly HashSet<string> AcceptedReviewStages =
         [.. DefaultApprovalStages, "quiz"];
+    public static readonly string[] GeneratableStages =
+        ["vocabulary", "listen-type", "grammar", "vocabulary-quiz", "grammar-quiz", "word-order", "conversation"];
     private static readonly HashSet<string> ConversationTenses =
         ["present-simple", "present-continuous", "past-simple", "past-continuous",
             "present-perfect", "future-simple"];
@@ -78,17 +81,137 @@ public static class LessonMaterialRules
                 Kind = (card.Word?.Trim() ?? "").Contains(' ') ? "chunk" : "word"
             }).ToArray();
             var normalized = material with { Vocabulary = vocabulary! };
-            return Valid(normalized, source) ? normalized : null;
+            return normalized.Vocabulary.Length > 0 && normalized.Quiz.Length > 0 &&
+                !string.IsNullOrWhiteSpace(normalized.GrammarFocus) &&
+                !string.IsNullOrWhiteSpace(normalized.ConversationScenario) &&
+                Valid(normalized, source) ? normalized : null;
         }
         catch (JsonException) { return null; }
     }
 
-    public static LessonMaterial? PrepareDraft(LessonMaterial generated,
-        IReadOnlyList<LessonTranscriptSegment> segments)
+    public static LessonMaterial? ParseVocabularyGenerated(string raw, string source)
     {
-        var dictation = segments.Where(x => x.Text.Trim().Length is >= 1 and <= 600)
+        try
+        {
+            using var document = JsonDocument.Parse(ObjectOnly(raw));
+            if (!document.RootElement.TryGetProperty("vocabulary", out var cardsJson)) return null;
+            var cards = cardsJson.Deserialize<VocabularyCard[]>(Json);
+            if (cards is null) return null;
+            var normalized = cards.Select(card => card with
+            {
+                Word = Regex.Replace(card.Word?.Trim() ?? "", @"^[^a-zA-Z]+|[^a-zA-Z]+$", ""),
+                Kind = (card.Word?.Trim() ?? "").Contains(' ') ? "chunk" : "word"
+            }).ToArray();
+            var material = new LessonMaterial(normalized, [], "", "", ReviewedStages: [], VocabularyOnly: true);
+            return normalized.Length > 0 && Valid(material, source) ? material : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    public static LessonMaterial EmptyDraft() => new([], [], "", "", ReviewedStages: []);
+
+    // The worker merges only the requested stage into the newest teacher-edited snapshot.
+    // A model response cannot replace fields belonging to a different stage.
+    public static LessonMaterial? MergeStageGenerated(string stage, string raw, LessonMaterial current,
+        string source, IReadOnlyList<LessonTranscriptSegment> segments)
+    {
+        if (!GeneratableStages.Contains(stage)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(ObjectOnly(raw));
+            var root = document.RootElement;
+            LessonMaterial result;
+            switch (stage)
+            {
+                case "vocabulary":
+                {
+                    var cards = ParseVocabularyGenerated(raw, source)?.Vocabulary;
+                    if (cards is null) return null;
+                    // Conversation focus words are teacher choices belonging to another
+                    // stage. Keep their cards if a vocabulary regeneration omits them.
+                    var focused = current.ConversationTargetWords ?? [];
+                    var retained = current.Vocabulary.Where(card =>
+                        focused.Contains(card.Word, StringComparer.OrdinalIgnoreCase) &&
+                        !cards.Any(newCard => string.Equals(newCard.Word, card.Word,
+                            StringComparison.OrdinalIgnoreCase)));
+                    result = current with { Vocabulary = cards.Concat(retained).ToArray() };
+                    break;
+                }
+                case "grammar":
+                {
+                    var focus = ReadString(root, "grammarFocus");
+                    if (string.IsNullOrWhiteSpace(focus)) return null;
+                    result = current with { GrammarFocus = focus.Trim() };
+                    break;
+                }
+                case "conversation":
+                {
+                    var scenario = ReadString(root, "conversationScenario");
+                    if (string.IsNullOrWhiteSpace(scenario)) return null;
+                    var goals = root.TryGetProperty("conversationGoals", out var goalsJson) &&
+                        goalsJson.ValueKind == JsonValueKind.Array
+                        ? goalsJson.Deserialize<string[]>(Json) : null;
+                    result = current with
+                    {
+                        ConversationScenario = scenario.Trim(), ConversationGoals = goals,
+                        OpeningMessage = scenario.Trim()
+                    };
+                    break;
+                }
+                case "vocabulary-quiz":
+                case "grammar-quiz":
+                case "word-order":
+                {
+                    if (!root.TryGetProperty("quiz", out var quizJson)) return null;
+                    var cards = quizJson.Deserialize<QuizCard[]>(Json);
+                    var quizType = stage switch
+                    {
+                        "vocabulary-quiz" => "vocabulary-card",
+                        "grammar-quiz" => "multiple-choice",
+                        _ => "word-order"
+                    };
+                    if (cards is not { Length: >= 1 and <= 12 } ||
+                        cards.Any(x => x is null || x.Type != quizType)) return null;
+                    result = current with { Quiz = current.Quiz.Where(x => x.Type != quizType)
+                        .Concat(cards).ToArray() };
+                    break;
+                }
+                case "listen-type":
+                {
+                    if (!root.TryGetProperty("dictation", out var dictationJson)) return null;
+                    var cards = dictationJson.Deserialize<DictationCard[]>(Json);
+                    if (cards is not { Length: >= 1 and <= 20 }) return null;
+                    result = current with { Dictation = cards };
+                    break;
+                }
+                default: return null;
+            }
+            result = result with { ReviewedStages = (current.ReviewedStages ?? [])
+                .Where(x => x != stage).ToArray() };
+            return Valid(result, source, segments.Select(x => x.Position).ToArray()) &&
+                HasStageData(result, stage) ? result : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    public static bool HasStageData(LessonMaterial material, string stage) => stage switch
+    {
+        "vocabulary" => material.Vocabulary.Any(x => x.IncludeForStudent),
+        "listen-type" => material.Dictation?.Any(x => x.Enabled) == true,
+        "grammar" => !string.IsNullOrWhiteSpace(material.GrammarFocus),
+        "vocabulary-quiz" => material.Quiz.Any(x => x.Enabled && x.Type == "vocabulary-card"),
+        "grammar-quiz" => material.Quiz.Any(x => x.Enabled && x.Type == "multiple-choice"),
+        "word-order" => material.Quiz.Any(x => x.Enabled && x.Type == "word-order"),
+        "conversation" => !string.IsNullOrWhiteSpace(material.ConversationScenario),
+        _ => false
+    };
+
+    public static LessonMaterial? PrepareDraft(LessonMaterial generated,
+        IReadOnlyList<LessonTranscriptSegment> segments, string level = "B1")
+    {
+        var dictation = segments.Where(x => x.Text.Trim().Length is >= 1 and <= 600 &&
+                (level != "A1" || Tokens(x.Text).Length <= 8))
             .Select(x => new DictationCard(x.Position, true, [x.Text.Trim()], null)).ToArray();
-        if (dictation.Length == 0) return null;
         var quiz = generated.Quiz.ToList();
         var visible = generated.Vocabulary.Where(x => x.IncludeForStudent).ToArray();
         if (visible.Length >= 4 && quiz.Count < 12)
@@ -110,7 +233,7 @@ public static class LessonMaterialRules
         }
         var material = generated with
         {
-            Quiz = quiz.ToArray(), Dictation = dictation,
+            Quiz = quiz.ToArray(), Dictation = dictation.Length == 0 ? null : dictation,
             ConversationGoals = ["استخدم كلمات الدرس في ردود طبيعية", "تدرّب على القاعدة ثم راجع التصحيح"],
             AiRole = "محادث إنجليزي ودود", StudentRole = "متعلم يجيب بالإنجليزية",
             OpeningMessage = generated.ConversationScenario, ShadowingReviewEnabled = true,
@@ -122,12 +245,13 @@ public static class LessonMaterialRules
 
     public static bool Valid(LessonMaterial? material, string source, int[]? segmentPositions = null)
     {
-        if (material is null || material.Vocabulary is not { Length: >= 1 and <= 20 } ||
-            material.Quiz is not { Length: >= 1 and <= 12 } ||
-            !Field(material.GrammarFocus, 200) || !Field(material.ConversationScenario, 240) ||
+        if (material is null || material.Vocabulary is not { Length: <= 20 } ||
+            material.Quiz is not { Length: <= 12 } ||
+            !Optional(material.GrammarFocus, 200) || !Optional(material.ConversationScenario, 240) ||
             !Optional(material.AiRole, 100) || !Optional(material.StudentRole, 100) ||
             !Optional(material.OpeningMessage, 240) ||
             material.ConversationTurnTarget is < 1 or > 20 ||
+            material.VocabularyTargetCount is < 1 or > 20 ||
             !Optional(material.ConversationLearningOutcome, 240) ||
             (material.ConversationFocusTense is { Length: > 0 } tense && !ConversationTenses.Contains(tense)) ||
             material.ConversationCorrectionMode is not ("lesson-only" or "all") ||
@@ -158,7 +282,6 @@ public static class LessonMaterialRules
                 (card.Kind == "chunk" && !card.Word.Contains(' ')) ||
                 !ContainsPhrase(sourceWords, Tokens(card.Word))) return false;
         }
-        if (!material.Vocabulary.Any(x => x.IncludeForStudent) || !material.Quiz.Any(x => x.Enabled)) return false;
         foreach (var quiz in material.Quiz)
         {
             if (quiz is null || !Field(quiz.Question, 220) || !Field(quiz.ExplanationAr, 250) ||
@@ -210,6 +333,9 @@ public static class LessonMaterialRules
         var start = raw.IndexOf('{'); var end = raw.LastIndexOf('}');
         return start < 0 || end < start ? raw : raw[start..(end + 1)];
     }
+    private static string? ReadString(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() : null;
     private static bool Field(string? value, int max) =>
         !string.IsNullOrWhiteSpace(value) && value.Trim().Length <= max;
     private static bool Optional(string? value, int max) => value is null || value.Trim().Length <= max;

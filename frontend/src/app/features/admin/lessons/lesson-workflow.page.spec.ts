@@ -17,6 +17,9 @@ describe('AdminLessonWorkflowPage', () => {
     versionNumber: 1,
     title: 'Test lesson',
     description: 'Description',
+    lessonType: 'clip',
+    level: 'B1',
+    goal: '',
     revision: '99999999-8888-4777-8666-555555555555',
     aiStatus: null,
     reviewedStages: [],
@@ -111,6 +114,10 @@ describe('AdminLessonWorkflowPage', () => {
     fixture.detectChanges();
     http.expectOne(`/api/admin/lessons/${versionId}/workflow`).flush(workflow);
     http.expectOne(`/api/admin/lessons/${versionId}/ai/draft`).flush(null);
+    http.expectOne(`/api/admin/lessons/${versionId}/ai/stages/statuses`).flush({
+      vocabulary: 'NeedsReview',
+      'listen-type': 'NeedsReview',
+    });
     await fixture.whenStable();
     fixture.detectChanges();
   });
@@ -120,20 +127,25 @@ describe('AdminLessonWorkflowPage', () => {
     fixture.destroy();
   });
 
-  it('keeps the core shadowing stage mandatory and allows optional stages to be disabled', () => {
+  it('allows a vocabulary-only lesson without shadowing', () => {
     const [shadowing, , listenType] = page.stages();
     page.toggle(shadowing, false);
-    expect(page.stages()[0].enabled).toBe(true);
+    expect(page.stages()[0].enabled).toBe(false);
     page.toggle(listenType, false);
     expect(page.stages()[2].enabled).toBe(false);
+    page.move(page.stages()[1], -1);
+    expect(page.stages()[0].type).toBe('vocabulary');
     expect(page.dirty()).toBe(true);
   });
 
-  it('duplicates a repeatable stage with its own id and persists the plan', async () => {
-    page.duplicate(page.stages()[0]);
+  it('prevents duplicate stage types until each copy has independent content', async () => {
+    const vocabulary = page.library.find((item) => item.type === 'vocabulary')!;
+    expect(page.canAdd(vocabulary.type)).toBe(false);
+    page.add(vocabulary);
+    expect(page.stages()).toHaveLength(3);
+    page.add(page.library.find((item) => item.type === 'conversation')!);
     expect(page.stages()).toHaveLength(4);
-    expect(page.stages()[1].id).not.toBe(page.stages()[0].id);
-    expect(page.stages()[1].title).toContain('إضافي');
+    expect(page.stages()[3].type).toBe('conversation');
 
     const saving = page.save();
     await Promise.resolve();
@@ -144,6 +156,17 @@ describe('AdminLessonWorkflowPage', () => {
     request.flush({ revision: 'new-revision', stages: page.stages() });
     expect(await saving).toBe(true);
     expect(page.dirty()).toBe(false);
+  });
+
+  it('shows an added stage as not started without changing the status of existing stages', () => {
+    page.stageStatuses.set({ vocabulary: 'Approved', 'listen-type': 'Generating' });
+    page.add(page.library.find((item) => item.type === 'conversation')!);
+    const [vocabulary, listenType, conversation] = page.stages().slice(1);
+    expect(page.status(vocabulary).label).toBe('معتمدة');
+    expect(page.status(listenType).label).toBe('قيد المعالجة');
+    expect(page.status(conversation).label).toBe('لم تبدأ');
+    expect(page.stageAction(conversation)).toBe('فتح المرحلة');
+    expect(page.approvalIssues().join(' ')).toContain('محادثة الدرس: لم تبدأ');
   });
 
   it('has no separate general AI page while keeping the stage editor route', () => {
@@ -170,11 +193,30 @@ describe('AdminLessonWorkflowPage', () => {
       aiStatus: 'Approved',
     });
     (await nextRequest(`/api/admin/lessons/${versionId}/ai/draft`)).flush(null);
+    (await nextRequest(`/api/admin/lessons/${versionId}/ai/stages/statuses`)).flush({
+      vocabulary: 'Approved',
+      'listen-type': 'Approved',
+    });
     await operation;
     fixture.detectChanges();
     expect(page.workflow()?.aiStatus).toBe('Approved');
     expect(page.notice()).toContain('تم حفظ الرحلة واعتماد محتوى الدرس');
     http.expectNone((request) => request.method === 'PUT');
+  });
+
+  it('saves a revised stage order without demanding a new AI draft when stages are already approved', async () => {
+    page.workflow.set({ ...workflow, aiStatus: 'Approved' });
+    page.stageStatuses.set({ vocabulary: 'Approved', 'listen-type': 'Approved' });
+    page.move(page.stages()[1], -1);
+    const operation = page.saveAndApprove();
+    await Promise.resolve();
+    const save = http.expectOne(`/api/admin/lessons/${versionId}/workflow`);
+    save.flush({ revision: 'new-revision', stages: page.stages() });
+    (await nextRequest(`/api/admin/lessons/${versionId}/ai/draft`)).flush(null);
+    await operation;
+    expect(page.error()).toBe('');
+    expect(page.notice()).toContain('أعد نشر المنهج');
+    http.expectNone((request) => request.method === 'POST');
   });
 
   it('lists missing enabled stages and never approves incomplete material', async () => {

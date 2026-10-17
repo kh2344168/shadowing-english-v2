@@ -224,11 +224,15 @@ export class ShadowingAuthoringApi {
     title: string,
     description: string,
     segments: { text: string; audio: File }[],
+    level = 'B1',
+    goal = '',
   ): Observable<AuthoringLesson> {
     const body = new FormData();
     body.append('requestId', requestId);
     body.append('title', title);
     body.append('description', description);
+    body.append('level', level);
+    body.append('goal', goal);
     body.append('segments', JSON.stringify(segments.map((segment) => segment.text)));
     segments.forEach((segment, index) => body.append(`audio${index}`, segment.audio));
     return this.http.post<AuthoringLesson>(`${this.base}/lessons`, body);

@@ -5,6 +5,7 @@ public static class AiProviderCatalog
     public const string Text = "text";
     public const string ImageGeneration = "image-generation";
     public const string ImageSearch = "image-search";
+    public const string Voice = "voice";
 
     public sealed record Definition(
         string ProviderKey,
@@ -25,6 +26,8 @@ public static class AiProviderCatalog
         new("mistral", "Mistral", Text, true, false, false, ["mistral-small-latest"], 4),
         new("openrouter", "OpenRouter", Text, true, false, false, ["openrouter/auto"], 5),
 
+        new("groq", "Groq Voice", Voice, true, false, false, ["canopylabs/orpheus-v1-english"], 1),
+
         // These are visible future targets only. No image-generation adapter exists in V2 yet.
         new("gemini-image", "Google Gemini / Imagen", ImageGeneration, false, false, true, [], 1, "not_implemented"),
         new("cloudflare-image", "Cloudflare Workers AI Images", ImageGeneration, false, true, false, [], 2, "not_implemented"),
@@ -43,5 +46,5 @@ public static class AiProviderCatalog
         string.Equals(x.Capability, capability, StringComparison.Ordinal) &&
         string.Equals(x.ProviderKey, providerKey, StringComparison.Ordinal));
 
-    public static bool IsCapability(string value) => value is Text or ImageGeneration or ImageSearch;
+    public static bool IsCapability(string value) => value is Text or ImageGeneration or ImageSearch or Voice;
 }

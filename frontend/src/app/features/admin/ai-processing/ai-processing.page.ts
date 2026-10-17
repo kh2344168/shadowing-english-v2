@@ -72,6 +72,19 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
   title = '';
   description = '';
+  lessonType: 'situation' | 'clip' | 'manual' = 'manual';
+  level = 'A1';
+  goal = '';
+  sourceText = '';
+  readonly creatingTextLesson = signal(false);
+  readonly creationMode = signal<'audio' | 'text'>('audio');
+
+  selectCreationMode(mode: 'audio' | 'text'): void {
+    if (this.activeVersionId() || this.busy() || this.lessonSaving() || this.creatingTextLesson()) return;
+    this.creationMode.set(mode);
+    this.error.set('');
+    this.notice.set('');
+  }
 
   media: File | null = null;
   transcriptFile: File | null = null;
@@ -121,6 +134,29 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
   readonly notice = signal('');
   readonly activeVersionId = signal(this.routedVersionId);
   readonly activeCreationTab = signal<'shadowing' | 'activities'>('shadowing');
+  readonly hasShadowingStage = signal(true);
+
+  async createTextLesson(): Promise<void> {
+    if (this.creatingTextLesson() || this.activeVersionId()) return;
+    if (!this.title.trim() || !this.goal.trim() || !this.sourceText.trim()) {
+      this.error.set('اكتب عنوان الدرس وهدفه والنص أو الكلمات المصدرية.');
+      return;
+    }
+    this.creatingTextLesson.set(true);
+    this.error.set('');
+    try {
+      await firstValueFrom(this.auth.csrf());
+      const created = await firstValueFrom(this.workflowApi.create({
+        title: this.title.trim(), lessonType: this.lessonType, level: this.level,
+        goal: this.goal.trim(), sourceText: this.sourceText.trim(),
+      }));
+      await this.router.navigate(['/admin/lessons', created.versionId, 'workflow']);
+    } catch (error) {
+      this.error.set(`تعذر إنشاء الدرس (${(error as { status?: number }).status ?? 'اتصال'}).`);
+    } finally {
+      this.creatingTextLesson.set(false);
+    }
+  }
 
   async ngOnInit(): Promise<void> {
     try {
@@ -166,6 +202,9 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
     this.error.set('');
     try {
       const workflow = await firstValueFrom(this.workflowApi.get(this.routedVersionId));
+      this.hasShadowingStage.set(workflow.stages.some((stage) =>
+        stage.type === 'shadowing' && stage.enabled));
+      if (!this.hasShadowingStage()) this.activeCreationTab.set('activities');
       const details = await firstValueFrom(this.authoringApi.lessonDetails(workflow.lessonId));
       if (details.versionId !== this.routedVersionId) {
         await this.router.navigate(['/admin/lessons', details.versionId, 'workflow'], {
@@ -1776,7 +1815,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
       await firstValueFrom(this.auth.csrf());
       const created = await firstValueFrom(
-        this.authoringApi.create(requestId, title, description, segments),
+        this.authoringApi.create(requestId, title, description, segments, this.level, this.goal),
       );
       this.activeVersionId.set(created.versionId);
       console.info('[Admin.AILesson.Save.Success]', {
@@ -1814,6 +1853,7 @@ export class AdminAIProcessingPage implements OnInit, OnDestroy {
 
   selectCreationTab(tab: 'shadowing' | 'activities'): void {
     if (tab === 'activities' && !this.shadowingComplete()) return;
+    if (tab === 'shadowing' && !this.hasShadowingStage()) return;
     this.activeCreationTab.set(tab);
     this.error.set('');
   }

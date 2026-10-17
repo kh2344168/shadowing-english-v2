@@ -55,7 +55,6 @@
               type="button"
               class="audio-button"
               [class.is-speaking]="speaking() === 'word'"
-              [disabled]="!speechSupported"
               (click)="speak('word')"
               aria-label="استمع إلى نطق الكلمة"
             >
@@ -64,9 +63,6 @@
               </span>
             </button>
           </div>
-          @if (!speechSupported) {
-          <small class="speech-warning">المتصفح الحالي لا يدعم النطق الصوتي.</small>
-          }
         </section>
 
         <section class="card-face card-face--back">
@@ -76,7 +72,6 @@
               type="button"
               class="audio-button audio-button--small"
               [class.is-speaking]="speaking() === 'example'"
-              [disabled]="!speechSupported"
               (click)="speak('example')"
               aria-label="استمع إلى جملة المثال"
             >

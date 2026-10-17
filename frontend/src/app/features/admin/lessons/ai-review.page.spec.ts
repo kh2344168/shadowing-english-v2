@@ -6,6 +6,7 @@ import { of } from 'rxjs';
 import { vi } from 'vitest';
 import { AuthService } from '../../../core/auth/auth.service';
 import { AdminLessonStageEditorPage } from './ai-review.page';
+import { StageProcessingStatus } from './lesson-ai.api';
 
 describe('AdminLessonStageEditorPage', () => {
   const versionId = '11111111-2222-4333-8444-555555555555';
@@ -36,7 +37,11 @@ describe('AdminLessonStageEditorPage', () => {
     dictation: [{ position: 1, enabled: true, acceptedAnswers: ['Hello there'], hint: null }],
     reviewedStages: [],
   };
-  async function setup(status: 'Draft' | 'Approved', stageType = 'vocabulary') {
+  async function setup(
+    status: 'Draft' | 'Approved',
+    stageType = 'vocabulary',
+    processingStatus: StageProcessingStatus = status === 'Approved' ? 'Approved' : 'NeedsReview',
+  ) {
     await TestBed.configureTestingModule({
       imports: [AdminLessonStageEditorPage],
       providers: [
@@ -62,6 +67,7 @@ describe('AdminLessonStageEditorPage', () => {
     http
       .expectOne(`${base}/ai`)
       .flush({ id: 'job-1', lessonVersionId: versionId, revision: 'rev-1', status, material });
+    http.expectOne(`${base}/ai/draft`).flush(null);
     http.expectOne(`${base}/ai/segments`).flush([{ position: 1, text: 'Hello there' }]);
     http.expectOne(`${base}/workflow`).flush({
       stages: [
@@ -81,6 +87,7 @@ describe('AdminLessonStageEditorPage', () => {
         },
       ],
     });
+    http.expectOne(`${base}/ai/stages/statuses`).flush({ [stageType]: processingStatus });
     await vi.waitFor(() => expect(fixture.componentInstance.loading()).toBe(false));
     fixture.detectChanges();
     return { http, fixture, page: fixture.componentInstance };
@@ -109,6 +116,20 @@ describe('AdminLessonStageEditorPage', () => {
     expect(page.stageReviewed('vocabulary')).toBe(true);
     http.verify();
     fixture.destroy();
+  });
+
+  it('explains Groq voice terms and links to the model page when audio is rejected', async () => {
+    const { http, fixture, page } = await setup('Draft');
+    page.voiceConfigured.set(true);
+    const speaking = page.speak('Hello');
+    http.expectOne((request) => request.url === `${base}/ai/voice`).flush(
+      new Blob([JSON.stringify({ error: 'voice_terms_required' })], { type: 'application/json' }),
+      { status: 503, statusText: 'Service Unavailable' },
+    );
+    await speaking;
+    fixture.detectChanges();
+    expect(page.error()).toContain('قبول شروط');
+    expect(fixture.nativeElement.querySelector('a[href^="https://console.groq.com/playground"]')).not.toBeNull();
   });
 
   it('reopens approved content as an editable draft for the selected stage', async () => {
@@ -191,6 +212,80 @@ describe('AdminLessonStageEditorPage', () => {
     });
     request.flush({ ...page.job(), revision: 'rev-2', material: request.request.body.material });
     await saving;
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('does not expose old aggregate content before a newly added stage is processed', async () => {
+    const { http, fixture, page } = await setup('Draft', 'conversation', 'NotStarted');
+    expect(page.stageStatus()).toBe('NotStarted');
+    expect(fixture.nativeElement.querySelector('.conversation-workspace')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('هذه المرحلة لم تبدأ بعد');
+    const generating = page.generate();
+    await Promise.resolve();
+    const request = http.expectOne(`${base}/ai/stages/conversation/generate`);
+    expect(request.request.body.requestId).toEqual(expect.any(String));
+    request.flush({ id: 'new-job', lessonVersionId: versionId, revision: 'new-rev', status: 'Pending', material: null });
+    await generating;
+    fixture.detectChanges();
+    expect(page.stageStatus()).toBe('Pending');
+    expect(fixture.nativeElement.querySelector('.processing-state')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.conversation-workspace')).toBeNull();
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('sends the chosen vocabulary count when processing words', async () => {
+    const { http, fixture, page } = await setup('Draft', 'vocabulary', 'NotStarted');
+    expect(page.vocabularyTargetCount()).toBe(12);
+    page.vocabularyTargetCount.set(7);
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector('#vocabulary-target-count')).not.toBeNull();
+    const generating = page.generate();
+    await Promise.resolve();
+    const request = http.expectOne(`${base}/ai/stages/vocabulary/generate`);
+    expect(request.request.body.vocabularyTargetCount).toBe(7);
+    request.flush({ id: 'new-job', lessonVersionId: versionId, revision: 'new-rev', status: 'Pending', material: null });
+    await generating;
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('lets the teacher bulk-select vocabulary suggestions without saving automatically', async () => {
+    const { http, fixture, page } = await setup('Draft');
+    expect(page.visibleVocabularyCount()).toBe(1);
+    page.setVocabularySelection(false);
+    expect(page.visibleVocabularyCount()).toBe(0);
+    expect(page.dirty()).toBe(true);
+    page.setVocabularySelection(true);
+    expect(page.visibleVocabularyCount()).toBe(1);
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('shows a saved stage snapshot but blocks editing while another stage is processing', async () => {
+    const { http, fixture, page } = await setup('Draft');
+    const savedDraft = page.job();
+    const refreshing = page.load();
+    http.expectOne('/api/admin/lessons/ai-providers').flush({ configured: ['Groq'] });
+    http.expectOne(`${base}/ai`).flush({
+      ...savedDraft, id: 'conversation-job', status: 'Generating', stageType: 'conversation',
+    });
+    http.expectOne(`${base}/ai/draft`).flush(savedDraft);
+    http.expectOne(`${base}/ai/segments`).flush([{ position: 1, text: 'Hello there' }]);
+    http.expectOne(`${base}/workflow`).flush({ stages: [{
+      id: stageId, type: 'vocabulary', title: 'كلمات السفر', position: 1, enabled: true,
+    }] });
+    http.expectOne(`${base}/ai/stages/statuses`).flush({
+      vocabulary: 'Approved', conversation: 'Generating',
+    });
+    await refreshing;
+    fixture.detectChanges();
+    expect(page.job()?.id).toBe(savedDraft?.id);
+    expect(page.stagePreview()).toContain('Hello');
+    expect(page.stageCanEdit()).toBe(false);
+    expect(fixture.nativeElement.querySelector('.stage-snapshot')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('#words-title')).toBeNull();
     http.verify();
     fixture.destroy();
   });

@@ -373,6 +373,43 @@
           }
         </div>
       </section>
+      <section class="capability-block" aria-labelledby="voice-providers-title">
+        <div class="capability-head">
+          <div>
+            <p class="capability-index">04</p>
+            <div class="capability-title-row">
+              <h3 id="voice-providers-title">أصوات الكلمات الطبيعية</h3>
+              <span class="actual-count">{{ configuredFor('voice') }} مزود صوت مضاف</span>
+            </div>
+            <p>مفتاح مستقل للصوت حتى لا تُستخدم خدمة النص في توليد صوت بتكلفة غير مقصودة. يُستخدم لنطق الكلمات والجمل للمدرّس والطالب.</p>
+            @if (configuredCards('voice')[0]?.config?.status === 'terms_required') {
+              <p>المفتاح محفوظ، لكن نموذج الصوت يحتاج قبول شروطه من مالك حساب Groq.
+                <a href="https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english"
+                  target="_blank" rel="noopener noreferrer">افتح صفحة النموذج لقبول الشروط</a>
+              </p>
+            }
+          </div>
+          <div class="capability-actions">
+            <button type="button" class="btn btn-primary" (click)="openAddProvider('voice')"
+              [disabled]="providerBusy() !== null || !encryptionReady() || availableToAddFor('voice') === 0">
+              <span class="material-symbols-outlined" aria-hidden="true">add</span> إضافة مزود صوت
+            </button>
+          </div>
+        </div>
+        @if (configuredFor('voice') > 0) {
+          <div class="provider-grid" data-provider-state="configured">
+            @for (card of configuredCards('voice'); track card.definition.providerKey) {
+              <ng-container [ngTemplateOutlet]="providerCard" [ngTemplateOutletContext]="{ card: card }"></ng-container>
+            }
+          </div>
+        } @else {
+          <div class="empty-state compact-empty">
+            <span class="material-symbols-outlined" aria-hidden="true">record_voice_over</span>
+            <strong>الصوت الطبيعي غير مفعّل بعد</strong>
+            <p>أضف مفتاح Groq Voice لتشغيل نطق الكلمات والجمل.</p>
+          </div>
+        }
+      </section>
     }
   </section>
 
@@ -480,6 +517,7 @@
               <option value="text">Text AI</option>
               <option value="image-generation" [disabled]="implementedFor('image-generation') === 0">Image Generation</option>
               <option value="image-search">Image Search</option>
+              <option value="voice">Natural Voice</option>
             </select>
           </label>
 

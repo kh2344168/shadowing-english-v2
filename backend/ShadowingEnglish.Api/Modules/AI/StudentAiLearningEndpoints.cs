@@ -476,6 +476,30 @@ public static class StudentAiLearningEndpoints
             return Results.Ok(new { text });
         }).RequireRateLimiting("student-voice");
 
+        group.MapGet("/vocabulary/audio", async (Guid slotId, int position, string? part, HttpContext http,
+            ApplicationDbContext db, UserManager<ApplicationUser> users,
+            GroqVoiceService groqVoice, GeminiSpeechService geminiVoice) =>
+        {
+            var student = await StudentId(http, users);
+            if (student is null) return Results.Forbid();
+            var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
+            if (data is null) return Missing();
+            var progress = await Progress(db, student.Value, data.VersionId, slotId, http.RequestAborted);
+            if (!CanEnter(data, progress, "vocabulary")) return Locked(PreviousStage(data, "vocabulary"));
+            var cards = data.Material.Vocabulary.Where(x => x.IncludeForStudent).ToArray();
+            if (position < 1 || position > cards.Length || part is not ("word" or "example"))
+                return Results.BadRequest(new { error = "invalid_vocabulary_audio" });
+            var text = part == "word" ? cards[position - 1].Word : cards[position - 1].ExampleEn;
+            if (string.IsNullOrWhiteSpace(text) || text.Length > 200) return Results.BadRequest();
+            if (!geminiVoice.IsConfigured && !await groqVoice.IsConfiguredAsync(http.RequestAborted))
+                return Results.Json(new { error = "voice_not_configured" }, statusCode: 503);
+            var audio = await geminiVoice.SpeakAsync(text, "Kore", http.RequestAborted) ??
+                await groqVoice.SpeakAsync(text, "Kore", http.RequestAborted);
+            if (audio is null) return Results.Json(new { error = "speech_unavailable" }, statusCode: 503);
+            http.Response.Headers.CacheControl = "private, max-age=3600";
+            return Results.File(audio, "audio/wav");
+        }).RequireRateLimiting("student-voice");
+
         group.MapGet("/conversation/audio", async (Guid slotId, Guid? turnId, string? voice, HttpContext http,
             ApplicationDbContext db, UserManager<ApplicationUser> users,
             GroqVoiceService groqVoice, GeminiSpeechService geminiVoice) =>
@@ -486,7 +510,7 @@ public static class StudentAiLearningEndpoints
             if (data is null) return Missing();
             var progress = await Progress(db, student.Value, data.VersionId, slotId, http.RequestAborted);
             if (!CanEnter(data, progress, "conversation")) return Locked(PreviousStage(data, "conversation"));
-            if (!geminiVoice.IsConfigured && !groqVoice.IsConfigured)
+            if (!geminiVoice.IsConfigured && !await groqVoice.IsConfiguredAsync(http.RequestAborted))
                 return Results.Json(new { error = "voice_not_configured" }, statusCode: 503);
             string? text;
             if (turnId is Guid id)
@@ -540,7 +564,7 @@ public static class StudentAiLearningEndpoints
         };
         var index = Array.FindIndex(data.Workflow, x => x.Type == stage);
         return index >= 0 && (Complete(progress, stage) ||
-            data.Workflow.Take(index).All(x => Complete(progress, x.Type)));
+            data.Workflow.Take(index).Where(x => x.Required).All(x => Complete(progress, x.Type)));
     }
     private static string PreviousStage(ScopedData data, string stage)
     {
@@ -566,7 +590,7 @@ public static class StudentAiLearningEndpoints
     private static DictationCard[] SelectedDictation(LessonMaterial material, int[] positions) =>
         material.Dictation is null ? positions.Select(x => new DictationCard(x)).ToArray() :
         material.Dictation.Where(x => x.Enabled && positions.Contains(x.Position)).ToArray();
-    private sealed record WorkflowStage(string Type, string Title, int Position, bool Enabled);
+    private sealed record WorkflowStage(string Type, string Title, int Position, bool Enabled, bool Required);
     private sealed record ScopedData(Guid VersionId, Guid LessonVersionId, LessonMaterial Material,
         WorkflowStage[]? Workflow);
     private static async Task<ScopedData?> ScopedContent(ApplicationDbContext db, Guid studentId, Guid slotId,

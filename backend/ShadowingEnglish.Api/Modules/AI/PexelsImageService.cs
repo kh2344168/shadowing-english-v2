@@ -44,7 +44,7 @@ public sealed class PexelsImageService(HttpClient http, ApplicationDbContext db,
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel);
             timeout.CancelAfter(TimeSpan.FromSeconds(7));
             using var request = new HttpRequestMessage(HttpMethod.Get,
-                $"https://api.pexels.com/v1/search?query={Uri.EscapeDataString(term.Trim())}&per_page=6&page={page}");
+                $"https://api.pexels.com/v1/search?query={Uri.EscapeDataString(term.Trim())}&per_page=12&page={page}");
             request.Headers.TryAddWithoutValidation("Authorization", key);
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
             if (!response.IsSuccessStatusCode)

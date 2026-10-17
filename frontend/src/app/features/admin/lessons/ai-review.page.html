@@ -1,10 +1,10 @@
 <section class="review-page" dir="rtl" aria-labelledby="review-title">
-  <header class="review-hero">
+  <header class="review-hero" [class.review-hero--vocabulary]="activeWorkflowStage()?.type === 'vocabulary'">
     <div>
-      <a [routerLink]="['/admin/lessons', versionId, 'workflow']" class="back">
+      <button type="button" class="back" [disabled]="busy()" (click)="backToStages()">
         <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
         رحلة الدرس
-      </a>
+      </button>
       <span class="eyebrow">LESSON ACTIVITY STUDIO</span>
       <h1 id="review-title">{{ pageTitle() }}</h1>
       <p>كل مرحلة لها مساحة عمل وأدوات مراجعة مناسبة لها، ولن يظهر شيء للطالب قبل الاعتماد.</p>
@@ -19,7 +19,13 @@
   </header>
 
   @if (error()) {
-  <p role="alert" class="alert alert--error">{{ error() }}</p>
+  <p role="alert" class="alert alert--error">
+    {{ error() }}
+    @if (voiceTermsRequired()) {
+      <a href="https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english"
+        target="_blank" rel="noopener noreferrer">افتح Groq لقبول شروط نموذج الصوت</a>
+    }
+  </p>
   } @if (notice()) {
   <p role="status" class="alert alert--success">{{ notice() }}</p>
   } @if (loading()) {
@@ -28,41 +34,70 @@
   </div>
   } @else {
   <div class="service-bar">
-    <span class="service-dot" [class.off]="!providers().length"></span>
+    <span class="service-dot" [class.off]="!canGenerateStage()"></span>
     <span
-      >{{ providers().length ? 'الذكاء الاصطناعي جاهز: ' + providers().join('، ') : 'لم تتم إضافة
-      مزود ذكاء اصطناعي بعد' }}</span
+      >{{ providers().length ? 'الذكاء الاصطناعي جاهز: ' + providers().join('، ') :
+      activeWorkflowStage()?.type === 'listen-type' ? 'هذه المرحلة تستخدم نص الدرس والصوت ولا تحتاج مزود AI' :
+      'لم تتم إضافة مزود ذكاء اصطناعي بعد' }}</span
     >
-    @if (job(); as current) {
     <strong>
-      @switch (current.status) { @case ('Pending') { في قائمة الانتظار } @case ('Generating') { جاري
-      إنشاء المحتوى } @case ('Draft') { مسودة تحت المراجعة } @case ('Approved') { محتوى معتمد }
-      @case ('Failed') { المعالجة توقفت } }
+      @switch (stageStatus()) { @case ('NotStarted') { لم تبدأ هذه المرحلة }
+      @case ('Pending') { في قائمة الانتظار } @case ('Generating') { جاري معالجة هذه المرحلة }
+      @case ('NeedsReview') { تحتاج مراجعة } @case ('Approved') { مرحلة معتمدة }
+      @case ('Failed') { توقفت معالجة هذه المرحلة } }
     </strong>
-    }
   </div>
 
-  @if (job()?.status === 'Failed') {
-  <p class="alert alert--error">{{ failureReason(job()!.errorCode) }}</p>
-  } @if (!job()) {
+  @if (stageStatus() === 'Failed') {
+  <p class="alert alert--error">{{ failureReason(job()?.errorCode ?? null) }}</p>
+  } @if (stageStatus() === 'NotStarted') {
   <div class="empty-state">
     <span class="material-symbols-outlined">auto_awesome</span>
-    <h2>ابدأ تجهيز أنشطة الدرس</h2>
-    <p>سنستخرج الكلمات والتدريبات من جمل الـShadowing.</p>
+    <h2>هذه المرحلة لم تبدأ بعد</h2>
+    <p>اضغط «ابدأ المعالجة» لإنشاء محتوى هذه المرحلة وحدها. باقي المراحل وتعديلاتك فيها لن تتغير.</p>
   </div>
-  } @if (!job() || job()?.status === 'Failed') {
+  } @if (stageIsProcessing()) {
+  <div class="processing-state" role="status" aria-live="polite">
+    <span class="material-symbols-outlined spin" aria-hidden="true">progress_activity</span>
+    <div>
+      <h2>{{ stageStatus() === 'Pending' ? 'المرحلة في انتظار المعالجة' : 'جاري معالجة المرحلة' }}</h2>
+      <p>يمكنك العودة إلى رحلة الدرس. سنعرض النتيجة هنا فور اكتمال المعالجة لتراجعها وتعدّلها بنفسك.</p>
+    </div>
+  </div>
+  } @if (activeWorkflowStage()?.type === 'vocabulary' && !stageIsProcessing()) {
+  <div class="vocabulary-generation-settings">
+    <label for="vocabulary-target-count">عدد الكلمات والعبارات المقترحة</label>
+    <input id="vocabulary-target-count" type="number" min="1" max="20"
+      [ngModel]="vocabularyTargetCount()"
+      (ngModelChange)="vocabularyTargetCount.set(+$event)" />
+    <small>اقترح حتى 20 بطاقة من نص الدرس، ثم اختر ما يصل للطالب. لو النص قصير قد تكون الاقتراحات أقل. تغيير العدد لا يعيد المعالجة إلا عند ضغط «إعادة معالجة هذه المرحلة».</small>
+  </div>
+  } @if (stageStatus() === 'NotStarted' || stageStatus() === 'Failed') {
   <button
     type="button"
     class="generate-button"
-    [disabled]="busy() || !providers().length"
+    [disabled]="busy() || !canGenerateStage() || (activeWorkflowStage()?.type === 'vocabulary' &&
+      (vocabularyTargetCount() < 1 || vocabularyTargetCount() > 20 || !vocabularyTargetCount()))"
     (click)="generate()"
   >
     <span class="material-symbols-outlined">auto_awesome</span>
-    {{ job()?.status === 'Failed' ? 'إعادة المعالجة' : 'إنشاء مسودة بالذكاء الاصطناعي' }}
+    {{ stageStatus() === 'Failed' ? 'إعادة معالجة هذه المرحلة' : 'ابدأ المعالجة' }}
   </button>
-  } @if (job()?.status === 'Draft' && draft(); as material) { @if (selectedStage(); as activeStage)
+  } @if ((stageStatus() === 'NeedsReview' || stageStatus() === 'Approved') &&
+    (globalProcessing() || (job()?.status !== 'Draft' && job()?.status !== 'Approved'))) {
+  <div class="stage-snapshot" role="status">
+    <span class="material-symbols-outlined" aria-hidden="true">inventory_2</span>
+    <div>
+      <strong>محتوى هذه المرحلة محفوظ</strong>
+      <p>{{ stagePreview() }}</p>
+      <small>{{ globalProcessing()
+        ? 'تجري معالجة مرحلة أخرى الآن؛ التحرير متوقف مؤقتًا حتى لا تضيع تعديلاتك.'
+        : 'تعطلت معالجة مرحلة أخرى. أعد المحاولة من تلك المرحلة، ثم افتح هذه للتعديل.' }}</small>
+    </div>
+  </div>
+  } @if (stageCanEdit() && draft(); as material) { @if (selectedStage(); as activeStage)
   {
-  <div class="stage-heading">
+  <div class="stage-heading" [class.stage-heading--vocabulary]="activeStage === 'vocabulary'">
     <div class="stage-heading__icon">
       <span class="material-symbols-outlined">{{ stageIcon(activeStage) }}</span>
     </div>
@@ -87,12 +122,29 @@
       </div>
       <span class="count-chip">{{ material.vocabulary.length }} بطاقة</span>
     </div>
+    <div class="vocabulary-toolbar">
+      <span>المختار للطالب: {{ visibleVocabularyCount() }} من {{ material.vocabulary.length }}</span>
+      <button type="button" class="selection-action" (click)="setVocabularySelection(true)" [disabled]="busy()">اختيار الكل</button>
+      <button type="button" class="selection-action" (click)="setVocabularySelection(false)" [disabled]="busy()">استبعاد الكل</button>
+      <span>عدد الاقتراحات عند آخر معالجة: {{ material.vocabularyTargetCount ?? 'تلقائي' }}</span>
+      <label>صوت المعاينة
+        <select [(ngModel)]="selectedVoice" aria-label="اختيار الصوت الطبيعي">
+          <option value="Kore">Kore</option><option value="Aoede">Aoede</option><option value="Puck">Puck</option>
+        </select>
+      </label>
+      @if (voiceConfigured()) {
+      <small class="voice-ready"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span> الصوت الطبيعي جاهز للمعاينة</small>
+      } @else {
+      <small class="voice-missing"><span class="material-symbols-outlined" aria-hidden="true">info</span>
+        الصوت غير مفعّل. <a routerLink="/admin/ai-tools">أضف مفتاح Groq Voice من إعدادات AI</a> لتشغيله للمدرّس والطالب.</small>
+      }
+    </div>
     <div class="image-provider-notice" [class.image-provider-notice--off]="!imagesConfigured()">
       <span class="material-symbols-outlined">{{ imagesConfigured() ? 'photo_library' : 'key_off' }}</span>
       @if (imagesConfigured()) {
-      <span>بحث الصور عبر Pexels مفعّل. اختر صورة لكل بطاقة أو اطلب خيارات أخرى؛ الصور لا تُعتمد قبل الحفظ.</span>
+      <span>بحث الصور عبر Pexels مفعّل. تظهر ١٢ صورة مقترحة لكل بطاقة، ويمكنك طلب المزيد واختيار الأنسب؛ الصور لا تُعتمد قبل الحفظ.</span>
       } @else {
-      <span>صور الكلمات غير مفعّلة: أضف مفتاح Pexels من <a routerLink="/admin/ai-tools">إعدادات مزودي الصور</a> ثم حدّث الصفحة.</span>
+      <span>صور الكلمات غير مفعّلة: أضف مفتاح Pexels من <button type="button" class="inline-link" [disabled]="busy()" (click)="openImageSettings()">إعدادات مزودي الصور</button> ثم حدّث الصفحة.</span>
       }
       @if (imagesConfigured()) {
       <button type="button" class="image-provider-notice__action" (click)="fillMissingVocabularyImages()"
@@ -129,7 +181,7 @@
         @if (imageOptions()[wordIndex]?.length) {
         <div class="image-picker">
           <div class="image-picker__heading">
-            <strong>اختر صورة مناسبة لـ {{ word.word }}</strong>
+            <strong>اختر صورة مناسبة لـ {{ word.word }} · صفحة {{ imagePages()[wordIndex] }} من ١٠</strong>
             <button type="button" (click)="suggestVocabularyImage(wordIndex)" [disabled]="imageBusy() !== null || busy()">
               {{ imageBusy() === wordIndex ? 'جاري البحث...' : 'صور أخرى' }}
             </button>
@@ -150,6 +202,8 @@
         </div>
         }
         <div class="word-body">
+          <div class="word-card-heading"><span>بطاقة {{ wordIndex + 1 }}</span>
+            <strong>{{ word.includeForStudent === false ? 'مستبعدة من الدرس' : 'ستظهر للطالب' }}</strong></div>
           <div class="word-head">
             <label class="field field--word"
               ><span>الكلمة أو العبارة</span
@@ -164,7 +218,7 @@
               type="button"
               class="sound-button"
               (click)="speak(word.word)"
-              [disabled]="!word.word.trim()"
+              [disabled]="!word.word.trim() || voiceBusy() || !voiceConfigured()"
               aria-label="اسمع نطق الكلمة"
             >
               <span class="material-symbols-outlined">volume_up</span>
@@ -178,40 +232,26 @@
               maxlength="120"
               (ngModelChange)="changed()"
           /></label>
-          <div class="example-box">
-            <div>
-              <span>مثال من الدرس</span>
-              <p lang="en" dir="ltr">{{ word.exampleEn || 'Add an example sentence' }}</p>
-              <small>{{ word.exampleAr || 'أضف ترجمة المثال' }}</small>
-            </div>
+          <div class="example-box example-box--editor">
+            <label class="field"><span>جملة المثال</span><input dir="ltr"
+              [(ngModel)]="word.exampleEn" [name]="'example-' + wordIndex" maxlength="200"
+              (ngModelChange)="changed()" /></label>
             <button
               type="button"
               class="sound-button sound-button--soft"
               (click)="speak(word.exampleEn)"
-              [disabled]="!word.exampleEn.trim()"
+              [disabled]="!word.exampleEn.trim() || voiceBusy() || !voiceConfigured()"
               aria-label="اسمع جملة المثال"
             >
               <span class="material-symbols-outlined">play_arrow</span>
             </button>
           </div>
-          <div class="edit-grid">
-            <label class="field"
-              ><span>مثال إنجليزي</span
-              ><input
-                dir="ltr"
-                [(ngModel)]="word.exampleEn"
-                [name]="'example-' + wordIndex"
-                maxlength="200"
-                (ngModelChange)="changed()"
-            /></label>
-            <label class="field"
-              ><span>ترجمة المثال</span
-              ><input
-                [(ngModel)]="word.exampleAr"
-                [name]="'example-ar-' + wordIndex"
-                maxlength="200"
-                (ngModelChange)="changed()"
-            /></label>
+          <label class="field"><span>معنى الجملة</span><input
+            [(ngModel)]="word.exampleAr" [name]="'example-ar-' + wordIndex" maxlength="200"
+            (ngModelChange)="changed()" /></label>
+          <details class="word-more">
+            <summary>تفاصيل إضافية: شرح، استخدام، ورابط الصورة</summary>
+            <div class="edit-grid">
             <label class="field field--wide"
               ><span>رابط الصورة</span
               ><input
@@ -249,7 +289,8 @@
                 maxlength="200"
                 (ngModelChange)="changed()"
             /></label>
-          </div>
+            </div>
+          </details>
           <div class="word-footer">
             <label class="kind-select"
               >النوع
@@ -655,6 +696,10 @@
     <button type="button" class="secondary" [disabled]="busy() || !dirty()" (click)="save()">
       حفظ فقط
     </button>
+    <button type="button" class="secondary" [disabled]="busy() || dirty() || !canGenerateStage()"
+      (click)="generate()" title="لن تتغير المراحل الأخرى">
+      <span class="material-symbols-outlined">refresh</span> إعادة معالجة هذه المرحلة
+    </button>
     <button
       type="button"
       [disabled]="busy() || stageIssues(activeStage).length > 0 || (stageReviewed(activeStage) && !dirty())"
@@ -663,7 +708,7 @@
       <span class="material-symbols-outlined">verified</span> حفظ واعتماد المرحلة
     </button>
   </footer>
-  } } @if (job()?.status === 'Approved') {
+  } } @if (job()?.status === 'Approved' && stageStatus() === 'Approved') {
   <section class="approved-panel" aria-labelledby="approved-title">
     <div class="approved-panel__icon">
       <span class="material-symbols-outlined">verified</span>
@@ -677,16 +722,16 @@
       </p>
     </div>
     <div class="approved-panel__actions">
-      <button type="button" [disabled]="busy()" (click)="reopenApproved()">
+      <button type="button" [disabled]="busy() || globalProcessing()" (click)="reopenApproved()">
         <span class="material-symbols-outlined">edit_note</span> فتح نسخة للتعديل
       </button>
       <button
         type="button"
         class="secondary"
-        [disabled]="busy() || !providers().length"
+        [disabled]="busy() || globalProcessing() || !canGenerateStage()"
         (click)="generate()"
       >
-        <span class="material-symbols-outlined">auto_awesome</span> إعادة المعالجة بالكامل
+        <span class="material-symbols-outlined">auto_awesome</span> إعادة معالجة هذه المرحلة
       </button>
       <a class="publish" routerLink="/admin/curriculums">
         الذهاب للمنهج والنشر <span class="material-symbols-outlined">arrow_back</span>

@@ -26,6 +26,7 @@ export interface StageOverview {
   description: string;
   icon: string;
   position: number;
+  required: boolean;
   isComplete: boolean;
   isUnlocked: boolean;
   route: string;
@@ -188,6 +189,11 @@ export class StudentLearningApi {
       `${this.base}/slots/${encodeURIComponent(slotId)}/vocabulary/progress`,
       { position },
     );
+  }
+  vocabularyAudio(slotId: string, position: number, part: 'word' | 'example') {
+    return this.http.get(`${this.base}/slots/${encodeURIComponent(slotId)}/vocabulary/audio`, {
+      params: { position, part }, responseType: 'blob',
+    });
   }
   grammarProgress(slotId: string): Observable<PracticeProgress> {
     return this.http.put<PracticeProgress>(
