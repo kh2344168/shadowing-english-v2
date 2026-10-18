@@ -41,6 +41,11 @@ describe('AdminLessonStageEditorPage', () => {
     status: 'Draft' | 'Approved',
     stageType = 'vocabulary',
     processingStatus: StageProcessingStatus = status === 'Approved' ? 'Approved' : 'NeedsReview',
+    segmentResponse = [{ position: 1, text: 'Hello there', audioUrl: `${base}/teacher-audio/1` }] as
+      { position: number; text: string; audioUrl?: string | null }[],
+    probeStatus = 206,
+    jobMaterial: object = material,
+    savedDraft: object | null = null,
   ) {
     await TestBed.configureTestingModule({
       imports: [AdminLessonStageEditorPage],
@@ -66,9 +71,9 @@ describe('AdminLessonStageEditorPage', () => {
     http.expectOne('/api/admin/lessons/ai-providers').flush({ configured: ['Groq'], imagesConfigured: true });
     http
       .expectOne(`${base}/ai`)
-      .flush({ id: 'job-1', lessonVersionId: versionId, revision: 'rev-1', status, material });
-    http.expectOne(`${base}/ai/draft`).flush(null);
-    http.expectOne(`${base}/ai/segments`).flush([{ position: 1, text: 'Hello there' }]);
+      .flush({ id: 'job-1', lessonVersionId: versionId, revision: 'rev-1', status, material: jobMaterial });
+    http.expectOne(`${base}/ai/draft`).flush(savedDraft);
+    http.expectOne(`${base}/ai/segments`).flush(segmentResponse);
     http.expectOne(`${base}/workflow`).flush({
       stages: [
         {
@@ -88,6 +93,21 @@ describe('AdminLessonStageEditorPage', () => {
       ],
     });
     http.expectOne(`${base}/ai/stages/statuses`).flush({ [stageType]: processingStatus });
+    if (stageType === 'listen-type' && segmentResponse.some((segment) => segment.audioUrl === undefined)) {
+      const missing = segmentResponse.filter((segment) => segment.audioUrl === undefined);
+      await vi.waitFor(() => {
+        const probes = http.match((request) => request.url.startsWith(
+          `/api/admin/shadowing/lessons/versions/${versionId}/segments/`));
+        expect(probes).toHaveLength(missing.length);
+        for (const probe of probes) {
+          expect(probe.request.headers.get('Range')).toBe('bytes=0-0');
+          probe.flush(new Blob(['x']), {
+            status: probeStatus,
+            statusText: probeStatus === 206 ? 'Partial Content' : 'Not Found',
+          });
+        }
+      });
+    }
     await vi.waitFor(() => expect(fixture.componentInstance.loading()).toBe(false));
     fixture.detectChanges();
     return { http, fixture, page: fixture.componentInstance };
@@ -97,6 +117,8 @@ describe('AdminLessonStageEditorPage', () => {
     const { http, fixture, page } = await setup('Draft');
     expect(page.selectedStage()).toBe('vocabulary');
     expect(fixture.nativeElement.querySelector('#words-title')).not.toBeNull();
+    expect((fixture.nativeElement.querySelector('.word-visual .include-toggle input') as HTMLInputElement).checked)
+      .toBe(true);
     expect(fixture.nativeElement.querySelector('.stage-grid')).toBeNull();
     expect(fixture.nativeElement.textContent).not.toContain('اعتماد محتوى الدرس');
     page.clearVocabularyImage(0);
@@ -114,6 +136,183 @@ describe('AdminLessonStageEditorPage', () => {
     review.flush({ ...page.job(), revision: 'rev-3', material: review.request.body.material });
     await reviewing;
     expect(page.stageReviewed('vocabulary')).toBe(true);
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('lets the teacher select only recorded dictation sentences and persists that choice', async () => {
+    const { http, fixture, page } = await setup('Draft', 'listen-type');
+    const draft = page.draft()!;
+    draft.dictation = [
+      { position: 1, enabled: true, acceptedAnswers: ['Hello there'], hint: null },
+      { position: 2, enabled: true, acceptedAnswers: ['How are you?'], hint: null },
+      { position: 3, enabled: true, acceptedAnswers: ['Text only'], hint: null },
+    ];
+    page.draft.set({ ...draft });
+    page.segments.set([
+      { position: 1, text: 'Hello there', audioUrl: '/teacher/1/audio' },
+      { position: 2, text: 'How are you?', audioUrl: '/teacher/2/audio' },
+      { position: 3, text: 'Text only', audioUrl: null },
+    ]);
+    fixture.detectChanges();
+    page.setDictationSelection(false);
+    expect(page.selectedDictationCount()).toBe(0);
+    expect(page.stageIssues('listen-type')).toContain('اختر جملة واحدة على الأقل من المقاطع التي لها تسجيل صوتي.');
+    page.setDictationSelection(true);
+    expect(page.draft()!.dictation!.map((item) => item.enabled)).toEqual([true, true, false]);
+    page.draft()!.dictation![0].enabled = false;
+    page.changed();
+    fixture.detectChanges();
+    expect(page.selectedDictationCount()).toBe(1);
+    const choices = fixture.nativeElement.querySelectorAll('.dictation-select input') as NodeListOf<HTMLInputElement>;
+    expect(choices).toHaveLength(3);
+    expect(choices[2].disabled).toBe(true);
+    const saving = page.save();
+    await Promise.resolve();
+    const request = http.expectOne(`${base}/ai/job-1`);
+    expect(request.request.body.material.dictation.map((item: { enabled: boolean }) => item.enabled))
+      .toEqual([false, true, false]);
+    request.flush({ ...page.job(), revision: 'rev-2', material: request.request.body.material });
+    await saving;
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('suggests an A1 missing word and saves the teacher-selected exercise mode', async () => {
+    const { http, fixture, page } = await setup('Draft', 'listen-type');
+    const text = 'I go to school every day.';
+    page.lessonLevel.set('A1');
+    page.segments.set([{ position: 1, text, audioUrl: '/teacher/1/audio' }]);
+    const suggested = page.suggestedDictation(1, text, true);
+    expect(suggested.mode).toBe('missing-word');
+    expect(suggested.targetWordIndex).toBe(3);
+    expect(suggested.acceptedAnswers).toEqual(['school']);
+    page.draft.set({ ...page.draft()!, dictation: [suggested] });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('I go to _____ every day.');
+
+    page.setDictationMode(1, 'word-order', text);
+    expect(page.dictationItem(1)?.acceptedAnswers).toEqual([text]);
+    expect(page.stageIssues('listen-type')).toEqual([]);
+    page.setDictationMode(1, 'missing-word', text);
+    expect(page.stageIssues('listen-type')).toEqual([]);
+    page.selectDictationWord(1, 4, text);
+    expect(page.dictationItem(1)?.acceptedAnswers).toEqual(['every']);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain('كلمة مسموعة');
+    expect(page.suggestedDictation(2, 'Hello', true).mode).toBe('full-sentence');
+    const saving = page.save();
+    await Promise.resolve();
+    const request = http.expectOne(`${base}/ai/job-1`);
+    expect(request.request.body.material.dictation[0]).toMatchObject({
+      mode: 'missing-word', targetWordIndex: 4, acceptedAnswers: ['every'],
+    });
+    request.flush({ ...page.job(), revision: 'rev-2', material: request.request.body.material });
+    await saving;
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('derives the missing-word answer from the selected word without regenerating AI', async () => {
+    const { http, fixture, page } = await setup('Draft', 'listen-type');
+    const text = 'I go to school every day.';
+    page.segments.set([{ position: 1, text, audioUrl: '/teacher/1/audio' }]);
+    page.draft.set({ ...page.draft()!, dictation: [{ position: 1, enabled: true, hint: null,
+      acceptedAnswers: ['school'], mode: 'missing-word', targetWordIndex: 3 }] });
+    page.selectDictationWord(1, 4, text);
+    page.dictationItem(1)!.acceptedAnswers = ['school']; // stale UI data must not override the selection
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('I go to school _____ day.');
+    expect(fixture.nativeElement.textContent).toContain('تتحدث تلقائيًا');
+    expect(page.stageIssues('listen-type')).toEqual([]);
+
+    const saving = page.save();
+    await Promise.resolve();
+    const request = http.expectOne(`${base}/ai/job-1`);
+    expect(request.request.body.material.dictation[0].acceptedAnswers).toEqual(['every']);
+    request.flush({ ...page.job(), revision: 'rev-2', material: request.request.body.material });
+    await saving;
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('converts an old single-word draft to a missing-word question without losing the chosen word', async () => {
+    const legacy = { ...material, dictation: [{ ...material.dictation[0], mode: 'single-word',
+      targetWordIndex: 1, acceptedAnswers: ['there'], audioStartSeconds: 0.2,
+      audioEndSeconds: 0.8 }] };
+    const { http, fixture, page } = await setup('Draft', 'listen-type', 'NeedsReview',
+      [{ position: 1, text: 'Hello there', audioUrl: '/teacher/1/audio' }], 206, legacy);
+    expect(page.dictationItem(1)).toMatchObject({ mode: 'missing-word', targetWordIndex: 1,
+      acceptedAnswers: ['there'], audioStartSeconds: null, audioEndSeconds: null });
+    expect(page.dirty()).toBe(true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain('كلمة مسموعة');
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('recovers teacher recordings when the segments API omits audioUrl', async () => {
+    const { http, fixture, page } = await setup('Draft', 'listen-type', 'NeedsReview',
+      [{ position: 1, text: 'Hello there' }]);
+    expect(page.segments()[0].audioUrl).toBe(
+      `/api/admin/shadowing/lessons/versions/${versionId}/segments/1/audio`);
+    expect(page.dictationAudioState()).toBe('ready');
+    fixture.detectChanges();
+    expect((fixture.nativeElement.querySelector('.dictation-select input') as HTMLInputElement).disabled).toBe(false);
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('only marks an old-API segment as missing when its teacher clip returns 404', async () => {
+    const { http, fixture, page } = await setup('Draft', 'listen-type', 'NeedsReview',
+      [{ position: 1, text: 'Hello there' }], 404);
+    expect(page.segments()[0].audioUrl).toBeNull();
+    expect(page.dictationAudioState()).toBe('missing');
+    fixture.detectChanges();
+    expect((fixture.nativeElement.querySelector('.dictation-select input') as HTMLInputElement).disabled).toBe(true);
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('distinguishes an unverified audio request from a lesson with no recording', async () => {
+    const { http, fixture, page } = await setup('Draft', 'listen-type');
+    page.segments.set([{ position: 1, text: 'Hello there' }]);
+    fixture.detectChanges();
+    expect(page.dictationAudioState()).toBe('unverified');
+    expect(page.canGenerateStage()).toBe(false);
+    expect(page.stageIssues('listen-type')[0]).toContain('تعذر التحقق');
+    expect(fixture.nativeElement.textContent).toContain('تعذر التحقق من التسجيل');
+    expect(fixture.nativeElement.textContent).not.toContain('لا يوجد تسجيل لهذه الجملة');
+
+    page.segments.set([{ position: 1, text: 'Hello there', audioUrl: null }]);
+    fixture.detectChanges();
+    expect(page.dictationAudioState()).toBe('missing');
+    expect(page.canGenerateStage()).toBe(false);
+    expect(page.stageIssues('listen-type')[0]).toContain('لا يوجد تسجيل صوتي محفوظ');
+    expect(fixture.nativeElement.textContent).toContain('لا يوجد تسجيل لهذه الجملة');
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('bulk selects only questions of the active test type', async () => {
+    const { http, fixture, page } = await setup('Draft', 'vocabulary-quiz');
+    expect(page.draft()!.quiz[0].enabled).toBeUndefined();
+    page.draft()!.quiz = [
+      { question: 'Word A', options: ['a', 'b', 'c', 'd'], correctIndex: 0,
+        explanationAr: 'شرح', type: 'vocabulary-card', enabled: true },
+      { question: 'Word B', options: ['a', 'b', 'c', 'd'], correctIndex: 1,
+        explanationAr: 'شرح', type: 'vocabulary-card', enabled: true },
+      { question: 'Grammar', options: ['a', 'b', 'c', 'd'], correctIndex: 2,
+        explanationAr: 'شرح', type: 'multiple-choice', enabled: true },
+    ];
+    page.setQuestionSelection('vocabulary-card', false);
+    expect(page.selectedQuestionCount('vocabulary-card')).toBe(0);
+    expect(page.selectedQuestionCount('multiple-choice')).toBe(1);
+    page.draft()!.quiz[1].enabled = true;
+    page.changed();
+    fixture.detectChanges();
+    expect(page.selectedQuestionCount('vocabulary-card')).toBe(1);
+    expect(fixture.nativeElement.querySelector('.selection-toolbar')).not.toBeNull();
     http.verify();
     fixture.destroy();
   });
@@ -151,6 +350,20 @@ describe('AdminLessonStageEditorPage', () => {
     fixture.detectChanges();
     expect(page.selectedStage()).toBe('vocabulary');
     expect(fixture.nativeElement.querySelector('#words-title')).not.toBeNull();
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('opens an existing lesson draft instead of showing the approved-stage reopen button', async () => {
+    const existingDraft = { id: 'draft-2', lessonVersionId: versionId,
+      revision: 'rev-2', status: 'Draft', material };
+    const { http, fixture, page } = await setup('Approved', 'vocabulary', 'Approved',
+      [{ position: 1, text: 'Hello there', audioUrl: '/teacher/1/audio' }],
+      206, material, existingDraft);
+    expect(page.job()?.id).toBe('draft-2');
+    expect(page.selectedStage()).toBe('vocabulary');
+    expect(fixture.nativeElement.querySelector('#words-title')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.approved-panel')).toBeNull();
     http.verify();
     fixture.destroy();
   });

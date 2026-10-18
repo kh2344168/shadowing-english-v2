@@ -17,6 +17,7 @@ import {
   LessonAiJob,
   LessonMaterial,
   LessonSegmentReview,
+  DictationCard,
   QuizCard,
   StageProcessingStatus,
   VocabularyImageOption,
@@ -54,9 +55,17 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   readonly voiceBusy = signal(false);
   readonly voiceTermsRequired = signal(false);
   readonly vocabularyTargetCount = signal(12);
+  readonly lessonLevel = signal('B1');
+  readonly dictationModes: { key: Exclude<NonNullable<DictationCard['mode']>, 'single-word'>; title: string; icon: string }[] = [
+    { key: 'missing-word', title: 'كلمة ناقصة', icon: 'edit_note' },
+    { key: 'word-order', title: 'ترتيب كلمات', icon: 'reorder' },
+    { key: 'full-sentence', title: 'جملة كاملة', icon: 'subject' },
+  ];
   selectedVoice = 'Kore';
   private previewAudio: HTMLAudioElement | null = null;
   private previewAudioUrl: string | null = null;
+  private readonly teacherAudioProbeCache = new Map<number, string | null>();
+  readonly playingSegment = signal<number | null>(null);
   readonly imageBusy = signal<number | null>(null);
   readonly imageOptions = signal<Record<number, VocabularyImageOption[]>>({});
   readonly imagePages = signal<Record<number, number>>({});
@@ -162,7 +171,11 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       this.providers.set(providers.configured);
       this.imagesConfigured.set(providers.imagesConfigured === true);
       this.voiceConfigured.set(providers.voiceConfigured === true);
-      this.segments.set(segments);
+      this.lessonLevel.set(workflow?.level ?? 'B1');
+      const requested = workflow?.stages.find((stage) => stage.id === this.workflowStageId);
+      this.segments.set(requested?.type === 'listen-type'
+        ? await this.resolveTeacherAudio(segments) : segments);
+      if (this.destroyed) return;
       this.globalProcessing.set(
         latestJob?.status === 'Pending' || latestJob?.status === 'Generating',
       );
@@ -177,14 +190,12 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
         ]);
       }
       if (workflow) {
-        const requested = workflow.stages.find((stage) => stage.id === this.workflowStageId);
         this.activeWorkflowStage.set(requested ?? null);
         const reviewStage = requested ? this.toReviewStage(requested.type) : null;
         const stageStatus = requested ? statuses[requested.type] ?? 'NotStarted' : 'NotStarted';
-        const useSavedDraft = stageStatus !== 'Pending' && stageStatus !== 'Generating' &&
-          stageStatus !== 'Failed' && latestJob?.status !== 'Draft' &&
-          latestJob?.status !== 'Approved' && !!savedDraft;
-        const job = useSavedDraft ? savedDraft : latestJob;
+        // A lesson has one editable draft shared by all stages. Show it even if
+        // the approved source has a newer UpdatedAtUtc timestamp.
+        const job = savedDraft ?? latestJob;
         this.setJob(job);
         this.stageStatus.set(stageStatus);
         this.selectedStage.set(
@@ -216,6 +227,24 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       this.loading.set(false);
     }
   }
+  private async resolveTeacherAudio(segments: LessonSegmentReview[]): Promise<LessonSegmentReview[]> {
+    return Promise.all(segments.map(async (segment) => {
+      if (segment.audioUrl !== undefined) return segment;
+      if (this.teacherAudioProbeCache.has(segment.position))
+        return { ...segment, audioUrl: this.teacherAudioProbeCache.get(segment.position) ?? null };
+      try {
+        await firstValueFrom(this.api.probeTeacherSegmentAudio(this.versionId, segment.position));
+        const audioUrl = this.api.teacherSegmentAudioUrl(this.versionId, segment.position);
+        this.teacherAudioProbeCache.set(segment.position, audioUrl);
+        return { ...segment, audioUrl };
+      } catch (error) {
+        // Older API versions omitted audioUrl. Only a genuine 404 proves the clip is absent.
+        if ((error as HttpErrorResponse).status !== 404) return segment;
+        this.teacherAudioProbeCache.set(segment.position, null);
+        return { ...segment, audioUrl: null };
+      }
+    }));
+  }
   private toReviewStage(type: LessonStageType): ReviewStage | null {
     if (type === 'vocabulary') return 'vocabulary';
     if (type === 'listen-type') return 'listen-type';
@@ -240,20 +269,31 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       material.dictation == null && job?.status === 'Draft';
     if (needsDictation && material) {
       material.dictation = this.segments()
-        .filter(({ text }) => text.trim().length <= 600)
-        .map(({ position, text }) => ({
-          position,
-          enabled: true,
-          acceptedAnswers: [text],
-          hint: null,
-        }));
+        .filter(({ text, audioUrl }) => !!audioUrl && text.trim().length <= 600)
+        .map(({ position, text }, index) => this.suggestedDictation(position, text, index === 0));
+    }
+    let convertedLegacyDictation = false;
+    if (material?.dictation && job?.status === 'Draft') {
+      material.dictation = material.dictation.map((item) => {
+        if (item.mode !== 'single-word') return item;
+        const text = this.segments().find((segment) => segment.position === item.position)?.text ?? '';
+        const words = this.dictationWords(text);
+        convertedLegacyDictation = true;
+        if (words.length < 2) return { ...item, mode: 'full-sentence', targetWordIndex: null,
+          acceptedAnswers: [text.trim()], audioStartSeconds: null, audioEndSeconds: null };
+        const targetWordIndex = item.targetWordIndex != null && item.targetWordIndex >= 0 &&
+          item.targetWordIndex < words.length
+          ? item.targetWordIndex : Math.floor(words.length / 2);
+        return { ...item, mode: 'missing-word', targetWordIndex,
+          acceptedAnswers: [words[targetWordIndex]], audioStartSeconds: null, audioEndSeconds: null };
+      });
     }
     const needsReviewInit =
       !!material && job?.stageType == null && job?.status === 'Draft' &&
       material.reviewedStages == null;
     if (needsReviewInit && material) material.reviewedStages = [];
     this.draft.set(material);
-    this.dirty.set(needsDictation || needsReviewInit);
+    this.dirty.set(needsDictation || needsReviewInit || convertedLegacyDictation);
     if (job?.status !== 'Draft') this.selectedStage.set(null);
   }
 
@@ -261,8 +301,16 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     return this.stageStatus() === 'Pending' || this.stageStatus() === 'Generating';
   }
 
+  dictationAudioState(): 'ready' | 'missing' | 'unverified' {
+    const segments = this.segments();
+    if (segments.some((segment) => segment.audioUrl === undefined)) return 'unverified';
+    return segments.some((segment) => !!segment.audioUrl) ? 'ready' : 'missing';
+  }
+
   canGenerateStage(): boolean {
-    return this.activeWorkflowStage()?.type === 'listen-type' || this.providers().length > 0;
+    return this.activeWorkflowStage()?.type === 'listen-type'
+      ? this.dictationAudioState() === 'ready'
+      : this.providers().length > 0;
   }
 
   stageCanEdit(): boolean {
@@ -359,10 +407,33 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
           ? ['أكمل بيانات الكلمات أو استبعد البطاقة غير المكتملة من المسودة.']
           : [];
       case 'listen-type':
+        if (this.dictationAudioState() === 'unverified')
+          return ['تعذر التحقق من تسجيلات المدرّس. راجع اتصال API وتخزين الصوت ثم حدّث الصفحة.'];
+        if (this.dictationAudioState() === 'missing')
+          return ['لا يوجد تسجيل صوتي محفوظ لهذا الدرس. أضف صوت المدرّس أو ألغِ تفعيل مرحلة اسمع واكتب.'];
         if (!material.dictation?.some((item) => item.enabled))
-          return ['اختر جملة واحدة على الأقل.'];
-        return material.dictation.some((item) => !item.acceptedAnswers.length)
-          ? ['أضف إجابة مقبولة لكل جملة في المسودة.']
+          return ['اختر جملة واحدة على الأقل من المقاطع التي لها تسجيل صوتي.'];
+        if (material.dictation.some((item) => item.enabled &&
+          !this.segments().some((segment) => segment.position === item.position && segment.audioUrl)))
+          return ['إحدى الجمل المختارة ليس لها تسجيل من صوت المدرّس. استبعدها.'];
+        for (const item of material.dictation.filter((card) => card.enabled)) {
+          const segment = this.segments().find((x) => x.position === item.position);
+          if (!segment) return ['إحدى الجمل المختارة لم يعد لها نص في الدرس.'];
+          const words = this.dictationWords(segment.text);
+          const mode = this.dictationMode(item);
+          if (mode === 'missing-word' && words.length < 2)
+            return [`الجملة ${item.position}: الكلمة الناقصة تحتاج جملة فيها كلمتان على الأقل.`];
+          if (mode === 'word-order' && (words.length < 3 || words.length > 12))
+            return [`الجملة ${item.position}: ترتيب الكلمات يحتاج جملة من 3 إلى 12 كلمة.`];
+          if (mode === 'missing-word') {
+            const target = item.targetWordIndex;
+            if (target == null || target < 0 || target >= words.length)
+              return [`الجملة ${item.position}: اختر الكلمة المستهدفة.`];
+          }
+        }
+        return material.dictation.some((item) => item.enabled &&
+          this.dictationMode(item) === 'full-sentence' && !item.acceptedAnswers.length)
+          ? ['أضف إجابة مقبولة لكل جملة كاملة مختارة.']
           : [];
       case 'grammar':
         return material.grammarFocus?.trim() ? [] : ['اكتب القاعدة المستهدفة قبل الاعتماد.'];
@@ -378,7 +449,7 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
         const questions = this.questionsFor(type).map(({ question }) => question);
         if (!questions.some((question) => question.enabled !== false))
           return ['أضف سؤالًا واحدًا على الأقل أو فعّل سؤالًا موجودًا.'];
-        return questions.some(
+        return questions.filter((question) => question.enabled !== false).some(
           (question) =>
             !question.question?.trim() ||
             !question.explanationAr?.trim() ||
@@ -413,6 +484,7 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   async reviewStage(): Promise<void> {
     const stage = this.selectedStage(),
       material = this.draft();
+    if (stage === 'listen-type') this.syncDictationAnswers();
     if (!stage || !material || this.busy() || this.stageIssues(stage).length) return;
     material.reviewedStages = [...new Set([...(material.reviewedStages ?? []), stage])];
     this.draft.set({ ...material });
@@ -609,6 +681,7 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     this.previewAudio = null;
     if (this.previewAudioUrl) URL.revokeObjectURL(this.previewAudioUrl);
     this.previewAudioUrl = null;
+    this.playingSegment.set(null);
   }
   async speak(text: string): Promise<void> {
     const value = text.trim();
@@ -670,6 +743,123 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   }
   dictationItem(position: number) {
     return this.draft()?.dictation?.find((x) => x.position === position) ?? null;
+  }
+  selectedDictationCount(): number {
+    return this.draft()?.dictation?.filter((item) => item.enabled).length ?? 0;
+  }
+  dictationMode(item: DictationCard): NonNullable<DictationCard['mode']> {
+    return item.mode ?? 'full-sentence';
+  }
+  dictationWords(text: string): string[] {
+    return text.match(/[a-zA-Z0-9]+(?:'[a-zA-Z0-9]+)?/g) ?? [];
+  }
+  suggestedDictation(position: number, text: string, enabled: boolean): DictationCard {
+    const words = this.dictationWords(text);
+    if (this.lessonLevel() === 'A1' && words.length >= 2) {
+      const targetWordIndex = Math.floor(words.length / 2);
+      return { position, enabled, mode: 'missing-word', targetWordIndex,
+        acceptedAnswers: [words[targetWordIndex]], hint: null };
+    }
+    return { position, enabled, mode: 'full-sentence', acceptedAnswers: [text.trim()], hint: null };
+  }
+  setDictationMode(position: number, mode: Exclude<NonNullable<DictationCard['mode']>, 'single-word'>, text: string): void {
+    const item = this.dictationItem(position);
+    if (!item || this.dictationMode(item) === mode) return;
+    const words = this.dictationWords(text);
+    if (!words.length || mode === 'missing-word' && words.length < 2 ||
+      mode === 'word-order' && (words.length < 3 || words.length > 12)) return;
+    item.mode = mode;
+    item.targetWordIndex = mode === 'missing-word'
+      ? Math.floor(words.length / 2) : null;
+    item.acceptedAnswers = item.targetWordIndex == null
+      ? [text.trim()] : [words[item.targetWordIndex]];
+    item.audioStartSeconds = null;
+    item.audioEndSeconds = null;
+    this.changed();
+  }
+  selectDictationWord(position: number, index: number, text: string): void {
+    const item = this.dictationItem(position);
+    const words = this.dictationWords(text);
+    if (!item || !words[index]) return;
+    item.targetWordIndex = index;
+    item.acceptedAnswers = [words[index]];
+    this.changed();
+  }
+  dictationPrompt(item: DictationCard, text: string): string {
+    if (this.dictationMode(item) !== 'missing-word' || item.targetWordIndex == null)
+      return text;
+    const matches = [...text.matchAll(/[a-zA-Z0-9]+(?:'[a-zA-Z0-9]+)?/g)];
+    const match = matches[item.targetWordIndex];
+    return match?.index == null ? text :
+      `${text.slice(0, match.index)}_____${text.slice(match.index + match[0].length)}`;
+  }
+  automaticDictationAnswer(item: DictationCard, text: string): string | null {
+    const mode = this.dictationMode(item);
+    if (mode === 'word-order') return text.trim();
+    if (mode === 'missing-word')
+      return this.dictationWords(text)[item.targetWordIndex ?? -1] ?? null;
+    return null;
+  }
+  private syncDictationAnswers(): void {
+    const material = this.draft();
+    if (!material?.dictation) return;
+    let updated = false;
+    for (const item of material.dictation) {
+      const segment = this.segments().find((x) => x.position === item.position);
+      const answer = segment ? this.automaticDictationAnswer(item, segment.text) : null;
+      if (answer != null && (item.acceptedAnswers.length !== 1 || item.acceptedAnswers[0] !== answer)) {
+        item.acceptedAnswers = [answer];
+        updated = true;
+      }
+    }
+    if (updated) {
+      this.draft.set({ ...material });
+      this.dirty.set(true);
+    }
+  }
+  dictationModeCount(mode: NonNullable<DictationCard['mode']>): number {
+    return this.draft()?.dictation?.filter((item) => item.enabled && this.dictationMode(item) === mode).length ?? 0;
+  }
+  setDictationSelection(enabled: boolean): void {
+    const material = this.draft();
+    if (!material?.dictation) return;
+    const playable = new Set(this.segments().filter((segment) => !!segment.audioUrl)
+      .map((segment) => segment.position));
+    material.dictation = material.dictation.map((item) => ({
+      ...item,
+      enabled: enabled && playable.has(item.position),
+    }));
+    this.draft.set({ ...material });
+    this.changed();
+  }
+  selectedQuestionCount(type: NonNullable<QuizCard['type']>): number {
+    return this.questionsFor(type).filter(({ question }) => question.enabled !== false).length;
+  }
+  setQuestionSelection(type: NonNullable<QuizCard['type']>, enabled: boolean): void {
+    const material = this.draft();
+    if (!material) return;
+    material.quiz = material.quiz.map((question) =>
+      (question.type ?? 'multiple-choice') === type ? { ...question, enabled } : question);
+    this.draft.set({ ...material });
+    this.changed();
+  }
+  async playTeacherSegment(position: number, audioUrl: string | null | undefined): Promise<void> {
+    if (!audioUrl) {
+      this.error.set('لا يوجد تسجيل للمدرّس لهذه الجملة.');
+      return;
+    }
+    this.stopVoice();
+    this.error.set('');
+    const audio = new Audio(audioUrl);
+    this.previewAudio = audio;
+    this.playingSegment.set(position);
+    audio.onended = () => this.stopVoice();
+    try {
+      await audio.play();
+    } catch {
+      this.stopVoice();
+      this.error.set('تعذر تشغيل تسجيل المدرّس. راجع ملف الصوت وحاول مرة أخرى.');
+    }
   }
   updateGoals(value: string): void {
     const material = this.draft();
@@ -754,14 +944,19 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       const active = this.activeWorkflowStage();
       const requested = active ? this.toReviewStage(active.type) : null;
       if (requested) this.selectedStage.set(requested);
-      this.notice.set('تم فتح نسخة آمنة للتعديل. النسخة المعتمدة الحالية لم تتغير.');
+      this.notice.set('نسخة التعديل جاهزة. النسخة المعتمدة التي يذاكرها الطالب لم تتغير.');
       console.info('[Admin.AiReview.Reopen.Success]', {
         sourceJobId: approved.id,
         draftJobId: draft.id,
         durationMs: Math.round(performance.now() - started),
       });
     } catch (ex) {
-      this.error.set('تعذر فتح نسخة التعديل. قد توجد مسودة أخرى مفتوحة لهذا الدرس.');
+      const code = await this.voiceErrorCode(ex);
+      this.error.set(code === 'ai_draft_in_progress'
+        ? 'هناك مرحلة قيد المعالجة الآن. انتظر انتهاءها ثم افتح نسخة التعديل.'
+        : code === 'approved_content_changed'
+          ? 'تغيّرت النسخة المعتمدة. حدّث الصفحة ثم افتح نسخة التعديل.'
+          : 'تعذر فتح نسخة التعديل. حدّث الصفحة وحاول مرة أخرى.');
       console.warn('[Admin.AiReview.Reopen.Failed]', {
         jobId: approved.id,
         status: (ex as { status?: number }).status ?? null,
@@ -776,6 +971,14 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       draft = this.draft();
     if (!job || !draft || job.status !== 'Draft' || !this.dirty() || this.busy() ||
       this.globalProcessing()) return;
+    if (this.activeWorkflowStage()?.type === 'listen-type') {
+      this.syncDictationAnswers();
+      const issues = this.stageIssues('listen-type');
+      if (issues.length) {
+        this.error.set(issues.join(' '));
+        return;
+      }
+    }
     const started = performance.now();
     this.busy.set(true);
     this.error.set('');
@@ -790,11 +993,14 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
         durationMs: Math.round(performance.now() - started),
       });
     } catch (ex) {
-      this.error.set(
-        (ex as { status?: number }).status === 400
-          ? 'راجع الكلمات والعبارات والجمل المختارة؛ أسئلة الاختيار تحتاج 4 إجابات مختلفة، وسؤال الترتيب يحتاج كلمات الجملة نفسها.'
-          : 'تعذر الحفظ أو تغيّرت المسودة. انسخ تعديلاتك ثم حدّث الصفحة.',
-      );
+      const code = await this.voiceErrorCode(ex);
+      this.error.set(code === 'invalid_csrf'
+        ? 'انتهت صلاحية جلسة الحفظ. حدّث الصفحة ثم حاول مجددًا.'
+        : code === 'invalid_dictation'
+          ? 'إعداد سؤال اسمع واكتب غير مكتمل. راجع الكلمة المختارة أو توقيت صوت الكلمة.'
+          : code === 'invalid_material'
+            ? 'رفض الخادم بيانات مسودة الدرس الكاملة، وليس بالضرورة هذه الجملة. لن تُفقد تعديلاتك؛ راجع المراحل الأخرى أو أرسل تفاصيل Response من طلب PUT لتحديد الحقل.'
+            : 'تعذر الحفظ أو تغيّرت المسودة. انسخ تعديلاتك ثم حدّث الصفحة.');
       console.warn('[Admin.AiReview.Save.Failed]', {
         jobId: job.id,
         status: (ex as { status?: number }).status ?? null,

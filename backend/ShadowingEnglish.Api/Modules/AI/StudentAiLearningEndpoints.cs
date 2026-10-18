@@ -36,11 +36,20 @@ public static class StudentAiLearningEndpoints
                 var progress = await Progress(db, student.Value, data.VersionId, slotId, http.RequestAborted);
                 if (!CanReadMaterial(data, progress)) return Locked(PreviousStage(data, FirstActivity(data)));
                 var items = await db.LessonSegments.AsNoTracking().Where(x => x.LessonVersionId == data.LessonVersionId)
-                    .OrderBy(x => x.Position).Select(x => x.Position).ToArrayAsync(http.RequestAborted);
+                    .Where(x => x.AudioStorageKey != "")
+                    .OrderBy(x => x.Position).Select(x => new { x.Position, x.Text })
+                    .ToArrayAsync(http.RequestAborted);
                 http.Response.Headers.CacheControl = "no-store";
                 log.LogInformation("Student.AiMaterial.Success StudentId={StudentId} SlotId={SlotId} DurationMs={DurationMs}",
                     student, slotId, Ms(watch));
-                var selected = SelectedDictation(data.Material, items);
+                var selected = SelectedDictation(data.Material, items.Select(x => x.Position).ToArray());
+                var dictationAttempts = await db.StudentPracticeAttempts.AsNoTracking()
+                    .Where(x => x.StudentId == student && x.PublishedCurriculumVersionId == data.VersionId &&
+                        x.SlotId == slotId && x.StageKey == "listen-type")
+                    .OrderBy(x => x.CreatedAtUtc).ThenBy(x => x.Id)
+                    .Select(x => new { x.Position, x.FeedbackJson }).ToArrayAsync(http.RequestAborted);
+                var dictationState = BuildDictationState(selected.Length,
+                    dictationAttempts.Select(x => new DictationAttempt(x.Position, CorrectFromFeedback(x.FeedbackJson))));
                 var visible = VisibleVocabulary(data.Material);
                 var targetVocabulary = data.Material.ConversationTargetWords is { Length: > 0 } focusWords
                     ? visible.Where(x => focusWords.Contains(x.Word, StringComparer.OrdinalIgnoreCase)).ToArray()
@@ -64,8 +73,15 @@ public static class StudentAiLearningEndpoints
                     dictation = selected.Select((item, index) => new
                     {
                         position = index + 1, segmentPosition = item.Position, item.Hint,
+                        item.Mode, item.AudioStartSeconds, item.AudioEndSeconds,
+                        promptText = LessonMaterialRules.DictationPrompt(item,
+                            items.First(x => x.Position == item.Position).Text),
+                        wordOptions = item.Mode == "word-order"
+                            ? LessonMaterialRules.DictationWordOptions(items.First(x => x.Position == item.Position).Text)
+                            : null,
                         audioUrl = $"/api/student/learning/slots/{slotId}/segments/{item.Position}/audio"
                     }),
+                    dictationState,
                     progress = new
                     {
                         vocabulary = Count(progress, "vocabulary"),
@@ -74,7 +90,7 @@ public static class StudentAiLearningEndpoints
                         grammarQuiz = Count(progress, "grammar-quiz"),
                         wordOrder = Count(progress, "word-order"),
                         shadowingReview = Count(progress, "shadowing-review"),
-                        listenType = Count(progress, "listen-type"),
+                        listenType = dictationState.MasteredCount,
                         quiz = Count(progress, "quiz"),
                         conversation = Count(progress, "conversation")
                     },
@@ -177,10 +193,9 @@ public static class StudentAiLearningEndpoints
                 if (existing is not null) return existing.StudentId == student && existing.SlotId == slotId &&
                     existing.StageKey == "listen-type" && existing.Position == request.Position && existing.Answer == request.Answer ?
                     Results.Content(existing.FeedbackJson, "application/json") : Results.Conflict(new { error = "request_id_conflict" });
-                if (request.Position != Count(progress, "listen-type") + 1)
-                    return Results.Conflict(new { error = "answer_out_of_order" });
                 var selected = SelectedDictation(data.Material, await db.LessonSegments.AsNoTracking()
-                    .Where(x => x.LessonVersionId == data.LessonVersionId).OrderBy(x => x.Position)
+                    .Where(x => x.LessonVersionId == data.LessonVersionId && x.AudioStorageKey != "")
+                    .OrderBy(x => x.Position)
                     .Select(x => x.Position).ToArrayAsync(http.RequestAborted));
                 if (request.Position > selected.Length) return Invalid("invalid_position");
                 var item = selected[request.Position - 1];
@@ -189,16 +204,24 @@ public static class StudentAiLearningEndpoints
                     .Select(x => x.Text).SingleOrDefaultAsync(http.RequestAborted);
                 if (target is null) return Invalid("invalid_position");
                 var expected = Words(target); var actual = Words(request.Answer!);
+                if (item.Mode is "missing-word" or "single-word")
+                {
+                    if (item.TargetWordIndex is not { } targetIndex || targetIndex >= expected.Length)
+                        return Invalid("invalid_dictation_target");
+                    expected = [expected[targetIndex]];
+                }
                 var wrong = Enumerable.Range(0, expected.Length)
                     .Where(i => i >= actual.Length || expected[i] != actual[i]).ToArray();
-                var accepted = item.AcceptedAnswers is { Length: > 0 } ? item.AcceptedAnswers : [target];
+                var accepted = item.AcceptedAnswers is { Length: > 0 } ? item.AcceptedAnswers :
+                    [string.Join(" ", expected)];
                 var correct = accepted.Any(x => Words(x).SequenceEqual(actual));
-                var feedback = new { correct, wrongPositions = correct ? Array.Empty<int>() : wrong, expected = target };
-                var serialized = JsonSerializer.Serialize(feedback, LessonMaterialRules.Json);
+                var expectedText = item.Mode is "missing-word" or "single-word"
+                    ? string.Join(" ", expected) : target;
                 var total = selected.Length;
-                if (!await StoreAnswer(db, Attempt(request.RequestId, student.Value, data.VersionId,
-                    slotId, "listen-type", request.Position, request.Answer!, serialized), correct, total,
-                    http.RequestAborted)) return Results.Conflict(new { error = "answer_out_of_order" });
+                var feedback = await StoreDictationAnswer(db, Attempt(request.RequestId, student.Value,
+                    data.VersionId, slotId, "listen-type", request.Position, request.Answer!, ""),
+                    correct, correct ? [] : wrong, expectedText, total, http.RequestAborted);
+                if (feedback is null) return Results.Conflict(new { error = "answer_out_of_order" });
                 log.LogInformation("Student.Dictation.Answer.Success StudentId={StudentId} SlotId={SlotId} Position={Position} Correct={Correct} DurationMs={DurationMs}",
                     student, slotId, request.Position, correct, Ms(watch));
                 return Results.Ok(feedback);
@@ -662,6 +685,90 @@ public static class StudentAiLearningEndpoints
         await tx.CommitAsync(cancel);
         return Results.Ok(new { completed = progress?.CompletedSegments ?? count, isComplete = progress?.IsComplete ?? false });
     }
+    private sealed record DictationAttempt(int Position, bool Correct);
+    private sealed record DictationState(int? NextPosition, int MasteredCount, int ReviewRemaining,
+        bool IsReviewRound, int AttemptCount);
+    private sealed record DictationFeedbackResponse(bool Correct, int[] WrongPositions, string Expected,
+        int? NextPosition, int MasteredCount, int ReviewRemaining, bool IsReviewRound, int AttemptCount);
+
+    private static bool CorrectFromFeedback(string feedbackJson)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(feedbackJson);
+            return json.RootElement.TryGetProperty("correct", out var correct) &&
+                correct.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    private static DictationState BuildDictationState(int total, IEnumerable<DictationAttempt> attempts)
+    {
+        var seen = new bool[total + 1];
+        var mastered = new bool[total + 1];
+        var reviewQueue = new List<int>();
+        var attemptCount = 0;
+        foreach (var attempt in attempts)
+        {
+            var position = attempt.Position;
+            if (position < 1 || position > total) continue;
+            attemptCount++;
+            seen[position] = true;
+            reviewQueue.Remove(position);
+            if (attempt.Correct) mastered[position] = true;
+            else if (!mastered[position]) reviewQueue.Add(position);
+        }
+        var masteredCount = mastered.Count(x => x);
+        for (var position = 1; position <= total; position++)
+            if (!seen[position]) return new DictationState(position, masteredCount, reviewQueue.Count,
+                false, attemptCount);
+        if (reviewQueue.Count > 0)
+            return new DictationState(reviewQueue[0], masteredCount, reviewQueue.Count, true, attemptCount);
+        for (var position = 1; position <= total; position++)
+            if (!mastered[position]) return new DictationState(position, masteredCount, 1, true, attemptCount);
+        return new DictationState(null, masteredCount, 0, false, attemptCount);
+    }
+
+    private static async Task<DictationFeedbackResponse?> StoreDictationAnswer(ApplicationDbContext db,
+        StudentPracticeAttempt attempt, bool correct, int[] wrongPositions, string expected, int total,
+        CancellationToken cancel)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancel);
+        var previous = await db.StudentPracticeAttempts.AsNoTracking()
+            .Where(x => x.StudentId == attempt.StudentId &&
+                x.PublishedCurriculumVersionId == attempt.PublishedCurriculumVersionId &&
+                x.SlotId == attempt.SlotId && x.StageKey == "listen-type")
+            .OrderBy(x => x.CreatedAtUtc).ThenBy(x => x.Id)
+            .Select(x => new { x.Position, x.FeedbackJson }).ToArrayAsync(cancel);
+        var history = previous.Select(x => new DictationAttempt(x.Position,
+            CorrectFromFeedback(x.FeedbackJson))).ToArray();
+        if (BuildDictationState(total, history).NextPosition != attempt.Position) return null;
+        var next = BuildDictationState(total,
+            history.Append(new DictationAttempt(attempt.Position, correct)));
+        var feedback = new DictationFeedbackResponse(correct, wrongPositions, expected,
+            next.NextPosition, next.MasteredCount, next.ReviewRemaining, next.IsReviewRound,
+            next.AttemptCount);
+        attempt.FeedbackJson = JsonSerializer.Serialize(feedback, LessonMaterialRules.Json);
+        db.StudentPracticeAttempts.Add(attempt);
+        var progress = await db.StudentStageProgress.SingleOrDefaultAsync(x =>
+            x.StudentId == attempt.StudentId &&
+            x.PublishedCurriculumVersionId == attempt.PublishedCurriculumVersionId &&
+            x.SlotId == attempt.SlotId && x.StageKey == "listen-type", cancel);
+        if (progress is null)
+        {
+            progress = new StudentStageProgress { StudentId = attempt.StudentId,
+                PublishedCurriculumVersionId = attempt.PublishedCurriculumVersionId,
+                SlotId = attempt.SlotId, StageKey = "listen-type" };
+            db.StudentStageProgress.Add(progress);
+        }
+        progress.CompletedSegments = next.MasteredCount;
+        progress.IsComplete = next.NextPosition is null;
+        progress.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(cancel);
+        await tx.CommitAsync(cancel);
+        return feedback;
+    }
+
     private static async Task<bool> StoreAnswer(ApplicationDbContext db, StudentPracticeAttempt attempt,
         bool correct, int total, CancellationToken cancel)
     {

@@ -12,7 +12,8 @@ public static class ShadowingMediaStoreFactory
         var provider = configuration["Media:Provider"];
         if (string.IsNullOrEmpty(provider))
             provider = environment.IsDevelopment() ? "DevelopmentLocal" : "Disabled";
-        if (provider == "DevelopmentLocal" && environment.IsDevelopment())
+        if ((provider == "DevelopmentLocal" && environment.IsDevelopment()) ||
+            (provider == "DemoLocal" && environment.IsEnvironment("Demo")))
             return new DevelopmentShadowingMediaStore(environment, configuration,
                 logs.CreateLogger<DevelopmentShadowingMediaStore>());
         if (provider != "AzureBlob") return new DisabledShadowingMediaStore();

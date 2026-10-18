@@ -35,9 +35,10 @@ export class LoginPage {
         userId: session.userId,
         durationMs: Date.now() - started,
       });
-      if (session.roles.includes('Admin')) await this.router.navigateByUrl('/admin/dashboard');
+      if (session.roles.includes('Admin'))
+        await this.router.navigateByUrl('/admin/dashboard', { replaceUrl: true });
       else if (session.roles.includes('Student'))
-        await this.router.navigateByUrl('/student/dashboard');
+        await this.router.navigateByUrl('/student/dashboard', { replaceUrl: true });
       else this.error.set('حسابك ليس له دور مُفعّل حاليًا. تواصل مع المسؤول.');
     } catch {
       this.password = '';

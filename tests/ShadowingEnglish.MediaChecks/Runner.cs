@@ -151,6 +151,7 @@ internal static class Runner
                 foreach (var configuration in new Dictionary<string, string?>[]
                 {
                     new(), new() { ["Media:Provider"] = "DevelopmentLocal", ["Media:LocalRoot"] = api },
+                    new() { ["Media:Provider"] = "DemoLocal", ["Media:LocalRoot"] = api },
                     new() { ["Media:Provider"] = "AzureBlob", ["Media:AzureBlob:Container"] = "lessons",
                         ["Media:AzureBlob:ConnectionString"] = connection },
                     new() { ["Media:Provider"] = "AzureBlob", ["Media:AzureBlob:Container"] = "lessons",

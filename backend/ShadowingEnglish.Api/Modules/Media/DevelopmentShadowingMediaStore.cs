@@ -6,7 +6,7 @@ public sealed class DevelopmentShadowingMediaStore(IWebHostEnvironment environme
     IConfiguration configuration, ILogger<DevelopmentShadowingMediaStore> logger)
     : DiagnosticMediaStore(logger, "DevelopmentLocal")
 {
-    public override bool IsConfigured => environment.IsDevelopment() &&
+    public override bool IsConfigured =>
         LocalShadowingMedia.UploadRoot(environment, configuration) is not null;
 
     public override async Task WriteAsync(string key, Stream source, CancellationToken cancellation) =>

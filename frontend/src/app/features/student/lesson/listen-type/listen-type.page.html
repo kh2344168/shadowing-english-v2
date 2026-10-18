@@ -20,85 +20,186 @@
         <span class="material-symbols-outlined" aria-hidden="true">close</span>
       </a>
     </div>
-    @if (material(); as data) { @if (completed() < data.dictation.length) {
+    @if (material(); as data) { @if (data.dictation.length && completed() < data.dictation.length) {
     <div class="progress-row">
       <div
         class="progress-track"
         role="progressbar"
-        [attr.aria-valuenow]="completed() + 1"
-        aria-valuemin="1"
+        [attr.aria-valuenow]="masteredCount()"
+        aria-valuemin="0"
         [attr.aria-valuemax]="data.dictation.length"
       >
         <span [style.width.%]="progressPercent()"></span>
       </div>
-      <strong>الجملة {{ completed() + 1 }} من {{ data.dictation.length }}</strong>
+      <strong>{{ masteredCount() }} مُتقنة من {{ data.dictation.length }}</strong>
+      @if (isReviewRound()) {
+      <span class="review-badge">المراجعة: {{ reviewRemaining() }} متبقية</span>
+      }
     </div>
     } }
   </header>
 
   @if (loading()) {
   <p role="status" class="learning-status">جاري تحميل التدريب...</p>
-  } @else if (material(); as data) { @if (completed() < data.dictation.length) {
+  } @else if (material(); as data) { @if (data.dictation.length === 0) {
+  <p role="status" class="learning-status">لم تُجهّز جمل بصوت المدرّس لهذه المرحلة بعد.</p>
+  } @else if (completed() < data.dictation.length) {
   <main class="practice-shell">
     <article class="dictation-card">
       <section class="listen-section" aria-labelledby="listen-instruction">
-        <p id="listen-instruction">استمع إلى الجملة، ثم اكتب ما سمعته بالإنجليزية.</p>
-        <button
-          type="button"
-          class="play-button"
-          [class.is-playing]="playing()"
-          (click)="play()"
-          [attr.aria-label]="playing() ? 'إعادة تشغيل الجملة' : 'تشغيل الجملة'"
-        >
-          <span class="material-symbols-outlined" aria-hidden="true">
-            {{ playing() ? 'graphic_eq' : 'volume_up' }}
-          </span>
-        </button>
-        <div class="audio-actions">
-          <button type="button" (click)="play()">
-            <span class="material-symbols-outlined" aria-hidden="true">replay</span>
-            إعادة الاستماع
+        <div class="section-intro">
+          <span class="section-step">01 / استمع</span>
+          <h2 id="listen-instruction">
+            {{ mode() === 'single-word' ? 'اسمع الكلمة من تسجيل المدرّس' : 'اسمع تسجيل المدرّس
+            للجملة' }}
+          </h2>
+          <p>يمكنك إعادة تشغيل المقطع أو إبطاءه قبل الإجابة.</p>
+        </div>
+        <div class="audio-player">
+          <button
+            type="button"
+            class="play-button"
+            [class.is-playing]="playing()"
+            (click)="play()"
+            [attr.aria-label]="playing() ? 'إعادة تشغيل تسجيل المدرّس' : 'تشغيل تسجيل المدرّس'"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">
+              {{ playing() ? 'graphic_eq' : 'play_arrow' }}
+            </span>
           </button>
-          <button type="button" [class.is-active]="slowPlayback()" (click)="toggleSpeed()">
-            <span class="material-symbols-outlined" aria-hidden="true">slow_motion_video</span>
-            {{ slowPlayback() ? '0.75x بطيء' : '1x السرعة' }}
-          </button>
+          <div class="audio-player__content">
+            <strong
+              >{{ mode() === 'single-word' ? 'الكلمة' : 'الجملة' }} {{ attemptNumber() }}</strong
+            >
+            <span>
+              @if (isReviewRound()) { مراجعة لجملة سابقة · } صوت المدرّس من ملف الدرس الأصلي
+            </span>
+            <div class="audio-actions">
+              <button type="button" (click)="play()">
+                <span class="material-symbols-outlined" aria-hidden="true">replay</span>
+                إعادة الاستماع
+              </button>
+              <button type="button" [class.is-active]="slowPlayback()" (click)="toggleSpeed()">
+                <span class="material-symbols-outlined" aria-hidden="true">slow_motion_video</span>
+                {{ slowPlayback() ? 'إرجاع إلى 1x' : 'إبطاء إلى 0.75x' }}
+              </button>
+            </div>
+          </div>
         </div>
         <audio
           #teacher
           preload="none"
-          aria-label="صوت الجملة"
+          aria-label="تسجيل المدرّس للجملة"
           (ended)="onAudioStopped()"
           (pause)="onAudioStopped()"
+          (error)="onAudioError()"
+          (loadedmetadata)="onAudioLoadedMetadata()"
+          (timeupdate)="onAudioTimeUpdate()"
         ></audio>
       </section>
 
       <section class="answer-section">
+        <span class="section-step">02 / أجب وتحقق</span>
         <div class="answer-label">
-          <label for="heard">اكتب ما تسمعه</label>
-          <small>بالإنجليزية</small>
+          @if (mode() === 'word-order') {
+          <strong>رتّب الكلمات لتكوين الجملة التي سمعتها</strong>
+          } @else {
+          <label for="heard">
+            {{ mode() === 'full-sentence' ? 'اكتب الجملة كما سمعتها' : 'اكتب الكلمة التي سمعتها' }}
+          </label>
+          }
+          <small>إجابة واحدة في كل مرة</small>
         </div>
-    @if (data.dictation[completed()].hint) {
-        <p class="hint"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span> {{ data.dictation[completed()].hint }}</p>
-    }
+        @if (data.dictation[completed()].hint) {
+        <p class="hint">
+          <span class="material-symbols-outlined" aria-hidden="true">lightbulb</span> {{
+          data.dictation[completed()].hint }}
+        </p>
+        } @if (mode() === 'missing-word' && data.dictation[completed()].promptText) {
+        <p class="dictation-prompt" lang="en" dir="ltr">
+          {{ data.dictation[completed()].promptText }}
+        </p>
+        } @if (mode() === 'word-order') {
+        <div class="word-order" lang="en" dir="ltr">
+          <p class="word-order__label">Available words — اختر الكلمات بالترتيب</p>
+          <div class="word-order__options" role="group" aria-label="الكلمات المتاحة">
+            @for (word of data.dictation[completed()].wordOptions ?? []; track $index) {
+            <button
+              type="button"
+              class="word-order__option"
+              [disabled]="selectedWordIndices().includes($index) || busy() || feedback()"
+              (click)="chooseWord($index)"
+              [attr.aria-label]="'أضف ' + word"
+            >
+              {{ word }}
+            </button>
+            }
+          </div>
+          <p class="word-order__label">Your answer — ترتيبك</p>
+          <div class="word-order__answer" aria-live="polite" aria-label="الكلمات التي اخترتها">
+            @for (index of selectedWordIndices(); track index; let position = $index) {
+            <div class="word-order__selected">
+              <span>{{ data.dictation[completed()].wordOptions?.[index] }}</span>
+              <button
+                type="button"
+                [disabled]="position === 0 || busy() || feedback()"
+                (click)="moveWord(position, -1)"
+                [attr.aria-label]="'انقل ' + data.dictation[completed()].wordOptions?.[index] + ' قبل'"
+              >
+                قبل
+              </button>
+              <button
+                type="button"
+                [disabled]="position === selectedWordIndices().length - 1 || busy() || feedback()"
+                (click)="moveWord(position, 1)"
+                [attr.aria-label]="'انقل ' + data.dictation[completed()].wordOptions?.[index] + ' بعد'"
+              >
+                بعد
+              </button>
+              <button
+                type="button"
+                [disabled]="busy() || feedback()"
+                (click)="removeWord(position)"
+                [attr.aria-label]="'احذف ' + data.dictation[completed()].wordOptions?.[index]"
+              >
+                ×
+              </button>
+            </div>
+            } @empty {
+            <span class="word-order__empty"
+              >اختر كلمة للبدء. كل الأزرار تعمل بـ Enter أو Space.</span
+            >
+            }
+          </div>
+        </div>
+        } @else if (mode() === 'missing-word' || mode() === 'single-word') {
+        <input
+          id="heard"
+          type="text"
+          dir="ltr"
+          [(ngModel)]="answer"
+          [disabled]="busy() || !!feedback()"
+          maxlength="80"
+          autocomplete="off"
+          placeholder="Type one word"
+          (keydown.enter)="submit(); $event.preventDefault()"
+        />
+        } @else {
         <textarea
           id="heard"
           dir="ltr"
           [(ngModel)]="answer"
+          [disabled]="busy() || !!feedback()"
           maxlength="600"
           rows="3"
           autocomplete="off"
           placeholder="Write what you hear..."
           (keydown.enter)="submit(); $event.preventDefault()"
         ></textarea>
+        }
         <div class="submit-row">
-          <span><kbd>Space</kbd> استماع · <kbd>Enter</kbd> تحقق</span>
-          <button
-            type="button"
-            class="check-button"
-            [disabled]="busy() || !answer.trim()"
-            (click)="submit()"
-          >
+          <span><kbd>Space</kbd> استماع · <kbd>Enter</kbd> للاختيار أو التحقق</span>
+          <button type="button" class="check-button" [disabled]="!canSubmit()" (click)="submit()">
             <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>
             {{ busy() ? 'جاري التحقق...' : 'تحقق من الإجابة' }}
           </button>
@@ -111,10 +212,20 @@
           <span class="material-symbols-outlined" aria-hidden="true">
             {{ result.correct ? 'verified' : 'error' }}
           </span>
-          <strong>{{ result.correct ? 'إجابة صحيحة! أحسنت.' : 'راجع الكلمات الملوّنة وحاول مرة أخرى.' }}</strong>
+          <strong>
+            @if (result.correct) { إجابة صحيحة! أحسنت. } @else if (result.isReviewRound &&
+            result.reviewRemaining === 1 && result.nextPosition === completed() + 1) { إجابة غير
+            صحيحة؛ هذه آخر جملة متبقية، حاول مرة أخرى بعد مراجعة الإجابة الصحيحة. } @else { إجابة
+            غير صحيحة؛ أُجّلت الجملة إلى آخر طابور المراجعة. }
+          </strong>
         </div>
         @if (!result.correct) {
-        <p class="word-review" lang="en" dir="ltr" aria-label="الجملة الصحيحة مع تمييز الكلمات التي تحتاج مراجعة">
+        <p
+          class="word-review"
+          lang="en"
+          dir="ltr"
+          aria-label="الإجابة الصحيحة مع تمييز الكلمات التي تحتاج مراجعة"
+        >
           @for (word of reviewWords(result.expected); track $index) {
           <span [class.missed-word]="result.wrongPositions.includes($index)">{{ word }}</span>
           }
@@ -124,6 +235,9 @@
           اسمع مرة أخرى
         </button>
         }
+        <button type="button" class="check-button feedback__next" (click)="advance()">
+          {{ nextButtonLabel(result) }}
+        </button>
       </section>
       }
     </article>

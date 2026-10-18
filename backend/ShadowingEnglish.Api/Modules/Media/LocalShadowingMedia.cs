@@ -1,12 +1,18 @@
 namespace ShadowingEnglish.Api.Modules.Media;
 
-// Development uploads live outside bin/obj so an ordinary rebuild does not remove lesson audio.
+// Local uploads live outside bin/obj so an ordinary rebuild does not remove lesson audio.
 // The fixture's built-in voice samples remain in the output-only DevelopmentMedia folder.
 public static class LocalShadowingMedia
 {
+    private static bool IsEnabled(IWebHostEnvironment env, IConfiguration config) =>
+        env.IsDevelopment() ||
+        (env.IsEnvironment("Demo") &&
+         string.Equals(config["Media:Provider"], "DemoLocal", StringComparison.Ordinal) &&
+         Path.IsPathFullyQualified(config["Media:LocalRoot"] ?? ""));
+
     public static string? UploadRoot(IWebHostEnvironment env, IConfiguration config)
     {
-        if (!env.IsDevelopment()) return null;
+        if (!IsEnabled(env, config)) return null;
         var configured = config["Media:LocalRoot"];
         if (!string.IsNullOrWhiteSpace(configured))
             return Path.IsPathFullyQualified(configured) ? configured : null;
@@ -23,7 +29,7 @@ public static class LocalShadowingMedia
 
     public static string? ExistingPath(IWebHostEnvironment env, IConfiguration config, string key)
     {
-        if (!env.IsDevelopment() || !ShadowingMediaKeys.IsValid(key)) return null;
+        if (!IsEnabled(env, config) || !ShadowingMediaKeys.IsValid(key)) return null;
         var configured = config["Media:LocalRoot"];
         if (!string.IsNullOrWhiteSpace(configured))
             return Path.IsPathFullyQualified(configured) ? Path.Combine(configured, key) : null;

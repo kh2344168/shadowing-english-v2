@@ -98,7 +98,19 @@ export interface AiMaterial {
     segmentPosition?: number;
     audioUrl: string;
     hint?: string | null;
+    mode?: 'missing-word' | 'word-order' | 'single-word' | 'full-sentence' | null;
+    promptText?: string | null;
+    wordOptions?: string[] | null;
+    audioStartSeconds?: number | null;
+    audioEndSeconds?: number | null;
   }[];
+  dictationState?: {
+    nextPosition: number | null;
+    masteredCount: number;
+    reviewRemaining: number;
+    isReviewRound: boolean;
+    attemptCount: number;
+  };
   progress: {
     vocabulary: number;
     grammar?: number;
@@ -131,6 +143,11 @@ export interface DictationFeedback {
   correct: boolean;
   wrongPositions: number[];
   expected: string;
+  nextPosition?: number | null;
+  masteredCount?: number;
+  reviewRemaining?: number;
+  isReviewRound?: boolean;
+  attemptCount?: number;
 }
 export interface QuizFeedback {
   correct: boolean;

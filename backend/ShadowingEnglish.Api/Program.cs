@@ -2,6 +2,8 @@ using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Net;
 using ShadowingEnglish.Api.Common;
 using ShadowingEnglish.Api.Modules.Admin;
 using ShadowingEnglish.Api.Modules.AI;
@@ -25,6 +27,16 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? throw new InvalidOperationException("Missing ConnectionStrings:DefaultConnection. Configure it for this environment.");
 
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
+
+// The local demo accepts HTTPS scheme forwarding only from its loopback tunnel process.
+if (builder.Environment.IsEnvironment("Demo"))
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
+        options.KnownProxies.Add(IPAddress.Loopback);
+        options.KnownProxies.Add(IPAddress.IPv6Loopback);
+        options.ForwardLimit = 1;
+    });
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
     {
@@ -200,6 +212,8 @@ builder.Services.Configure<FormOptions>(options =>
 
 // Foundation only: no database migrations, users, roles, or demo seeds are created at startup.
 var app = builder.Build();
+
+if (app.Environment.IsEnvironment("Demo")) app.UseForwardedHeaders();
 
 // An explicit, local-only CLI action. Ordinary startup never creates accounts.
 if (args.Contains("--provision-local-accounts", StringComparer.Ordinal))

@@ -9,7 +9,8 @@ public sealed record VocabularyCard(string Word, string MeaningAr, string Exampl
     string? ExtraExample = null, string? UsageNote = null, bool TestLater = false,
     string? ImageUrl = null, bool RepeatForReview = false);
 public sealed record DictationCard(int Position, bool Enabled = true, string[]? AcceptedAnswers = null,
-    string? Hint = null);
+    string? Hint = null, string Mode = "full-sentence", int? TargetWordIndex = null,
+    double? AudioStartSeconds = null, double? AudioEndSeconds = null);
 public sealed record LessonTranscriptSegment(int Position, string Text);
 public sealed record QuizCard(string Question, string[] Options, int CorrectIndex, string ExplanationAr,
     string Type = "multiple-choice", bool Enabled = true, string? CorrectAnswer = null);
@@ -26,6 +27,7 @@ public sealed record ChatFeedback(string Reply, string Correction, string Better
 
 public static class LessonMaterialRules
 {
+    public static readonly string[] DictationModes = ["full-sentence", "missing-word", "word-order", "single-word"];
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly string[] DefaultApprovalStages = [
         "vocabulary", "listen-type", "grammar", "vocabulary-quiz", "grammar-quiz",
@@ -189,6 +191,7 @@ public static class LessonMaterialRules
             result = result with { ReviewedStages = (current.ReviewedStages ?? [])
                 .Where(x => x != stage).ToArray() };
             return Valid(result, source, segments.Select(x => x.Position).ToArray()) &&
+                ValidDictationForSegments(result, segments) &&
                 HasStageData(result, stage) ? result : null;
         }
         catch (JsonException) { return null; }
@@ -206,12 +209,22 @@ public static class LessonMaterialRules
         _ => false
     };
 
+    public static bool HasStageCandidates(LessonMaterial material, string stage) => stage switch
+    {
+        "vocabulary" => material.Vocabulary.Length > 0,
+        "listen-type" => material.Dictation is { Length: > 0 },
+        "vocabulary-quiz" => material.Quiz.Any(x => x.Type == "vocabulary-card"),
+        "grammar-quiz" => material.Quiz.Any(x => x.Type == "multiple-choice"),
+        "word-order" => material.Quiz.Any(x => x.Type == "word-order"),
+        _ => HasStageData(material, stage)
+    };
+
     public static LessonMaterial? PrepareDraft(LessonMaterial generated,
         IReadOnlyList<LessonTranscriptSegment> segments, string level = "B1")
     {
         var dictation = segments.Where(x => x.Text.Trim().Length is >= 1 and <= 600 &&
-                (level != "A1" || Tokens(x.Text).Length <= 8))
-            .Select(x => new DictationCard(x.Position, true, [x.Text.Trim()], null)).ToArray();
+                (level != "A1" || DictationTokens(x.Text).Length <= 8))
+            .Select(x => SuggestedDictation(x.Position, x.Text, level, true)).ToArray();
         var quiz = generated.Quiz.ToList();
         var visible = generated.Vocabulary.Where(x => x.IncludeForStudent).ToArray();
         if (visible.Length >= 4 && quiz.Count < 12)
@@ -240,7 +253,8 @@ public static class LessonMaterialRules
             ReviewedStages = []
         };
         return Valid(material, string.Join("\n", segments.Select(x => x.Text)),
-            segments.Select(x => x.Position).ToArray()) ? material : null;
+            segments.Select(x => x.Position).ToArray()) &&
+            ValidDictationForSegments(material, segments) ? material : null;
     }
 
     public static bool Valid(LessonMaterial? material, string source, int[]? segmentPositions = null)
@@ -299,18 +313,110 @@ public static class LessonMaterialRules
         }
         if (material.Dictation is { } dictation)
         {
-            if (dictation.Length is < 1 or > 20 || !dictation.Any(x => x.Enabled) ||
+            if (dictation.Length is < 1 or > 20 ||
                 dictation.Select(x => x.Position).Distinct().Count() != dictation.Length) return false;
             foreach (var item in dictation)
             {
                 if (item.Position < 1 || (segmentPositions is null ? item.Position > 20 :
                     !segmentPositions.Contains(item.Position)) || !Optional(item.Hint, 160) ||
                     item.AcceptedAnswers is not { Length: >= 1 and <= 5 } ||
-                    item.AcceptedAnswers.Any(x => !Field(x, 600))) return false;
+                    item.AcceptedAnswers.Any(x => !Field(x, 600)) ||
+                    !DictationModes.Contains(item.Mode) ||
+                    (item.Mode is "missing-word" or "single-word") != item.TargetWordIndex.HasValue ||
+                    item.TargetWordIndex is < 0 or > 99 ||
+                    (item.Mode is not "single-word" &&
+                        (item.AudioStartSeconds.HasValue || item.AudioEndSeconds.HasValue)) ||
+                    (item.AudioStartSeconds.HasValue != item.AudioEndSeconds.HasValue) ||
+                    (item.AudioStartSeconds is { } start && item.AudioEndSeconds is { } end &&
+                        (!double.IsFinite(start) || !double.IsFinite(end) || start < 0 ||
+                            end <= start || end - start > 10 || end > 600))) return false;
             }
         }
         return true;
     }
+
+    public static DictationCard SuggestedDictation(int position, string text, string level, bool enabled)
+    {
+        var words = DictationTokens(text);
+        if (level == "A1" && words.Length >= 2)
+        {
+            var target = words.Length / 2;
+            return new DictationCard(position, enabled, [words[target]], null,
+                "missing-word", target);
+        }
+        return new DictationCard(position, enabled, [text.Trim()]);
+    }
+
+    public static bool ValidDictationForSegments(LessonMaterial material,
+        IReadOnlyList<LessonTranscriptSegment> segments)
+    {
+        if (material.Dictation is null) return true;
+        var texts = segments.ToDictionary(x => x.Position, x => x.Text);
+        foreach (var item in material.Dictation)
+        {
+            if (!texts.TryGetValue(item.Position, out var text)) return false;
+            var words = DictationTokens(text);
+            if (item.Mode == "word-order" &&
+                (words.Length is < 3 or > 12 ||
+                    item.AcceptedAnswers?.Any(x => DictationTokens(x).SequenceEqual(words)) != true)) return false;
+            if (item.Mode is "missing-word" or "single-word")
+            {
+                if (item.TargetWordIndex is not { } target || target >= words.Length ||
+                    (item.Mode == "missing-word" && words.Length < 2) ||
+                    item.AcceptedAnswers?.Any(x => DictationTokens(x).Length != 1) != false ||
+                    !item.AcceptedAnswers.Any(x => DictationTokens(x).SequenceEqual([words[target]]))) return false;
+                if (item.Mode == "single-word" && words.Length > 1 &&
+                    (!item.AudioStartSeconds.HasValue || !item.AudioEndSeconds.HasValue)) return false;
+            }
+            else if (item.TargetWordIndex.HasValue) return false;
+        }
+        return true;
+    }
+
+    // The teacher selects a word or a word order, not an AI-generated answer key.
+    // Rebuild that key from the saved lesson transcript so a stale textarea value
+    // cannot make an otherwise valid selection fail to save.
+    public static LessonMaterial WithSelectedDictationAnswers(LessonMaterial material,
+        IReadOnlyList<LessonTranscriptSegment> segments)
+    {
+        if (material.Dictation is null) return material;
+        var texts = segments.ToDictionary(x => x.Position, x => x.Text);
+        return material with { Dictation = material.Dictation.Select(item =>
+        {
+            if (!texts.TryGetValue(item.Position, out var text)) return item;
+            if (item.Mode == "word-order")
+                return item with { AcceptedAnswers = [text.Trim()] };
+            if (item.Mode is "missing-word" or "single-word" &&
+                item.TargetWordIndex is { } target)
+            {
+                var words = DictationTokens(text);
+                if (target >= 0 && target < words.Length)
+                    return item with { AcceptedAnswers = [words[target]] };
+            }
+            return item;
+        }).ToArray() };
+    }
+
+    public static string? DictationPrompt(DictationCard item, string text)
+    {
+        if (item.Mode != "missing-word" || item.TargetWordIndex is not { } target) return null;
+        var matches = Regex.Matches(text, "[a-zA-Z0-9]+(?:'[a-zA-Z0-9]+)?");
+        if (target >= matches.Count) return null;
+        var match = matches[target];
+        return string.Concat(text.AsSpan(0, match.Index), "_____",
+            text.AsSpan(match.Index + match.Length));
+    }
+
+    public static string[] DictationWordOptions(string text)
+    {
+        var words = Regex.Matches(text, "[a-zA-Z0-9]+(?:'[a-zA-Z0-9]+)?")
+            .Select(x => x.Value).ToArray();
+        return words.Length < 2 ? words : words.Skip(1).Concat(words.Take(1)).ToArray();
+    }
+
+    private static string[] DictationTokens(string value) =>
+        Regex.Matches(value.ToLowerInvariant(), "[a-z0-9]+(?:'[a-z0-9]+)?")
+            .Select(x => x.Value).ToArray();
 
     public static ChatFeedback? ParseFeedback(string raw)
     {

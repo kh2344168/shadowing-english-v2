@@ -48,6 +48,18 @@
     </strong>
   </div>
 
+  @if (activeWorkflowStage()?.type === 'listen-type' && dictationAudioState() === 'unverified') {
+  <p role="alert" class="alert alert--error">
+    تعذر التحقق من تسجيلات المدرّس بسبب خطأ في اتصال API أو تخزين الصوت. حدّث الصفحة وحاول مجددًا؛
+    لن نسمح باختيار جمل بلا صوت مؤكّد.
+  </p>
+  } @else if (activeWorkflowStage()?.type === 'listen-type' && dictationAudioState() === 'missing') {
+  <p role="alert" class="alert alert--error">
+    هذا الدرس لا يحتوي على تسجيلات محفوظة للمقاطع. أضف صوت المدرّس من إعداد الدرس، أو ألغِ تفعيل
+    «اسمع واكتب» من <button type="button" class="inline-link" (click)="backToStages()">رحلة الدرس</button>.
+  </p>
+  }
+
   @if (stageStatus() === 'Failed') {
   <p class="alert alert--error">{{ failureReason(job()?.errorCode ?? null) }}</p>
   } @if (stageStatus() === 'NotStarted') {
@@ -172,9 +184,9 @@
           <label class="include-toggle"
             ><input
               type="checkbox"
-              [(ngModel)]="word.includeForStudent"
+              [ngModel]="word.includeForStudent !== false"
               [name]="'include-' + wordIndex"
-              (ngModelChange)="changed()"
+              (ngModelChange)="word.includeForStudent = $event; changed()"
             /><span></span>{{ word.includeForStudent === false ? 'مستبعدة' : 'مع الطالب' }}</label
           >
         </div>
@@ -344,35 +356,122 @@
     </button>
   </section>
   } @if (activeStage === 'listen-type') {
-  <section class="workspace" aria-labelledby="dictation-title">
+  <section class="workspace dictation-workspace" aria-labelledby="dictation-title">
     <div class="workspace-title">
       <div>
         <span class="eyebrow">LISTEN & TYPE</span>
         <h2 id="dictation-title">اسمع واكتب</h2>
-        <p>اختر الجمل المناسبة وحدد الإجابات المقبولة والتلميح.</p>
+        <p>اختر الجمل، ثم صمّم سؤال كل جملة حسب المستوى. اقتراح A1 هو كلمة ناقصة، ولك حرية تغييره.</p>
       </div>
+      <span class="count-chip">{{ selectedDictationCount() }} من {{ material.dictation?.length ?? 0 }} جملة</span>
+    </div>
+    <div class="selection-toolbar" aria-label="تحديد جمل التدريب">
+      <div class="selection-toolbar__summary">
+        <span class="material-symbols-outlined" aria-hidden="true">playlist_add_check</span>
+        <div><strong>{{ selectedDictationCount() }} جملة في التدريب</strong>
+          <small>اختر جملة واحدة على الأقل، ويمكنك تغيير الاختيار قبل اعتماد المرحلة.</small></div>
+      </div>
+      <div class="selection-toolbar__actions">
+        <button type="button" (click)="setDictationSelection(true)" [disabled]="busy()">تحديد الكل</button>
+        <button type="button" (click)="setDictationSelection(false)" [disabled]="busy()">إلغاء الكل</button>
+      </div>
+    </div>
+    <div class="dictation-mode-summary" aria-label="أنواع الأسئلة المختارة">
+      @for (mode of dictationModes; track mode.key) {
+      <span><span class="material-symbols-outlined" aria-hidden="true">{{ mode.icon }}</span>
+        {{ mode.title }} <strong>{{ dictationModeCount(mode.key) }}</strong></span>
+      }
     </div>
     <div class="dictation-list">
       @for (segment of segments(); track segment.position) { @if (dictationItem(segment.position);
       as item) {
-      <article class="dictation-card" [class.disabled-card]="!item.enabled">
+      <article class="dictation-card" [class.dictation-card--selected]="item.enabled"
+        [class.dictation-card--unavailable]="!segment.audioUrl">
         <div class="sentence-number">{{ segment.position }}</div>
         <div class="sentence-content">
           <div class="sentence-line">
             <p lang="en" dir="ltr">{{ segment.text }}</p>
-            <button type="button" class="sound-button" (click)="speak(segment.text)">
-              <span class="material-symbols-outlined">volume_up</span>
+            <button type="button" class="sound-button" (click)="playTeacherSegment(segment.position, segment.audioUrl)"
+              [disabled]="!segment.audioUrl" [attr.aria-label]="'تشغيل تسجيل المدرّس للجملة ' + segment.position">
+              <span class="material-symbols-outlined">{{ playingSegment() === segment.position ? 'graphic_eq' : 'volume_up' }}</span>
             </button>
           </div>
-          <label class="include-toggle inline"
-            ><input
-              type="checkbox"
-              [(ngModel)]="item.enabled"
-              [name]="'dictation-' + segment.position"
-              (ngModelChange)="changed()"
-            /><span></span>{{ item.enabled ? 'ضمن التدريب' : 'مستبعدة' }}</label
-          >
+          <div class="dictation-card__meta">
+            <span class="audio-source" [class.audio-source--missing]="!segment.audioUrl">
+              <span class="material-symbols-outlined" aria-hidden="true">{{ segment.audioUrl ? 'mic' : 'mic_off' }}</span>
+              {{ segment.audioUrl ? 'تسجيل المدرّس' : segment.audioUrl === undefined ? 'تعذر التحقق من التسجيل' : 'لا يوجد تسجيل لهذه الجملة' }}
+            </span>
+            @if (segment.audioUrl) {
+              <label class="dictation-select">
+              <input type="checkbox" [ngModel]="item.enabled" [name]="'dictation-' + segment.position"
+                (ngModelChange)="item.enabled = $event; changed()" />
+              <span>{{ item.enabled ? 'ضمن الاختبار' : 'إضافة للاختبار' }}</span>
+              </label>
+            } @else {
+              <span class="dictation-select">
+                <input type="checkbox" disabled aria-label="جملة بلا تسجيل صوتي" />
+                <span>غير متاحة للاختبار</span>
+              </span>
+            }
+          </div>
+          @if (item.enabled) {
+          <div class="dictation-editor">
+            <div class="dictation-editor__heading">
+              <strong>شكل السؤال للطالب</strong>
+              @if (lessonLevel() === 'A1') { <small>A1 · كلمة واحدة مقترحة تلقائيًا</small> }
+            </div>
+            <div class="dictation-mode-picker" role="group" [attr.aria-label]="'نوع سؤال الجملة ' + segment.position">
+              @for (mode of dictationModes; track mode.key) {
+              <button type="button" [class.active]="dictationMode(item) === mode.key"
+                [attr.aria-pressed]="dictationMode(item) === mode.key"
+                [disabled]="mode.key === 'missing-word' && dictationWords(segment.text).length < 2 ||
+                  mode.key === 'word-order' && (dictationWords(segment.text).length < 3 || dictationWords(segment.text).length > 12)"
+                (click)="setDictationMode(segment.position, mode.key, segment.text)">
+                <span class="material-symbols-outlined" aria-hidden="true">{{ mode.icon }}</span>{{ mode.title }}
+              </button>
+              }
+            </div>
+            <p class="dictation-mode-explainer">
+              @if (dictationMode(item) === 'missing-word') {
+                الطالب يسمع الجملة كاملة ويرى نصها مع فراغ مكان الكلمة التي تختارها.
+              } @else if (dictationMode(item) === 'word-order') {
+                الطالب يسمع الجملة ويرتب كلماتها. الترتيب الصحيح يُحفظ تلقائيًا من نص الدرس.
+              } @else {
+                الطالب يسمع الجملة ويكتبها كاملة.
+              }
+            </p>
+            @if (dictationMode(item) === 'missing-word') {
+            <div class="dictation-target">
+              <strong>اختَر الكلمة المستهدفة من التسجيل</strong>
+              <div class="dictation-word-picker" role="group" [attr.aria-label]="'الكلمة المستهدفة للجملة ' + segment.position" dir="ltr">
+                @for (word of dictationWords(segment.text); track $index) {
+                <button type="button" [class.active]="item.targetWordIndex === $index"
+                  [attr.aria-pressed]="item.targetWordIndex === $index"
+                  (click)="selectDictationWord(segment.position, $index, segment.text)">{{ word }}</button>
+                }
+              </div>
+            </div>
+            }
+            <div class="dictation-student-preview">
+              <span>معاينة سؤال الطالب</span>
+              @if (dictationMode(item) === 'word-order') {
+                <strong>استمع ثم رتّب الكلمات</strong>
+                <p dir="ltr">{{ dictationWords(segment.text).slice(1).join(' ') }} {{ dictationWords(segment.text)[0] }}</p>
+              } @else {
+                <strong>{{ dictationMode(item) === 'missing-word' ? 'استمع واكتب الكلمة الناقصة' : 'استمع واكتب الجملة' }}</strong>
+                @if (dictationMode(item) === 'missing-word') {
+                  <p dir="ltr" lang="en">{{ dictationPrompt(item, segment.text) }}</p>
+                }
+              }
+            </div>
           <div class="edit-grid">
+            @if (automaticDictationAnswer(item, segment.text); as automaticAnswer) {
+            <div class="dictation-auto-answer">
+              <span>الإجابة الصحيحة</span>
+              <strong dir="ltr" lang="en">{{ automaticAnswer }}</strong>
+              <small>تتحدث تلقائيًا عند اختيار كلمة أخرى؛ لا تحتاج إعادة معالجة بالذكاء الاصطناعي.</small>
+            </div>
+            } @else {
             <label class="field"
               ><span>الإجابات المقبولة — إجابة في كل سطر</span
               ><textarea
@@ -381,8 +480,9 @@
                 (ngModelChange)="updateAnswers(item.position, $event)"
                 [name]="'answers-' + segment.position"
                 maxlength="3000"
-              ></textarea></label
-            ><label class="field"
+              ></textarea></label>
+            }
+            <label class="field"
               ><span>تلميح للطالب</span
               ><input
                 [(ngModel)]="item.hint"
@@ -392,6 +492,8 @@
                 (ngModelChange)="changed()"
             /></label>
           </div>
+          </div>
+          }
         </div>
       </article>
       } }
@@ -440,7 +542,18 @@
         <h2 id="quiz-title">{{ stageTitle(activeStage) }}</h2>
         <p>كل سؤال هنا يخص هذه المرحلة فقط ويمكن استبعاده بشكل مستقل.</p>
       </div>
-      <span class="count-chip">{{ questionsFor(questionType).length }} أسئلة</span>
+      <span class="count-chip">{{ selectedQuestionCount(questionType) }} من {{ questionsFor(questionType).length }} سؤال</span>
+    </div>
+    <div class="selection-toolbar" aria-label="تحديد أسئلة الاختبار">
+      <div class="selection-toolbar__summary">
+        <span class="material-symbols-outlined" aria-hidden="true">fact_check</span>
+        <div><strong>{{ selectedQuestionCount(questionType) }} سؤال سيظهر للطالب</strong>
+          <small>استبعد أي سؤال لا يناسب الكلمات أو الجمل التي تريد اختبارها.</small></div>
+      </div>
+      <div class="selection-toolbar__actions">
+        <button type="button" (click)="setQuestionSelection(questionType, true)" [disabled]="busy()">تحديد الكل</button>
+        <button type="button" (click)="setQuestionSelection(questionType, false)" [disabled]="busy()">إلغاء الكل</button>
+      </div>
     </div>
     <div class="question-list">
       @for (entry of questionsFor(questionType); track entry.index; let displayIndex = $index) {
@@ -450,12 +563,15 @@
           ><label class="include-toggle inline"
             ><input
               type="checkbox"
-              [(ngModel)]="entry.question.enabled"
+              [ngModel]="entry.question.enabled !== false"
               [name]="'question-enabled-' + entry.index"
-              (ngModelChange)="changed()"
+              (ngModelChange)="entry.question.enabled = $event; changed()"
             /><span></span>{{ entry.question.enabled === false ? 'مستبعد' : 'مع الطالب' }}</label
           >
         </div>
+        @if (entry.question.enabled === false) {
+        <p class="question-card__excluded" dir="auto">{{ entry.question.question || 'سؤال مستبعد من الاختبار' }}</p>
+        } @else {
         <label class="field"
           ><span>نص السؤال</span
           ><input
@@ -512,6 +628,7 @@
             maxlength="250"
             (ngModelChange)="changed()"
         /></label>
+        }
         <button
           type="button"
           class="danger-link"

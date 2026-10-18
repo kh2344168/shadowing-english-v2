@@ -62,9 +62,14 @@ public static class AdminLessonAiEndpoints
                 return Results.NotFound(new { error = "lesson_not_found" });
             var segments = await db.LessonSegments.AsNoTracking()
                 .Where(x => x.LessonVersionId == versionId).OrderBy(x => x.Position)
-                .Select(x => new { x.Position, x.Text }).ToArrayAsync(http.RequestAborted);
+                .Select(x => new { x.Position, x.Text, x.AudioStorageKey })
+                .ToArrayAsync(http.RequestAborted);
             http.Response.Headers.CacheControl = "no-store";
-            return Results.Ok(segments);
+            return Results.Ok(segments.Select(x => new {
+                x.Position, x.Text,
+                audioUrl = string.IsNullOrEmpty(x.AudioStorageKey) ? null :
+                    $"/api/admin/shadowing/lessons/versions/{versionId}/segments/{x.Position}/audio"
+            }));
         });
 
         group.MapGet("/{versionId:guid}/ai", async (Guid versionId, ApplicationDbContext db, HttpContext http,
@@ -131,8 +136,9 @@ public static class AdminLessonAiEndpoints
                 if (latest?.StageType == stage && latest.Status == "Failed" &&
                     (material is null || !LessonMaterialRules.HasStageData(material, stage)))
                     return "Failed";
-                if (material is null || !LessonMaterialRules.HasStageData(material, stage))
-                    return "NotStarted";
+                if (material is null) return "NotStarted";
+                if (!LessonMaterialRules.HasStageData(material, stage))
+                    return LessonMaterialRules.HasStageCandidates(material, stage) ? "NeedsReview" : "NotStarted";
                 return LessonMaterialRules.ReadyToApprove(material, [stage]) ? "Approved" : "NeedsReview";
             });
             http.Response.Headers.CacheControl = "no-store";
@@ -232,9 +238,13 @@ public static class AdminLessonAiEndpoints
                     .Where(x => x.LessonVersionId == versionId).OrderBy(x => x.Position)
                     .Select(x => new { x.Position, x.Text }).ToArrayAsync(http.RequestAborted);
                 var source = string.Join("\n", segments.Select(x => x.Text));
-                if (!LessonMaterialRules.Valid(request.Material, source, segments.Select(x => x.Position).ToArray()))
+                var transcript = segments.Select(x => new LessonTranscriptSegment(x.Position, x.Text)).ToArray();
+                var material = LessonMaterialRules.WithSelectedDictationAnswers(request.Material, transcript);
+                if (!LessonMaterialRules.ValidDictationForSegments(material, transcript))
+                    return Results.BadRequest(new { error = "invalid_dictation" });
+                if (!LessonMaterialRules.Valid(material, source, segments.Select(x => x.Position).ToArray()))
                     return Results.BadRequest(new { error = "invalid_material" });
-                job.PayloadJson = JsonSerializer.Serialize(request.Material, LessonMaterialRules.Json);
+                job.PayloadJson = JsonSerializer.Serialize(material, LessonMaterialRules.Json);
                 job.Revision = Guid.NewGuid(); job.UpdatedAtUtc = DateTimeOffset.UtcNow;
                 await db.SaveChangesAsync(http.RequestAborted);
                 log.LogInformation("Admin.AiContent.Edit.Success JobId={JobId} DurationMs={DurationMs}", jobId, Ms(started));
@@ -300,9 +310,15 @@ public static class AdminLessonAiEndpoints
                     string.IsNullOrWhiteSpace(source.PayloadJson))
                     return Results.Conflict(new { error = "approved_content_changed" });
                 if (await db.LessonAiContents.AnyAsync(x => x.LessonVersionId == versionId &&
-                    (x.Status == "Pending" || x.Status == "Generating" || x.Status == "Draft"),
+                    (x.Status == "Pending" || x.Status == "Generating"),
                     http.RequestAborted))
                     return Results.Conflict(new { error = "ai_draft_in_progress" });
+                var openDraft = await db.LessonAiContents.AsNoTracking()
+                    .Where(x => x.LessonVersionId == versionId && x.Status == "Draft")
+                    .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
+                    .FirstOrDefaultAsync(http.RequestAborted);
+                if (openDraft is not null)
+                    return Results.Ok(View(openDraft));
 
                 var now = DateTimeOffset.UtcNow;
                 var draft = new LessonAiContent
@@ -357,7 +373,8 @@ public static class AdminLessonAiEndpoints
                 var source = string.Join("\n", segments.Select(x => x.Text));
                 var material = LessonMaterialRules.Parse(job.PayloadJson, source,
                     segments.Select(x => x.Position).ToArray());
-                if (material is null)
+                if (material is null || !LessonMaterialRules.ValidDictationForSegments(material,
+                    segments.Select(x => new LessonTranscriptSegment(x.Position, x.Text)).ToArray()))
                     return Results.BadRequest(new { error = "invalid_material" });
                 var workflowJson = await db.LessonWorkflows.AsNoTracking()
                     .Where(x => x.LessonVersionId == versionId).Select(x => x.StagesJson)

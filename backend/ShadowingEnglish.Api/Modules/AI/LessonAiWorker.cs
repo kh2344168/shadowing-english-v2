@@ -186,13 +186,15 @@ public sealed class LessonAiWorker(IServiceScopeFactory scopes, ILogger<LessonAi
                 .Select(x => x.Position).ToArrayAsync(cancel);
             var eligible = segments.Where(x => audioPositions.Contains(x.Position))
                 .Select(x => new { x.Position, Words = Regex.Matches(x.Text,
-                    "[a-zA-Z]+(?:['-][a-zA-Z]+)*").Select(match => match.Value).ToArray(), x.Text })
-                .Where(x => x.Words.Length > 0).Take(20).ToArray();
+                    "[a-zA-Z0-9]+(?:'[a-zA-Z0-9]+)?").Select(match => match.Value).ToArray(), x.Text })
+                // The student hears the complete teacher clip, so never ask an A1 student
+                // to type only the first words of a longer recording.
+                .Where(x => x.Words.Length > 0 && x.Text.Length <= 600 &&
+                    (lesson.Level != "A1" || x.Words.Length <= 8)).Take(20).ToArray();
             if (eligible.Length > 0)
             {
-                var cards = eligible.Select(x => new DictationCard(x.Position, true,
-                    [lesson.Level == "A1" ? string.Join(" ", x.Words.Take(8)) : x.Text[..Math.Min(x.Text.Length, 600)]],
-                    lesson.Level == "A1" && x.Words.Length > 8 ? "اكتب أول 8 كلمات فقط" : null)).ToArray();
+                var cards = eligible.Select((x, index) => LessonMaterialRules.SuggestedDictation(
+                    x.Position, x.Text, lesson.Level, index == 0)).ToArray();
                 generated = LessonMaterialRules.MergeStageGenerated(stageType,
                     JsonSerializer.Serialize(new { dictation = cards }, LessonMaterialRules.Json),
                     baseline, source, segments);

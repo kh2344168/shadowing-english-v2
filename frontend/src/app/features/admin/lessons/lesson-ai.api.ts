@@ -35,10 +35,15 @@ export interface DictationCard {
   enabled: boolean;
   acceptedAnswers: string[];
   hint: string | null;
+  mode?: 'full-sentence' | 'missing-word' | 'word-order' | 'single-word';
+  targetWordIndex?: number | null;
+  audioStartSeconds?: number | null;
+  audioEndSeconds?: number | null;
 }
 export interface LessonSegmentReview {
   position: number;
   text: string;
+  audioUrl?: string | null;
 }
 export interface QuizCard {
   question: string;
@@ -133,6 +138,15 @@ export class LessonAiApi {
     return this.http.get<LessonSegmentReview[]>(
       `${this.base}/${encodeURIComponent(versionId)}/ai/segments`,
     );
+  }
+  teacherSegmentAudioUrl(versionId: string, position: number): string {
+    return `/api/admin/shadowing/lessons/versions/${encodeURIComponent(versionId)}/segments/${position}/audio`;
+  }
+  probeTeacherSegmentAudio(versionId: string, position: number) {
+    return this.http.get(this.teacherSegmentAudioUrl(versionId, position), {
+      responseType: 'blob',
+      headers: { Range: 'bytes=0-0' },
+    });
   }
   update(versionId: string, job: LessonAiJob, material: LessonMaterial) {
     return this.http.put<LessonAiJob>(
