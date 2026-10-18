@@ -295,23 +295,6 @@
   box-shadow: 0 5px 0 #bcc9c6;
 }
 .path-lesson.is-upcoming .path-lesson__node:active { box-shadow: 0 2px 0 #bcc9c6; }
-.path-lesson__check {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  width: 24px;
-  height: 24px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: #b45309;
-  color: #fff;
-  font-size: 14px;
-  font-style: normal;
-  font-weight: 900;
-  box-shadow: 0 3px 8px rgba(42, 23, 0, 0.2);
-}
-
 .path-lesson__meta {
   margin-top: 13px;
   display: flex;

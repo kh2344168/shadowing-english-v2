@@ -86,6 +86,7 @@ describe('StudentDashboardPage', () => {
       '/student/lessons/slot-1/overview',
       '/student/lessons/slot-2/overview',
     ]);
+    expect(fixture.nativeElement.querySelector('.path-lesson__check')).toBeNull();
     const current = fixture.nativeElement.querySelector('.path-lesson.is-current');
     expect(current?.textContent).toContain('الدرس الثاني');
     expect(current?.textContent).toContain('كمّل من مكانك');

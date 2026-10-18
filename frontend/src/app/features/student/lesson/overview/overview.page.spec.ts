@@ -165,6 +165,17 @@ describe('StudentLessonOverviewPage', () => {
     expect(text).toContain('محادثة الدرس');
     expect(text).not.toContain('اسمع واكتب');
     expect(text).not.toContain('قواعد الدرس');
+    const peek = fixture.nativeElement.querySelector('.lesson-stage__peek') as HTMLButtonElement;
+    expect(peek.textContent).toContain('Shadowing الأساسي');
+    expect(peek.getAttribute('aria-expanded')).toBe('false');
+    expect(fixture.nativeElement.querySelector('.lesson-stage__details.is-open')).toBeNull();
+    peek.click();
+    fixture.detectChanges();
+    expect(peek.getAttribute('aria-expanded')).toBe('true');
+    expect(fixture.nativeElement.querySelector('.lesson-stage__details.is-open .lesson-stage__card')).toBeTruthy();
+    peek.click();
+    fixture.detectChanges();
+    expect(peek.getAttribute('aria-expanded')).toBe('false');
     http.verify();
   });
 

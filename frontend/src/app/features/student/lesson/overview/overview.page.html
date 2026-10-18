@@ -143,6 +143,7 @@
               [class.lesson-stage--reverse]="index % 2 === 1"
               [class.lesson-stage--active]="stage.isUnlocked && !stage.isComplete"
               [class.lesson-stage--final]="last"
+              [class.lesson-stage--expanded]="openStageDetails() === index"
             >
               <div class="lesson-stage__node-column">
                 @if (stage.isComplete) {
@@ -162,52 +163,62 @@
                 }
                 <span class="lesson-stage__number">المرحلة {{ stage.position }}{{ last ? ' (النهائية)' : '' }}</span>
               </div>
-              <div
-                class="lesson-stage__card"
-                [class.lesson-stage__card--locked]="!stage.isUnlocked"
-                [class.lesson-stage__card--final]="last"
-              >
-                <div class="lesson-stage__heading" [class.lesson-stage__heading--center]="last">
-                  <h2>{{ stage.title }}</h2>
-                  <span>{{ stage.required ? 'إجبارية' : 'اختيارية' }}</span>
-                  @if (stage.isComplete) {
-                    <span>مكتمل</span>
-                  } @else if (!stage.isUnlocked) {
-                    <span class="material-symbols-outlined" aria-hidden="true">lock</span>
+              <div class="lesson-stage__details" [class.is-open]="openStageDetails() === index">
+                <button
+                  type="button"
+                  class="lesson-stage__peek"
+                  [attr.aria-expanded]="openStageDetails() === index"
+                  [attr.aria-controls]="'stage-details-' + index"
+                  (click)="toggleStageDetails(index)"
+                >
+                  <span class="lesson-stage__peek-title">{{ stage.title }}</span>
+                  <span class="lesson-stage__peek-status">
+                    {{ stage.isComplete ? 'مكتملة' : stage.isUnlocked ? 'متاحة' : 'مغلقة' }}
+                  </span>
+                  <span class="material-symbols-outlined" aria-hidden="true">info</span>
+                </button>
+                <div
+                  class="lesson-stage__card"
+                  [id]="'stage-details-' + index"
+                  [class.lesson-stage__card--locked]="!stage.isUnlocked"
+                >
+                  <div class="lesson-stage__heading">
+                    <h2>{{ stage.title }}</h2>
+                    <span>{{ stage.required ? 'إجبارية' : 'اختيارية' }}</span>
+                  </div>
+                  <p>{{ stage.description }}</p>
+                  @if (stage.key === 'shadowing') {
+                    <div class="lesson-stage__meta">
+                      <span class="material-symbols-outlined" aria-hidden="true">graphic_eq</span>
+                      @if (data.isComplete) {
+                        <strong>أحسنت، أنهيت التدريب.</strong>
+                      } @else if (data.completedSegments > 0) {
+                        <strong>باقي {{ remainingSegments() }} جملة</strong>
+                      } @else {
+                        <strong>{{ data.segmentCount }} جملة تفاعلية متدرجة</strong>
+                      }
+                    </div>
+                  }
+                  @if (stage.isUnlocked) {
+                    <a class="lesson-stage__text-action" [routerLink]="stage.route">
+                      {{ stage.isComplete ? 'مراجعة المرحلة' : 'ابدأ المرحلة' }}
+                    </a>
+                  } @else {
+                    <div class="practice-card__unavailable" role="status">
+                      {{ stage.key === 'shadowing' && data.segmentCount === 0
+                        ? 'لا توجد جمل متاحة لهذا الدرس بعد.'
+                        : !data.hasAiContent && stage.key !== 'shadowing'
+                          ? 'المرحلة محفوظة في خطة الدرس، وتفتح بعد اعتماد محتواها ونشره.'
+                          : 'تفتح المرحلة بعد إتمام المرحلة السابقة.' }}
+                    </div>
+                  }
+                  @if (last) {
+                    <span class="lesson-stage__reward">
+                      <i class="material-symbols-outlined" aria-hidden="true">workspace_premium</i>
+                      مكافأة إتمام الدرس: إتقان جميع المراحل
+                    </span>
                   }
                 </div>
-                <p>{{ stage.description }}</p>
-                @if (stage.key === 'shadowing') {
-                  <div class="lesson-stage__meta">
-                    <span class="material-symbols-outlined" aria-hidden="true">graphic_eq</span>
-                    @if (data.isComplete) {
-                      <strong>أحسنت، أنهيت التدريب.</strong>
-                    } @else if (data.completedSegments > 0) {
-                      <strong>باقي {{ remainingSegments() }} جملة</strong>
-                    } @else {
-                      <strong>{{ data.segmentCount }} جملة تفاعلية متدرجة</strong>
-                    }
-                  </div>
-                }
-                @if (stage.isUnlocked) {
-                  <a class="lesson-stage__text-action" [routerLink]="stage.route">
-                    {{ stage.isComplete ? 'مراجعة المرحلة' : 'ابدأ المرحلة' }}
-                  </a>
-                } @else {
-                  <div class="practice-card__unavailable" role="status">
-                    {{ stage.key === 'shadowing' && data.segmentCount === 0
-                      ? 'لا توجد جمل متاحة لهذا الدرس بعد.'
-                      : !data.hasAiContent && stage.key !== 'shadowing'
-                        ? 'المرحلة محفوظة في خطة الدرس، وتفتح بعد اعتماد محتواها ونشره.'
-                        : 'تفتح المرحلة بعد إتمام المرحلة السابقة.' }}
-                  </div>
-                }
-                @if (last) {
-                  <span class="lesson-stage__reward">
-                    <i class="material-symbols-outlined" aria-hidden="true">workspace_premium</i>
-                    مكافأة إتمام الدرس: إتقان جميع المراحل
-                  </span>
-                }
               </div>
             </article>
           } @empty {

@@ -20,6 +20,7 @@ export class StudentLessonOverviewPage implements OnInit {
   readonly loading = signal(true);
   readonly error = signal(false);
   readonly missing = signal(false);
+  readonly openStageDetails = signal<number | null>(null);
   readonly stages = computed(() => this.lesson()?.stages ?? []);
   hasStage(key: string): boolean {
     return this.stages().some((stage) => stage.key === key);
@@ -37,6 +38,9 @@ export class StudentLessonOverviewPage implements OnInit {
     const lesson = this.lesson();
     return lesson ? Math.max(lesson.segmentCount - lesson.completedSegments, 0) : 0;
   });
+  toggleStageDetails(index: number): void {
+    this.openStageDetails.update((current) => (current === index ? null : index));
+  }
   ngOnInit(): void {
     if (!this.slotId) {
       this.missing.set(true);
@@ -53,6 +57,7 @@ export class StudentLessonOverviewPage implements OnInit {
     this.loading.set(true);
     this.error.set(false);
     this.missing.set(false);
+    this.openStageDetails.set(null);
     try {
       const lesson = await firstValueFrom(this.api.overview(this.slotId));
       this.lesson.set(lesson);
