@@ -14,7 +14,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../../core/auth/auth.service';
 import { AiMaterial, ConversationHistory, StudentLearningApi } from '../../learning.api';
-import { adjacentStage, stageAt, stageReady } from '../stage-flow';
+import { adjacentStage, stageAt, stageReady, stageReadyForStudent } from '../stage-flow';
 
 type ConversationVoice = 'Kore' | 'Puck' | 'Aoede';
 
@@ -120,7 +120,7 @@ export class StudentConversationPage implements OnInit, OnDestroy {
     this.error.set('');
     try {
       const data = await firstValueFrom(this.api.aiMaterial(this.slotId));
-      if (!stageReady(data, 'conversation') || (!data.stages && !data.completed.quiz)) {
+      if ((!stageReady(data, 'conversation') && !(await stageReadyForStudent(this.api, this.slotId, data, 'conversation'))) || (!data.stages && !data.completed.quiz)) {
         this.material.set(null);
         this.error.set('أكمل المراحل السابقة قبل المحادثة.');
       } else {

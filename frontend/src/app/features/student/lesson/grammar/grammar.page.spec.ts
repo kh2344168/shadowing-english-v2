@@ -7,6 +7,39 @@ import { AuthService } from '../../../../core/auth/auth.service';
 import { StudentGrammarPage } from './grammar.page';
 
 describe('StudentGrammarPage', () => {
+  it('offers a retry after a loading failure without showing stale content', async () => {
+    await TestBed.configureTestingModule({
+      imports: [StudentGrammarPage],
+      providers: [
+        provideRouter([]), provideHttpClient(), provideHttpClientTesting(),
+        { provide: ActivatedRoute, useValue: {
+          snapshot: { paramMap: convertToParamMap({ slotId: 's1' }) },
+        } },
+        { provide: AuthService, useValue: { csrf: () => of({}) } },
+      ],
+    }).compileComponents();
+    const http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(StudentGrammarPage);
+    fixture.detectChanges();
+    http.expectOne('/api/student/learning/slots/s1/ai-material').flush('Unavailable', {
+      status: 503, statusText: 'Unavailable',
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('تعذر تحميل القواعد');
+    (fixture.nativeElement.querySelector('button') as HTMLButtonElement).click();
+    http.expectOne('/api/student/learning/slots/s1/ai-material').flush({
+      grammarFocus: 'Use could for polite requests.',
+      completed: { grammar: false },
+      stages: [{ key: 'grammar', title: 'القواعد', position: 1, route: '/grammar' }],
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Use could for polite requests.');
+    http.verify();
+    fixture.destroy();
+  });
+
   it('completes a grammar stage and follows the configured next stage', async () => {
     await TestBed.configureTestingModule({
       imports: [StudentGrammarPage],

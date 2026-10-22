@@ -3,7 +3,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../../core/auth/auth.service';
 import { AiMaterial, StudentLearningApi } from '../../learning.api';
-import { adjacentStage, stageAt, stageReady } from '../stage-flow';
+import { adjacentStage, stageAt, stageReady, stageReadyForStudent } from '../stage-flow';
 
 @Component({
   selector: 'app-student-grammar-page',
@@ -31,9 +31,10 @@ export class StudentGrammarPage implements OnInit {
   async load(): Promise<void> {
     this.loading.set(true);
     this.error.set('');
+    this.material.set(null);
     try {
       const material = await firstValueFrom(this.api.aiMaterial(this.slotId));
-      if (!stageReady(material, 'grammar')) {
+      if (!stageReady(material, 'grammar') && !(await stageReadyForStudent(this.api, this.slotId, material, 'grammar'))) {
         this.error.set('أكمل المراحل السابقة أولًا.');
       } else {
         this.material.set(material);

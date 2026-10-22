@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { adjacentStage, stageAt, stageReady } from './stage-flow';
-import { AiMaterial, StageLink } from '../learning.api';
+import { of } from 'rxjs';
+import { adjacentStage, stageAt, stageReady, stageReadyForStudent } from './stage-flow';
+import { AiMaterial, StageLink, StudentLearningApi } from '../learning.api';
 
 describe('student stage flow', () => {
   const stages: StageLink[] = [
@@ -22,5 +23,23 @@ describe('student stage flow', () => {
     expect(stageReady(material, 'conversation')).toBe(false);
     expect(stageReady({ ...material, completed: { ...material.completed, grammar: true } }, 'conversation'))
       .toBe(true);
+  });
+
+  it('uses the published unlock decision when an earlier stage is optional', async () => {
+    const material = { stages, completed: { vocabulary: false, grammar: false } } as AiMaterial;
+    const api = {
+      overview: () => of({ stages: [{ key: 'grammar', isUnlocked: true }] }),
+    } as unknown as Pick<StudentLearningApi, 'overview'>;
+    expect(stageReady(material, 'grammar')).toBe(false);
+    expect(await stageReadyForStudent(api, 'slot-1', material, 'grammar')).toBe(true);
+  });
+
+  it('keeps a required earlier stage locked and preserves legacy lessons', async () => {
+    const material = { stages, completed: { vocabulary: false, grammar: false } } as AiMaterial;
+    const api = {
+      overview: () => of({ stages: [{ key: 'grammar', isUnlocked: false }] }),
+    } as unknown as Pick<StudentLearningApi, 'overview'>;
+    expect(await stageReadyForStudent(api, 'slot-1', material, 'grammar')).toBe(false);
+    expect(await stageReadyForStudent(api, 'slot-1', { stages: null } as AiMaterial, 'quiz')).toBe(true);
   });
 });

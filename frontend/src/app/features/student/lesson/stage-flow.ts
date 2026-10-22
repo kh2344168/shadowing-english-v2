@@ -1,4 +1,5 @@
-import { AiMaterial, StageLink } from '../learning.api';
+import { firstValueFrom } from 'rxjs';
+import { AiMaterial, StageLink, StudentLearningApi } from '../learning.api';
 
 export function stageAt(stages: StageLink[] | null | undefined, key: string): StageLink | null {
   return stages?.find((stage) => stage.key === key) ?? null;
@@ -33,4 +34,16 @@ export function stageReady(material: AiMaterial, key: string): boolean {
   const ordered = [...material.stages].sort((a, b) => a.position - b.position);
   const index = ordered.findIndex((stage) => stage.key === key);
   return index >= 0 && ordered.slice(0, index).every((stage) => stageComplete(material, stage.key));
+}
+
+export async function stageReadyForStudent(
+  api: Pick<StudentLearningApi, 'overview'>,
+  slotId: string,
+  material: AiMaterial,
+  key: string,
+): Promise<boolean> {
+  if (stageReady(material, key)) return true;
+  if (!material.stages?.some((stage) => stage.key === key)) return false;
+  const overview = await firstValueFrom(api.overview(slotId));
+  return overview.stages.some((stage) => stage.key === key && stage.isUnlocked);
 }

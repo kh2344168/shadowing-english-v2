@@ -33,6 +33,28 @@ describe('StudentShadowingPage V1 parity on V2 contracts', () => {
     return { fixture, http, router };
   }
 
+  it('can retry a failed lesson load from the error state', async () => {
+    const { fixture, http } = await setup();
+    http.expectOne('/api/student/learning/slots/slot-1').flush('Unavailable', {
+      status: 503, statusText: 'Unavailable',
+    });
+    await fixture.whenStable();
+    fixture.changeDetectorRef.markForCheck();
+    fixture.detectChanges(false);
+    const retry = fixture.nativeElement.querySelector('section button') as HTMLButtonElement;
+    expect(retry?.textContent).toContain('إعادة المحاولة');
+    retry.click();
+    http.expectOne('/api/student/learning/slots/slot-1').flush({
+      slotId: 'slot-1', versionId: 'version-1', title: 'Test', description: '',
+      weekNumber: 1, dayNumber: 1, sortOrder: 1, segmentCount: 0,
+      completedSegments: 0, isComplete: false, hasAiContent: false,
+    });
+    await fixture.whenStable();
+    expect(fixture.componentInstance.state).toBe('ready');
+    http.verify();
+    fixture.destroy();
+  });
+
 
   it('defaults to a smooth student turn without a forced timer', async () => {
     const { fixture, http } = await setup();
@@ -135,7 +157,7 @@ describe('StudentShadowingPage V1 parity on V2 contracts', () => {
   });
 
   it('restores review progress from the V2 AI material contract', async () => {
-    const { fixture, http } = await setup('student/lessons/:slotId/shadowing-review');
+    const { fixture, http, router } = await setup('student/lessons/:slotId/shadowing-review');
 
     http.expectOne('/api/student/learning/slots/slot-1').flush({
       slotId: 'slot-1',
@@ -185,6 +207,18 @@ describe('StudentShadowingPage V1 parity on V2 contracts', () => {
     await fixture.whenStable();
     expect(fixture.componentInstance.reviewMode).toBe(true);
     expect(fixture.componentInstance.currentSegmentIndex).toBe(2);
+    const page = fixture.componentInstance;
+    page.overview = {
+      ...page.overview!,
+      stages: [
+        { key: 'vocabulary', title: 'الكلمات', description: '', icon: 'style', position: 1, required: true, isComplete: true, isUnlocked: true, route: '/vocabulary' },
+        { key: 'conversation', title: 'المحادثة', description: '', icon: 'chat', position: 2, required: true, isComplete: false, isUnlocked: true, route: '/conversation' },
+      ],
+    };
+    expect(page.nextStageLabel).toBe('المحادثة');
+    const navigate = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+    await page.continueToNextStage();
+    expect(navigate).toHaveBeenCalledWith('/conversation');
     http.verify();
     fixture.destroy();
   });

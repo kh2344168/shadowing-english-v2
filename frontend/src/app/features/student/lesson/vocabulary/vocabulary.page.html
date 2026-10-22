@@ -18,8 +18,8 @@
       <div
         class="progress-track"
         role="progressbar"
-        [attr.aria-valuenow]="completed() + 1"
-        aria-valuemin="1"
+        [attr.aria-valuenow]="completed()"
+        aria-valuemin="0"
         [attr.aria-valuemax]="data.vocabulary.length"
       >
         <span [style.width.%]="progressPercent()"></span>
@@ -43,7 +43,7 @@
         [class.is-leaving]="leaving()"
         [attr.aria-label]="(data.vocabulary[completed()].kind === 'chunk' ? 'عبارة ' : 'كلمة ') + (completed() + 1)"
       >
-        <section class="card-face card-face--front">
+        <section class="card-face card-face--front" [attr.inert]="flipped() ? '' : null" [attr.aria-hidden]="flipped() ? 'true' : 'false'">
           @if (data.vocabulary[completed()].imageUrl && !imageFailed()) {
           <div class="word-image">
             <img
@@ -74,7 +74,7 @@
           </div>
         </section>
 
-        <section class="card-face card-face--back">
+        <section class="card-face card-face--back" [attr.inert]="flipped() ? null : ''" [attr.aria-hidden]="flipped() ? 'false' : 'true'">
           <div class="back-toolbar">
             <span>مضافة للمراجعة 🔁</span>
             <button
@@ -119,7 +119,7 @@
       </article>
     </div>
 
-    <div class="action-bar" [class.is-hidden]="flipped()">
+    <div class="action-bar" [class.is-hidden]="flipped()" [attr.inert]="flipped() ? '' : null" [attr.aria-hidden]="flipped() ? 'true' : 'false'">
       <button type="button" class="secondary-action" [disabled]="busy()" (click)="revealMeaning()">
         <span class="material-symbols-outlined" aria-hidden="true">help_outline</span>
         مش عارف

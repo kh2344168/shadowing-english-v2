@@ -8,6 +8,32 @@ import { AuthService } from '../../../../core/auth/auth.service';
 import { StudentVocabularyPage } from './vocabulary.page';
 
 describe('StudentVocabularyPage', () => {
+  it('does not steal Space or Enter from focused controls', () => {
+    const speak = vi.fn();
+    const next = vi.fn();
+    const page = {
+      flipped: () => false,
+      busy: () => false,
+      speak,
+      next,
+    } as unknown as StudentVocabularyPage;
+    const button = document.createElement('button');
+    for (const code of ['Space', 'Enter']) {
+      const event = new KeyboardEvent('keydown', { code, cancelable: true });
+      Object.defineProperty(event, 'target', { value: button });
+      StudentVocabularyPage.prototype.handleShortcut.call(page, event);
+      expect(event.defaultPrevented).toBe(false);
+    }
+    expect(speak).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+
+    const shortcut = new KeyboardEvent('keydown', { code: 'Space', cancelable: true });
+    Object.defineProperty(shortcut, 'target', { value: document.body });
+    StudentVocabularyPage.prototype.handleShortcut.call(page, shortcut);
+    expect(shortcut.defaultPrevented).toBe(true);
+    expect(speak).toHaveBeenCalledWith('word');
+  });
+
   it('saves words in order and opens the next stage without loading audio', async () => {
     await TestBed.configureTestingModule({
       imports: [StudentVocabularyPage],
@@ -54,6 +80,14 @@ describe('StudentVocabularyPage', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('hello');
+    expect(fixture.nativeElement.querySelector('[role="progressbar"]').getAttribute('aria-valuenow')).toBe('0');
+    expect(fixture.nativeElement.querySelector('.card-face--back').hasAttribute('inert')).toBe(true);
+    fixture.componentInstance.revealMeaning();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.card-face--front').hasAttribute('inert')).toBe(true);
+    expect(fixture.nativeElement.querySelector('.action-bar').hasAttribute('inert')).toBe(true);
+    fixture.componentInstance.flipped.set(false);
+    fixture.detectChanges();
     const image = fixture.nativeElement.querySelector('.word-image img') as HTMLImageElement;
     expect(image.getAttribute('src')).toBe('https://images.pexels.com/photos/1/test.jpeg');
     image.dispatchEvent(new Event('error'));

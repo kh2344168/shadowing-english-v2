@@ -12,7 +12,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../../core/auth/auth.service';
 import { AiMaterial, StudentLearningApi } from '../../learning.api';
-import { adjacentStage, stageAt, stageReady } from '../stage-flow';
+import { adjacentStage, stageAt, stageReady, stageReadyForStudent } from '../stage-flow';
 
 @Component({
   selector: 'app-student-vocabulary-page',
@@ -46,7 +46,7 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
   readonly nextStage = computed(() => adjacentStage(this.material()?.stages, 'vocabulary', 1));
   readonly progressPercent = computed(() => {
     const total = this.material()?.vocabulary.length ?? 0;
-    return total === 0 ? 0 : Math.round(((this.completed() + 1) / total) * 100);
+    return total === 0 ? 0 : Math.round((this.completed() / total) * 100);
   });
 
   private activeAudio: HTMLAudioElement | null = null;
@@ -65,7 +65,7 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
     this.error.set('');
     try {
       const data = await firstValueFrom(this.api.aiMaterial(this.slotId));
-      if (!stageReady(data, 'vocabulary')) {
+      if (!stageReady(data, 'vocabulary') && !(await stageReadyForStudent(this.api, this.slotId, data, 'vocabulary'))) {
         this.material.set(null);
         this.error.set('أكمل المراحل السابقة قبل الكلمات.');
       } else {
@@ -138,6 +138,8 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
 
   @HostListener('window:keydown', ['$event'])
   handleShortcut(event: KeyboardEvent): void {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('button, a, input, textarea, select, [contenteditable="true"]')) return;
     if (event.code === 'Space') {
       event.preventDefault();
       this.speak(this.flipped() ? 'example' : 'word');

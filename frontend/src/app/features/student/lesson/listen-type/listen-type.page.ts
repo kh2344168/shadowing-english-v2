@@ -15,7 +15,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../../core/auth/auth.service';
 import { AiMaterial, DictationFeedback, StudentLearningApi } from '../../learning.api';
-import { adjacentStage, stageAt, stageReady } from '../stage-flow';
+import { adjacentStage, stageAt, stageReady, stageReadyForStudent } from '../stage-flow';
 
 @Component({
   selector: 'app-student-listen-type-page',
@@ -77,7 +77,7 @@ export class StudentListenTypePage implements OnInit, OnDestroy {
     this.answer = '';
     try {
       const data = await firstValueFrom(this.api.aiMaterial(this.slotId));
-      if (!stageReady(data, 'listen-type')) {
+      if (!stageReady(data, 'listen-type') && !(await stageReadyForStudent(this.api, this.slotId, data, 'listen-type'))) {
         this.error.set('أكمل المراحل السابقة قبل تدريب الاستماع والكتابة.');
         this.material.set(null);
       } else if (data.dictation.length > 0 && !data.dictationState) {

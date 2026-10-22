@@ -10,24 +10,31 @@
   (error)="onMediaLoadError()"
 ></video>
 
+@if (state === 'loading' && !lesson) {
 <section
-  *ngIf="state === 'loading' && !lesson"
   class="student-loading mx-auto my-8 max-w-4xl"
   role="status"
   dir="rtl"
 >
   بنجهز الشادوينج...
 </section>
+}
 
+@if (state === 'error') {
 <section
-  *ngIf="state === 'error'"
   class="max-w-4xl mx-auto my-8 rounded-3xl border border-error-container bg-error-container/40 p-6 text-right text-sm font-black text-error shadow-sm"
   dir="rtl"
 >
   {{ error }}
+  <div class="mt-3 flex flex-wrap gap-2">
+    <button type="button" class="rounded-xl bg-error px-4 py-2 text-white" (click)="load()">إعادة المحاولة</button>
+    <a class="rounded-xl border border-error/30 px-4 py-2" [routerLink]="['/student/lessons', slotId, 'overview']">مراحل الدرس</a>
+  </div>
 </section>
+}
 
-<div *ngIf="lesson && state !== 'error'" class="flex flex-col w-full min-w-0 font-body-md text-on-surface select-none pb-24" dir="rtl">
+@if (lesson && state !== 'error') {
+<div class="flex flex-col w-full min-w-0 font-body-md text-on-surface select-none pb-24" dir="rtl">
   <!-- MOBILE SHADOWING UI: visible only on phones -->
   <section class="shadowing-mobile-ui" aria-label="واجهة الشادوينج على الهاتف">
     <!-- Compact lesson/session strip -->
@@ -56,7 +63,8 @@
       </div>
     </div>
 
-    <div *ngIf="showMicPermissionBanner" class="mobile-mic-alert">
+    @if (showMicPermissionBanner) {
+    <div class="mobile-mic-alert">
       <span class="material-symbols-outlined">mic_off</span>
       <div>
         <strong>الميكروفون غير مفعّل</strong>
@@ -64,6 +72,7 @@
       </div>
       <button type="button" (click)="requestMicPermission()">السماح</button>
     </div>
+    }
 
     <!-- Prompt utilities -->
     <div class="mobile-prompt-tools">
@@ -85,9 +94,9 @@
     <section class="mobile-target-card">
       <div class="mobile-card-eyebrow">الجملة المستهدفة للتدريب</div>
       <div class="mobile-karaoke-sentence" dir="ltr">
-        <ng-container *ngIf="karaokeWords.length > 0; else mobilePlainSentence">
+        @if (karaokeWords.length > 0) {
+          @for (word of karaokeWords; track $index; let i = $index) {
           <span
-            *ngFor="let word of karaokeWords; let i = index"
             class="mobile-karaoke-word"
             [ngClass]="{
               'mobile-karaoke-word--teacher': (state === 'teacher' || manualPreviewActive) && i === currentKaraokeIndex,
@@ -97,13 +106,17 @@
               'mobile-karaoke-word--wrong': shouldShowSpeechReview && state === 'student' && i !== currentKaraokeIndex && studentKaraokeState(i) === 'wrong'
             }"
           >{{ word }}</span>
-        </ng-container>
-        <ng-template #mobilePlainSentence>{{ currentSegment?.text || 'No sentence text' }}</ng-template>
+          }
+        } @else {
+          {{ currentSegment?.text || 'No sentence text' }}
+        }
       </div>
 
-      <div *ngIf="hasSentenceTranslation && sentenceTranslationVisible" class="mobile-translation-box">
+      @if (hasSentenceTranslation && sentenceTranslationVisible) {
+      <div class="mobile-translation-box">
         {{ currentSegment?.translation }}
       </div>
+      }
     </section>
 
 
@@ -135,21 +148,23 @@
 
         <div class="mobile-waveform" dir="ltr" aria-hidden="true">
           <div class="mobile-wave-group mobile-wave-group--teacher">
+            @for (bar of teacherWaveBarsSlice; track $index) {
             <span
-              *ngFor="let bar of teacherWaveBarsSlice"
               class="mobile-wave-bar"
               [style.height.px]="bar > 28 ? 20 : bar > 18 ? 14 : 9"
               [class.mobile-wave-bar--active]="state === 'teacher' || manualPreviewActive"
             ></span>
+            }
           </div>
           <div class="mobile-wave-divider"></div>
           <div class="mobile-wave-group mobile-wave-group--student">
+            @for (bar of studentWaveBarsSlice; track $index) {
             <span
-              *ngFor="let bar of studentWaveBarsSlice"
               class="mobile-wave-bar"
               [style.height.px]="bar > 28 ? 20 : bar > 18 ? 14 : 9"
               [class.mobile-wave-bar--active]="state === 'student'"
             ></span>
+            }
           </div>
         </div>
 
@@ -167,8 +182,8 @@
         </div>
 
         <div class="mobile-meta-actions">
+          @if (state === 'student') {
           <button
-            *ngIf="state === 'student'"
             type="button"
             class="mobile-audit-counter"
             [class.mobile-audit-counter--active]="shouldShowSpeechReview"
@@ -181,6 +196,7 @@
             <span>تدقيق</span>
             <strong>{{ currentSpeechMatchScore === null ? '—' : currentSpeechMatchScore + '%' }}</strong>
           </button>
+          }
           <div class="mobile-repeat-pill">
             <span>التكرار</span>
             <strong>{{ currentRepetitionLabel }}</strong>
@@ -219,7 +235,7 @@
 
         <button type="button" class="mobile-control-square mobile-control-square--mic" (click)="toggleSettingsDrawer()" title="حالة الميكروفون والإعدادات" aria-label="حالة الميكروفون والإعدادات">
           <span class="material-symbols-outlined">mic</span>
-          <span *ngIf="state === 'student'" class="mobile-mic-live-dot"></span>
+          @if (state === 'student') { <span class="mobile-mic-live-dot"></span> }
         </button>
       </div>
 
@@ -271,8 +287,8 @@
         </div>
 
         <!-- Speech review counter lives with the other session counters. -->
+        @if (state === 'student') {
         <button
-          *ngIf="state === 'student'"
           type="button"
           class="audit-counter"
           [class.audit-counter--active]="shouldShowSpeechReview"
@@ -284,6 +300,7 @@
           <span>تدقيق</span>
           <strong>{{ currentSpeechMatchScore === null ? '—' : currentSpeechMatchScore + '%' }}</strong>
         </button>
+        }
 
         <!-- Quick Sentences Drawer Toggle -->
         <button
@@ -334,8 +351,8 @@
   <!-- MAIN CANVAS CONTAINER -->
   <main class="w-full max-w-5xl mx-auto px-margin-mobile sm:px-margin py-space-lg flex flex-col gap-space-lg relative">
     <!-- ALERT BANNER: MICROPHONE PERMISSION -->
+    @if (showMicPermissionBanner) {
     <div
-      *ngIf="showMicPermissionBanner"
       class="rounded-2xl bg-amber-50 p-space-md shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-space-md text-amber-900 transition-all duration-300"
       id="mic-permission-banner"
     >
@@ -359,6 +376,7 @@
         </button>
       </div>
     </div>
+    }
 
     <!-- MAIN HERO PRACTICE CARD (THE CENTERPIECE) -->
     <section class="w-full bg-surface-container-lowest rounded-3xl p-space-md sm:p-space-xl shadow-md relative overflow-hidden flex flex-col gap-space-lg">
@@ -383,15 +401,17 @@
         >
           <!-- Pulse Dot / Icon -->
           <span class="relative flex h-3 w-3">
+            @if (state === 'teacher' || manualPreviewActive) {
             <span
-              *ngIf="state === 'teacher' || manualPreviewActive"
               class="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"
               id="status-ping"
             ></span>
+            }
+            @if (state === 'student') {
             <span
-              *ngIf="state === 'student'"
               class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"
             ></span>
+            }
             <span
               class="relative inline-flex rounded-full h-3 w-3"
               [ngClass]="{
@@ -451,9 +471,9 @@
             class="font-display-lg text-display-lg sm:text-[34px] leading-relaxed tracking-tight text-on-surface font-extrabold flex flex-wrap justify-center items-center gap-x-2.5 gap-y-1"
             id="karaoke-sentence"
           >
-            <ng-container *ngIf="karaokeWords.length > 0">
+            @if (karaokeWords.length > 0) {
+              @for (word of karaokeWords; track $index; let i = $index) {
               <span
-                *ngFor="let word of karaokeWords; let i = index"
                 class="karaoke-word transition-all duration-200 px-1.5 py-0.5 rounded-lg"
                 [ngClass]="{
                   'bg-orange-100 text-orange-700 shadow-sm font-black scale-105':
@@ -472,16 +492,18 @@
                 }"
                 [attr.data-idx]="i"
               >{{ word }}</span>
-            </ng-container>
-            <span *ngIf="karaokeWords.length === 0" class="text-on-surface">
+              }
+            } @else {
+            <span class="text-on-surface">
               {{ currentSegment?.text || 'No sentence text' }}
             </span>
+            }
           </p>
         </div>
 
         <!-- Arabic Translation Box -->
+        @if (hasSentenceTranslation && sentenceTranslationVisible) {
         <div
-          *ngIf="hasSentenceTranslation && sentenceTranslationVisible"
           class="transition-all duration-300 max-w-2xl px-space-md py-space-xs rounded-xl bg-surface-container-low text-on-surface-variant flex items-center justify-center gap-2"
           id="translation-container"
         >
@@ -490,21 +512,25 @@
             {{ currentSegment?.translation }}
           </p>
         </div>
+        }
 
         <!-- Word Pronunciation Hint Badge (Phonetic Breakdown) -->
+        @if (currentSegmentPhoneticHint) {
         <div
-          *ngIf="currentSegmentPhoneticHint"
           class="inline-flex items-center gap-2 text-on-surface-variant font-label-md text-label-md"
         >
           <span class="font-mono bg-surface-container px-2 py-0.5 rounded text-outline">{{ currentSegmentPhoneticHint.ipa }}</span>
           <span class="text-outline-variant">•</span>
           <span>{{ currentSegmentPhoneticHint.tip }}</span>
         </div>
-        <div *ngIf="state === 'student' && shouldShowSpeechReview" class="speech-review-details w-full max-w-2xl rounded-2xl border border-primary/15 bg-primary/5 p-3 text-right text-xs">
+        }
+        @if (state === 'student' && shouldShowSpeechReview) {
+        <div class="speech-review-details w-full max-w-2xl rounded-2xl border border-primary/15 bg-primary/5 p-3 text-right text-xs">
           <span>تطابق الكلمات الملتقطة: <b>{{ currentSpeechMatchScore === null ? 'غير متاح' : currentSpeechMatchScore + '% · ' + currentSpeechReviewLabel }}</b></span>
-          <span *ngIf="currentRecognizedSpeechText" dir="ltr" class="mt-2 block rounded-xl bg-white p-2 text-left">{{ currentRecognizedSpeechText }}</span>
+          @if (currentRecognizedSpeechText) { <span dir="ltr" class="mt-2 block rounded-xl bg-white p-2 text-left">{{ currentRecognizedSpeechText }}</span> }
           <small class="mt-1 block text-on-surface-variant">هذا يقارن النص الملتقط بالجملة فقط، ولا يعتبر تقييمًا للّكنة.</small>
         </div>
+        }
       </div>
 
       <!-- TEACHER AUDIO WAVEFORM & PLAYBACK SUITE -->
@@ -581,12 +607,13 @@
           <div class="w-full flex items-center justify-between gap-1 h-full select-none">
             <!-- النصف الأول: waveform حقيقية من صوت المدرس الحالي -->
             <div class="flex items-center gap-1 flex-1 justify-around h-full">
+              @for (bar of teacherWaveBarsSlice; track $index) {
               <span
-                *ngFor="let bar of teacherWaveBarsSlice; let i = index"
                 class="w-1.5 rounded-full transition-all duration-100"
                 [style.height.px]="bar"
                 [ngClass]="state === 'teacher' || manualPreviewActive ? 'bg-orange-500' : 'bg-orange-300/40'"
               ></span>
+              }
             </div>
             <!-- فاصل وسطي -->
             <div class="h-10 w-px bg-outline-variant/40 mx-1 flex flex-col justify-between items-center">
@@ -595,12 +622,13 @@
             </div>
             <!-- النصف الثاني: وقت الطالب (teal) -->
             <div class="flex items-center gap-1 flex-1 justify-around h-full">
+              @for (bar of studentWaveBarsSlice; track $index) {
               <span
-                *ngFor="let bar of studentWaveBarsSlice; let i = index"
                 class="w-1.5 rounded-full transition-all duration-100"
                 [style.height.px]="bar"
                 [ngClass]="state === 'student' ? 'bg-primary' : 'bg-primary/40'"
               ></span>
+              }
             </div>
           </div>
           <!-- Scrubbing Head Marker -->
@@ -697,8 +725,8 @@
     </section>
 
     <!-- SAVED RECORDINGS SECTION -->
+    @if (recordings.length > 0) {
     <section
-      *ngIf="recordings.length > 0"
       class="w-full rounded-3xl border border-outline-variant/30 bg-surface-container-lowest p-5 shadow-sm"
     >
       <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -711,8 +739,8 @@
         </strong>
       </div>
       <div class="grid gap-3">
+        @for (recording of recordings; track recording.meta.id) {
         <div
-          *ngFor="let recording of recordings"
           class="rounded-2xl border border-outline-variant/20 bg-surface-container-low p-4 shadow-xs"
         >
           <div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -733,23 +761,28 @@
               حذف
             </button>
           </div>
-          <audio *ngIf="recording.url" class="w-full" [src]="recording.url" controls></audio>
+          @if (recording.url) { <audio class="w-full" [src]="recording.url" controls></audio> }
         </div>
+        }
       </div>
     </section>
+    }
   </main>
 
   </div>
 
   <!-- DRAWER 1: SENTENCE NAVIGATOR (SLIDE-OVER RTL) -->
-  <div
-    *ngIf="sentenceDrawerOpen"
+  @if (sentenceDrawerOpen) {
+  <button
+    type="button"
     (click)="toggleSentenceDrawer()"
-    class="fixed inset-0 bg-black/40 backdrop-blur-xs z-40 transition-opacity"
-  ></div>
+    class="fixed inset-0 bg-black/40 backdrop-blur-xs z-40 transition-opacity border-0"
+    aria-label="إغلاق قائمة الجمل"
+  ></button>
+  }
 
+  @if (sentenceDrawerOpen) {
   <aside
-    *ngIf="sentenceDrawerOpen"
     class="fixed inset-y-0 right-0 w-full sm:w-96 bg-surface-container-lowest shadow-2xl z-50 transform translate-x-0 transition-transform duration-300 flex flex-col"
     id="drawer-sentences"
   >
@@ -770,69 +803,80 @@
 
     <!-- Sentence Scrollable List -->
     <div class="flex-1 overflow-y-auto p-space-md space-y-space-xs divide-y divide-surface-container-high/40">
-      <div
-        *ngFor="let seg of lesson.segments; let idx = index"
-        class="pt-2 pb-2 flex items-start gap-3 p-2.5 rounded-xl transition-colors cursor-pointer group"
+      @for (seg of lesson.segments; track $index; let idx = $index) {
+      <button
+        type="button"
+        class="w-full border-0 bg-transparent text-right pt-2 pb-2 flex items-start gap-3 p-2.5 rounded-xl transition-colors cursor-pointer group"
         [ngClass]="{
           'bg-primary/10 shadow-xs': idx === currentSegmentIndex,
           'hover:bg-surface-container-low': idx !== currentSegmentIndex,
           'opacity-60 hover:opacity-100': idx > currentSegmentIndex,
           'pointer-events-none': segmentNavigationInProgress
         }"
-        [attr.aria-disabled]="segmentNavigationInProgress"
+        [disabled]="segmentNavigationInProgress"
+        [attr.aria-current]="idx === currentSegmentIndex ? 'step' : null"
         (click)="selectSegmentFromDrawer(idx)"
       >
         <!-- Completed Icon / Current / Number -->
-        <div
-          *ngIf="idx < currentSegmentIndex"
+        @if (idx < currentSegmentIndex) {
+        <span
           class="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5"
         >
           <span class="material-symbols-outlined text-[16px]">check</span>
-        </div>
-        <div
-          *ngIf="idx === currentSegmentIndex"
+        </span>
+        }
+        @if (idx === currentSegmentIndex) {
+        <span
           class="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center shrink-0 mt-0.5 font-bold text-xs"
         >
           {{ idx + 1 }}
-        </div>
-        <div
-          *ngIf="idx > currentSegmentIndex"
+        </span>
+        }
+        @if (idx > currentSegmentIndex) {
+        <span
           class="w-7 h-7 rounded-full bg-surface-container-high text-on-surface-variant flex items-center justify-center shrink-0 mt-0.5 font-bold text-xs"
         >
           {{ idx + 1 }}
-        </div>
+        </span>
+        }
 
-        <div class="flex flex-col min-w-0 flex-1">
-          <div class="flex items-center justify-between">
-            <p
+        <span class="flex flex-col min-w-0 flex-1">
+          <span class="flex items-center justify-between">
+            <span
               class="font-label-lg text-label-lg text-left font-semibold truncate"
               [ngClass]="idx === currentSegmentIndex ? 'text-primary font-bold' : 'text-on-surface group-hover:text-primary'"
               dir="ltr"
             >
               {{ seg.loaded ? seg.text : 'Sentence ' + (idx + 1) }}
-            </p>
+            </span>
+            @if (idx === currentSegmentIndex) {
             <span
-              *ngIf="idx === currentSegmentIndex"
               class="px-2 py-0.5 rounded-full bg-primary text-on-primary text-[10px] font-bold mr-2 shrink-0"
             >الحالية</span>
-          </div>
-          <p class="font-body-sm text-body-sm text-on-surface-variant truncate">
+            }
+          </span>
+          <span class="font-body-sm text-body-sm text-on-surface-variant truncate">
             {{ seg.loaded ? (seg.translation || 'بدون ترجمة') : 'اضغط لتحميل الجملة عند الحاجة' }}
-          </p>
-        </div>
-      </div>
+          </span>
+        </span>
+      </button>
+      }
     </div>
   </aside>
+  }
 
   <!-- DRAWER 2: PRACTICE SETTINGS PANEL (SLIDE-OVER LTR) -->
-  <div
-    *ngIf="settingsDrawerOpen"
+  @if (settingsDrawerOpen) {
+  <button
+    type="button"
     (click)="toggleSettingsDrawer()"
-    class="settings-drawer__backdrop fixed inset-0 bg-black/40 backdrop-blur-xs z-40 transition-opacity"
-  ></div>
+    class="settings-drawer__backdrop fixed inset-0 bg-black/40 backdrop-blur-xs z-40 transition-opacity border-0"
+    aria-label="إغلاق إعدادات الشادوينج"
+  ></button>
+  }
 
+  @if (settingsDrawerOpen) {
   <aside
-    *ngIf="settingsDrawerOpen"
     class="fixed inset-y-0 left-0 h-[100dvh] max-h-[100dvh] w-full sm:w-96 bg-surface-container-lowest shadow-2xl z-50 transform translate-x-0 transition-transform duration-300 flex flex-col overflow-hidden"
     id="drawer-settings"
   >
@@ -855,16 +899,17 @@
     <div class="settings-drawer__body min-h-0 flex-1 overflow-y-auto p-space-md space-y-space-lg">
       <!-- Option 0a: Teacher Playback Speed -->
       <div class="flex flex-col gap-2">
-        <label class="font-label-lg text-label-lg font-bold text-on-surface">سرعة استماع صوت المدرس</label>
+        <span class="font-label-lg text-label-lg font-bold text-on-surface">سرعة استماع صوت المدرس</span>
         <p class="font-body-sm text-body-sm text-on-surface-variant">اضبط سرعة تشغيل الصوت — ابدأ ببطء ثم زدها تدريجياً.</p>
-        <div class="grid grid-cols-3 gap-2 mt-1">
+        <div class="grid grid-cols-3 gap-2 mt-1" role="group" aria-label="سرعة استماع صوت المدرس">
+          @for (rate of [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]; track rate) {
           <button
             type="button"
-            *ngFor="let rate of [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]"
             (click)="setTeacherPlaybackRate(rate)"
             class="py-2 rounded-xl font-label-sm text-label-sm font-bold transition-all border-0 cursor-pointer"
             [ngClass]="teacherPlaybackRate === rate ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'"
           >{{ rate }}×</button>
+          }
         </div>
       </div>
 
@@ -890,7 +935,8 @@
           </label>
         </div>
 
-        <div *ngIf="!studentTurnTimeLimitEnabled" class="rounded-2xl border border-primary/20 bg-primary/5 p-3">
+        @if (!studentTurnTimeLimitEnabled) {
+        <div class="rounded-2xl border border-primary/20 bg-primary/5 p-3">
           <div class="flex items-start gap-2">
             <span class="material-symbols-outlined text-primary text-[20px]">record_voice_over</span>
             <div>
@@ -901,46 +947,51 @@
             </div>
           </div>
         </div>
+        }
 
-        <div *ngIf="studentTurnTimeLimitEnabled" class="flex flex-col gap-2">
-          <label class="font-label-lg text-label-lg font-bold text-on-surface">وقت ترديد الطالب</label>
+        @if (studentTurnTimeLimitEnabled) {
+        <div class="flex flex-col gap-2">
+          <span class="font-label-lg text-label-lg font-bold text-on-surface">وقت ترديد الطالب</span>
           <p class="font-body-sm text-body-sm text-on-surface-variant">نسبة من مدة جملة المدرس — مثلاً 80% تعني أن جملة 5 ث تعطيك 4 ث للترديد.</p>
-          <div class="grid grid-cols-5 gap-2 mt-1">
+          <div class="grid grid-cols-5 gap-2 mt-1" role="group" aria-label="وقت ترديد الطالب">
+            @for (ratio of [0.6, 0.8, 1.0, 1.2, 1.5]; track ratio) {
             <button
               type="button"
-              *ngFor="let ratio of [0.6, 0.8, 1.0, 1.2, 1.5]"
               (click)="setStudentDurationRatio(ratio)"
               class="py-2 rounded-xl font-label-sm text-label-sm font-bold transition-all border-0 cursor-pointer"
               [ngClass]="studentDurationRatio === ratio ? 'bg-tertiary text-on-tertiary shadow-xs' : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'"
             >{{ ratio * 100 | number:'1.0-0' }}%</button>
+            }
           </div>
           <div class="flex items-center justify-between text-xs text-on-surface-variant px-1">
             <span>الوقت الحالي للترديد: <strong class="text-on-surface">{{ studentDurationRatioLabel }}</strong></span>
             <span class="text-primary font-bold">{{ studentDurationRatioPercent }}</span>
           </div>
         </div>
+        }
       </div>
 
       <!-- Option 1: Repetitions per sentence -->
       <div class="flex flex-col gap-2">
-        <label class="font-label-lg text-label-lg font-bold text-on-surface">عدد دورات الشادوينج في الجلسة</label>
+        <span class="font-label-lg text-label-lg font-bold text-on-surface">عدد دورات الشادوينج في الجلسة</span>
         <p class="font-body-sm text-body-sm text-on-surface-variant">الدورة الأولى تحفظ إكمال المرحلة عند إنهاء كل الجمل، وأي دورات إضافية تكون مراجعة اختيارية لنفس الدرس.</p>
-        <div class="grid grid-cols-4 gap-2 mt-1">
+        <div class="grid grid-cols-4 gap-2 mt-1" role="group" aria-label="عدد دورات الشادوينج في الجلسة">
+          @for (rep of [1, 3, 5, 7]; track rep) {
           <button
             type="button"
-            *ngFor="let rep of [1, 3, 5, 7]"
             (click)="setSessionTarget(rep)"
             class="rep-chip py-2 rounded-xl font-label-md text-label-md font-bold transition-all border-0 cursor-pointer"
             [ngClass]="sessionTargetRepetitions === rep ? 'bg-primary text-on-primary shadow-xs' : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest'"
           >{{ rep }}</button>
+          }
         </div>
       </div>
 
       <!-- Option 2: Countdown pause before recording -->
       <div class="flex flex-col gap-2">
-        <label class="font-label-lg text-label-lg font-bold text-on-surface">فترة الانتظار قبل بدء التسجيل</label>
+        <span class="font-label-lg text-label-lg font-bold text-on-surface">فترة الانتظار قبل بدء التسجيل</span>
         <p class="font-body-sm text-body-sm text-on-surface-variant">مهلة بالثواني لمنحك وقتاً للتنفس والاستعداد للترديد.</p>
-        <div class="grid grid-cols-3 gap-2 mt-1">
+        <div class="grid grid-cols-3 gap-2 mt-1" role="group" aria-label="فترة الانتظار قبل بدء التسجيل">
           <button
             type="button"
             (click)="setCountdownPause(0)"
@@ -1000,15 +1051,19 @@
           </button>
         </div>
         <p class="text-xs text-on-surface-variant">{{ microphoneSettingsLabel }}</p>
-        <div *ngIf="microphoneTestActive" class="mt-1 rounded-xl bg-surface-container-lowest p-2">
+        @if (microphoneTestActive) {
+        <div class="mt-1 rounded-xl bg-surface-container-lowest p-2">
           <div class="flex h-10 items-center justify-center gap-px overflow-hidden" dir="ltr">
-            <span *ngFor="let bar of voiceBars" class="min-w-px flex-1 rounded-full bg-primary transition-[height]" [style.height.px]="bar"></span>
+            @for (bar of voiceBars; track $index) {
+            <span class="min-w-px flex-1 rounded-full bg-primary transition-[height]" [style.height.px]="bar"></span>
+            }
           </div>
           <div class="mt-1 flex items-center justify-between text-[10px] font-black">
             <span>{{ microphoneLevelLabel }}</span>
             <span>{{ voiceLevel }}%</span>
           </div>
         </div>
+        }
       </div>
     </div>
 
@@ -1023,10 +1078,11 @@
       </button>
     </div>
   </aside>
+  }
 
   <!-- MODAL: COMPLETION SHOWCASE -->
+  @if (isCompletionModalOpen) {
   <div
-    *ngIf="isCompletionModalOpen"
     class="completion-overlay fixed inset-0 z-50 bg-on-surface/40 backdrop-blur-md flex items-center justify-center p-margin-mobile"
     id="completion-modal"
   >
@@ -1057,20 +1113,23 @@
           <span class="font-label-sm text-label-sm text-on-surface-variant">وقت التدريب</span>
         </div>
       </div>
+      @if (completionReportSaving || completionReportSaved || completionReportError) {
       <div
-        *ngIf="completionReportSaving || completionReportSaved || completionReportError"
         class="completion-sync w-full rounded-2xl px-4 py-3 text-sm"
         [ngClass]="completionReportError ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-800'"
         role="status"
         aria-live="polite"
       >
-        <span *ngIf="completionReportSaving">جارٍ مزامنة نتيجة التدريب...</span>
-        <span *ngIf="!completionReportSaving && completionReportSaved">تم حفظ تفاصيل التدريب بنجاح.</span>
-        <div *ngIf="!completionReportSaving && completionReportError" class="completion-sync__error flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between">
+        @if (completionReportSaving) { <span>جارٍ مزامنة نتيجة التدريب...</span> }
+        @if (!completionReportSaving && completionReportSaved) { <span>تم حفظ تفاصيل التدريب بنجاح.</span> }
+        @if (!completionReportSaving && completionReportError) {
+        <div class="completion-sync__error flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between">
           <span>تم حفظ تقدمك، لكن تعذرت مزامنة تفاصيل التدريب الآن. يمكنك إعادة المحاولة.</span>
           <button type="button" class="completion-sync__retry rounded-xl border border-amber-700/20 bg-white px-3 py-2 text-xs font-bold" (click)="retryCompletionReport()">إعادة المحاولة</button>
         </div>
+        }
       </div>
+      }
       <!-- Action Buttons -->
       <div class="completion-actions flex flex-col sm:flex-row gap-2 w-full mt-2">
         <button
@@ -1090,4 +1149,6 @@
       </div>
     </div>
   </div>
+  }
 </div>
+}

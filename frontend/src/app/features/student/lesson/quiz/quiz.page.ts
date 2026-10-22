@@ -3,7 +3,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../../core/auth/auth.service';
 import { AiMaterial, QuizFeedback, StudentLearningApi } from '../../learning.api';
-import { adjacentStage, stageAt, stageReady } from '../stage-flow';
+import { adjacentStage, stageAt, stageReady, stageReadyForStudent } from '../stage-flow';
 
 @Component({
   selector: 'app-student-quiz-page',
@@ -49,7 +49,7 @@ export class StudentQuizPage implements OnInit {
     this.error.set('');
     try {
       const data = await firstValueFrom(this.api.aiMaterial(this.slotId));
-      if (!stageReady(data, this.stageKey) || (!data.stages && !data.completed.listenType)) {
+      if ((!stageReady(data, this.stageKey) && !(await stageReadyForStudent(this.api, this.slotId, data, this.stageKey))) || (!data.stages && !data.completed.listenType)) {
         this.material.set(null);
         this.error.set('أكمل المراحل السابقة قبل الاختبار.');
       } else {

@@ -8,6 +8,7 @@ import {
   AiMaterial,
   LessonOverview,
   Segment,
+  StageOverview,
   StudentLearningApi,
 } from '../../learning.api';
 import { ShadowingReportingApi } from './shadowing-reporting.api';
@@ -281,6 +282,9 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
         if (material.shadowingReviewEnabled === false) {
           throw new Error('review_disabled');
         }
+        if (!material.completed.vocabulary) {
+          throw new Error('review_vocabulary_locked');
+        }
         this.completedSegments = Math.min(
           material.progress.shadowingReview ?? 0,
           overview.segmentCount,
@@ -344,7 +348,11 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
           ? 'مرحلة الشادوينج بعد الفهم غير مفعّلة لهذا الدرس.'
           : message === 'review_ai_content_missing'
             ? 'محتوى المراجعة غير متاح لهذا الدرس.'
-            : 'تعذر تحميل تدريب الشادوينج. حاول مرة أخرى.';
+            : message === 'shadowing_stage_locked'
+              ? 'أكمل المراحل السابقة قبل الشادوينج.'
+              : message === 'review_vocabulary_locked'
+                ? 'أكمل مرحلة الكلمات قبل مراجعة الشادوينج.'
+                : 'تعذر تحميل تدريب الشادوينج. حاول مرة أخرى.';
       this.logError('Load.Failed', error, {
         slotId: this.slotId,
         reviewMode: this.reviewMode,
@@ -571,9 +579,17 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
   }
 
   get nextStageLabel(): string {
+    const next = this.nextPublishedStage(this.reviewMode ? 'vocabulary' : 'shadowing');
+    if (next) return next.title;
+    if (this.overview?.stages?.length) return 'مراحل الدرس';
     if (this.reviewMode) return 'استمع واكتب';
-    if (this.lesson?.hasAiContent) return 'الكلمات والعبارات';
-    return 'مراحل الدرس';
+    return this.lesson?.hasAiContent ? 'الكلمات والعبارات' : 'مراحل الدرس';
+  }
+
+  private nextPublishedStage(afterKey: string): StageOverview | null {
+    const stages = this.overview?.stages ?? [];
+    const index = stages.findIndex((stage) => stage.key === afterKey);
+    return index >= 0 ? stages[index + 1] ?? null : null;
   }
 
 
@@ -904,16 +920,19 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
   async continueToNextStage(): Promise<void> {
     this.isCompletionModalOpen = false;
     if (this.reviewMode) {
-      await this.router.navigate(['/student/lessons', this.slotId, 'listen-type']);
+      const next = this.nextPublishedStage('vocabulary');
+      if (this.overview?.stages?.length) {
+        await this.router.navigateByUrl(next?.route ?? `/student/lessons/${this.slotId}/overview`);
+      } else {
+        await this.router.navigate(['/student/lessons', this.slotId, 'listen-type']);
+      }
       return;
     }
     if (!this.stageComplete) {
       await this.router.navigate(['/student/lessons', this.slotId, 'overview']);
       return;
     }
-    const stages = this.overview?.stages ?? [];
-    const index = stages.findIndex((stage) => stage.key === 'shadowing');
-    const next = index >= 0 ? stages[index + 1] : null;
+    const next = this.nextPublishedStage('shadowing');
     await this.router.navigateByUrl(next?.route ?? `/student/lessons/${this.slotId}/overview`);
   }
 
