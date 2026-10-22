@@ -13,12 +13,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
-import {
-  LessonAiApi,
-  LessonAiJob,
-  LessonMaterial,
-  StageProcessingStatuses,
-} from './lesson-ai.api';
+import { LessonAiApi, LessonAiJob, LessonMaterial, StageProcessingStatuses } from './lesson-ai.api';
 import {
   LessonStageType,
   LessonWorkflow,
@@ -228,8 +223,13 @@ export class AdminLessonWorkflowPage implements OnInit, OnDestroy {
 
   private scheduleStatusPoll(): void {
     clearTimeout(this.statusPollTimer);
-    if (this.destroyed || !Object.values(this.stageStatuses()).some(
-      (status) => status === 'Pending' || status === 'Generating')) return;
+    if (
+      this.destroyed ||
+      !Object.values(this.stageStatuses()).some(
+        (status) => status === 'Pending' || status === 'Generating',
+      )
+    )
+      return;
     this.statusPollTimer = setTimeout(async () => {
       if (this.destroyed) return;
       try {
@@ -298,8 +298,7 @@ export class AdminLessonWorkflowPage implements OnInit, OnDestroy {
     const items = [...this.stages()];
     const index = items.findIndex((item) => item.id === stage.id);
     const target = index + direction;
-    if (index < 0 || target < 0 || target >= items.length)
-      return;
+    if (index < 0 || target < 0 || target >= items.length) return;
     [items[index], items[target]] = [items[target], items[index]];
     this.setStages(items);
   }
@@ -363,7 +362,13 @@ export class AdminLessonWorkflowPage implements OnInit, OnDestroy {
       this.workflow.set({ ...workflow, revision: result.revision, stages: result.stages });
       this.stages.set(result.stages);
       this.dirty.set(false);
-      this.notice.set('تم حفظ ترتيب ومراحل رحلة الدرس.');
+      this.notice.set(
+        result.autoPublishFailed
+          ? 'تم حفظ الرحلة، لكن تعذّر تحديث النسخة المنشورة تلقائيًا. راجع صفحة المناهج.'
+          : result.autoPublishedGroups
+            ? `تم حفظ الرحلة وتحديثها تلقائيًا في ${result.autoPublishedGroups} مجموعة.`
+            : 'تم حفظ ترتيب ومراحل رحلة الدرس.',
+      );
       console.info('[Admin.LessonWorkflow.Save.Success]', {
         versionId: this.versionId,
         stageCount: result.stages.length,
@@ -406,14 +411,21 @@ export class AdminLessonWorkflowPage implements OnInit, OnDestroy {
         return;
       }
       if (!draft?.material) {
-        this.notice.set('تم حفظ الرحلة. المراحل المختارة معتمدة بالفعل؛ أعد نشر المنهج ليظهر الترتيب للطلاب.');
+        if (!this.notice())
+          this.notice.set('المراحل المختارة معتمدة ومحفوظة بالفعل. لا توجد تغييرات تحتاج نشرًا.');
         return;
       }
       await firstValueFrom(this.auth.csrf());
-      await firstValueFrom(this.aiApi.approve(this.versionId, draft));
+      const approval = await firstValueFrom(this.aiApi.approve(this.versionId, draft));
       await this.load();
       if (!this.error())
-        this.notice.set('تم حفظ الرحلة واعتماد محتوى الدرس. أعد نشر المنهج ليظهر للطلاب');
+        this.notice.set(
+          approval.autoPublishFailed
+            ? 'تم اعتماد الدرس، لكن تعذّر تحديث النسخة المنشورة تلقائيًا. راجع صفحة المناهج وأعد النشر.'
+            : approval.autoPublishedGroups
+              ? `تم اعتماد الدرس وتحديثه تلقائيًا في ${approval.autoPublishedGroups} مجموعة.`
+              : 'تم اعتماد الدرس. إن لم يكن منشورًا من قبل، انشر المنهج أول مرة؛ وإن غيّرت ترتيب أو دروس المنهج، انشر مسودته من صفحة المناهج.',
+        );
     } catch (error) {
       const response = error instanceof HttpErrorResponse ? error : null;
       const code = response?.error?.error;

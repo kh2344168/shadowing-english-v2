@@ -18,5 +18,23 @@
     }
     <a routerLink="/student/curriculum" class="learning-button">عرض المنهج</a>
   </div>
-  }
+  @if (conversationReview().length) {
+  <section class="conversation-review-list" aria-labelledby="conversation-review-title">
+    <h2 id="conversation-review-title">راجع محادثاتك</h2>
+    <p>خطوات وكلمات تحتاج تدريبًا مرة أخرى، من محاولاتك المحفوظة.</p>
+    @for (item of conversationReview(); track item.slotId) {
+    <article class="learning-card">
+      <h3>{{ item.lessonTitle }}</h3>
+      <p>{{ item.result.goalMet ? 'أنجزت الهدف' : 'ما زالت هناك خطوات تحتاج تدريبًا' }}</p>
+      @for (step of item.result.missingSteps; track step) {
+      <p>○ {{ step }}</p>
+      } @for (issue of item.result.issues; track $index) {
+      <p>
+        <span dir="ltr">{{ issue.original }}</span> ← <span dir="ltr">{{ issue.suggested }}</span>
+      </p>
+      }
+    </article>
+    }
+  </section>
+  } }
 </section>

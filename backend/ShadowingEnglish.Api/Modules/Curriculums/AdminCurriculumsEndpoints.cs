@@ -122,6 +122,28 @@ public static class AdminCurriculumsEndpoints
                 if (await db.LessonVersions.CountAsync(x => ids.Contains(x.Id) &&
                     db.LessonDefinitions.Any(d => d.Id == x.LessonDefinitionId && !d.IsArchived), http.RequestAborted) != ids.Length)
                     return op.Fail(404, "lesson_not_found");
+                // A curriculum draft may contain only lessons whose enabled activities were approved.
+                // Saving an AI draft is still allowed inside the stage editor so a teacher can review it.
+                var workflows = await WorkflowSnapshots(db, ids, http.RequestAborted);
+                var approvedAi = await LatestApprovedAi(db, ids, http.RequestAborted);
+                foreach (var lessonId in ids)
+                {
+                    if (!workflows.TryGetValue(lessonId, out var workflowJson)) continue;
+                    var enabled = ReadEnabledStages(workflowJson);
+                    if (enabled.Length == 0) return op.Fail(409, "lesson_stages_missing");
+                    var aiStages = enabled.Where(x => x != "shadowing").ToArray();
+                    if (aiStages.Length == 0) continue;
+                    if (!approvedAi.TryGetValue(lessonId, out var contentId))
+                        return op.FailStages(lessonId, aiStages);
+                    var payload = await db.LessonAiContents.AsNoTracking()
+                        .Where(x => x.Id == contentId).Select(x => x.PayloadJson)
+                        .SingleAsync(http.RequestAborted);
+                    var material = payload is null ? null :
+                        JsonSerializer.Deserialize<LessonMaterial>(payload, LessonMaterialRules.Json);
+                    var missing = material is null ? aiStages : aiStages.Where(x =>
+                        !LessonMaterialRules.ReadyToApprove(material, [x]) || !StageHasData(material, x)).ToArray();
+                    if (missing.Length > 0) return op.FailStages(lessonId, missing);
+                }
                 var old = await db.CurriculumDraftLessonSlots.Where(x => x.CurriculumTemplateId == id)
                     .ToArrayAsync(http.RequestAborted);
                 var added = ordered.Count(x => old.All(s => s.LessonVersionId != x.LessonVersionId));
@@ -270,7 +292,7 @@ public static class AdminCurriculumsEndpoints
                     var stages = ReadEnabledStages(workflowJson);
                     if (stages.Length == 0) return op.Fail(409, "lesson_stages_missing");
                     if (stages.Any(x => x != "shadowing") && !approvedAi.ContainsKey(lessonId))
-                        return op.Fail(409, "lesson_stage_not_approved");
+                        return op.FailStages(lessonId, stages.Where(x => x != "shadowing").ToArray());
                     if (stages.Any(x => x != "shadowing"))
                     {
                         var contentId = approvedAi[lessonId];
@@ -279,10 +301,13 @@ public static class AdminCurriculumsEndpoints
                             .SingleAsync(http.RequestAborted);
                         var material = payload is null ? null :
                             JsonSerializer.Deserialize<LessonMaterial>(payload, LessonMaterialRules.Json);
-                        if (material is null || !LessonMaterialRules.ReadyToApprove(material,
-                            stages.Where(x => x != "shadowing")) ||
-                            stages.Where(x => x != "shadowing").Any(x => !StageHasData(material, x)))
-                            return op.Fail(409, "lesson_stage_not_approved");
+                        var missing = material is null
+                            ? stages.Where(x => x != "shadowing").ToArray()
+                            : stages.Where(x => x != "shadowing" &&
+                                (!LessonMaterialRules.ReadyToApprove(material, [x]) || !StageHasData(material, x)))
+                                .ToArray();
+                        if (missing.Length > 0)
+                            return op.FailStages(lessonId, missing);
                     }
                 }
                 if (assignment is not null)
@@ -528,6 +553,12 @@ public static class AdminCurriculumsEndpoints
                 action, curriculumId, groupId, status, code, errorType, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             if (slotCounts is { } counts) Slots("Failed", counts.Added, counts.Removed, counts.Reordered);
             return Results.Json(new { error = code }, statusCode: status);
+        }
+        public IResult FailStages(Guid lessonVersionId, string[] missingStages)
+        {
+            log.LogWarning("Admin.Shadowing.Curriculum.Publish.MissingStages LessonVersionId={LessonVersionId} MissingStages={MissingStages}",
+                lessonVersionId, string.Join(',', missingStages));
+            return Results.Json(new { error = "lesson_stage_not_approved", lessonVersionId, missingStages }, statusCode: 409);
         }
         public IResult Exception(Exception ex) => ex switch
         {

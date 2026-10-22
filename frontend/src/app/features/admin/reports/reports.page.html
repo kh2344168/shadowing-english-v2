@@ -1,5 +1,61 @@
-<section class="v2-placeholder-panel" dir="rtl" aria-labelledby="reports-heading">
-  <span class="v2-placeholder-panel__kicker">لوحة الإدارة</span>
-  <h1 id="reports-heading">التقارير</h1>
-  <p role="status">التقارير لم تُنفّذ بعد. لا توجد بيانات أو إجراءات متاحة في هذه الصفحة حاليًا.</p>
+<section class="reports-page" dir="rtl" aria-labelledby="reports-heading">
+  <header>
+    <span>مراجعة التعلّم</span>
+    <h1 id="reports-heading">تقارير محادثات الدروس</h1>
+    <p>التقييم يركز على إنجاز المهمة وجودة التواصل، وليس عدد الأخطاء وحده.</p>
+  </header>
+  @if (error()) {
+  <p role="alert" class="report-error">
+    {{ error() }} <button type="button" (click)="load(1)">إعادة المحاولة</button>
+  </p>
+  } @if (!loading() && !items().length && !error()) {
+  <p class="report-empty">لا توجد محادثات منتهية بعد.</p>
+  }
+  <div class="report-list">
+    @for (item of items(); track item.slotId + item.studentId) {
+    <article class="report-card">
+      <div class="report-card__head">
+        <div>
+          <small>{{ item.studentEmail }}</small>
+          <h2>{{ item.lessonTitle }}</h2>
+        </div>
+        <span [class.report-card__success]="item.result.goalMet"
+          >{{ item.result.goalMet ? 'تحقق الهدف' : 'الهدف غير مكتمل' }}</span
+        >
+      </div>
+      <p>
+        ردود الطالب: {{ item.result.replyCount }} · ردود مرتبطة بالمهمة: {{
+        item.result.relevantReplies ?? '—' }} · {{ item.createdAtUtc }}
+      </p>
+      <div class="report-card__steps">
+        <div>
+          <strong>خطوات أنجزها</strong> @for (step of item.result.metSteps; track step) {
+          <span>{{ step }}</span> } @if (!item.result.metSteps.length) {
+          <span>لا توجد خطوات مثبتة بعد</span> }
+        </div>
+        <div>
+          <strong>تحتاج تدريبًا</strong> @for (step of item.result.missingSteps; track step) {
+          <span>{{ step }}</span> } @if (!item.result.missingSteps.length) {
+          <span>لا توجد خطوات ناقصة</span> }
+        </div>
+      </div>
+      @if (item.result.issues.length) {
+      <details>
+        <summary>ملاحظات لغوية مهمة ({{ item.result.issues.length }})</summary>
+        @for (issue of item.result.issues; track $index) {
+        <p>
+          <b>{{ issue.kind }}</b> · <span dir="ltr">{{ issue.original }}</span> ←
+          <span dir="ltr">{{ issue.suggested }}</span> · {{ issue.reason }}
+        </p>
+        }
+      </details>
+      }
+    </article>
+    }
+  </div>
+  @if (hasMore()) {
+  <button type="button" class="more" [disabled]="loading()" (click)="load(page() + 1)">
+    عرض المزيد
+  </button>
+  }
 </section>

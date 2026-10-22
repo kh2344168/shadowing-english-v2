@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using ShadowingEnglish.Api.Modules.Curriculums;
 using ShadowingEnglish.Api.Modules.Lessons;
 using ShadowingEnglish.Core.Learning;
 using ShadowingEnglish.Infrastructure.Database;
@@ -83,11 +84,11 @@ public static class AdminLessonAiEndpoints
                     return Results.NotFound(new { error = "lesson_not_found" });
                 var row = await db.LessonAiContents.AsNoTracking().Where(x => x.LessonVersionId == versionId &&
                     x.Status != "Failed")
-                    .OrderByDescending(x => x.UpdatedAtUtc).ThenByDescending(x => x.Id)
+                    .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
                     .FirstOrDefaultAsync(http.RequestAborted);
                 row ??= await db.LessonAiContents.AsNoTracking()
                     .Where(x => x.LessonVersionId == versionId)
-                    .OrderByDescending(x => x.UpdatedAtUtc).ThenByDescending(x => x.Id)
+                    .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
                     .FirstOrDefaultAsync(http.RequestAborted);
                 http.Response.Headers.CacheControl = "no-store";
                 log.LogInformation("Admin.AiContent.Read.Success VersionId={VersionId} Status={Status} DurationMs={DurationMs}",
@@ -102,12 +103,14 @@ public static class AdminLessonAiEndpoints
         {
             if (!await db.LessonVersions.AnyAsync(x => x.Id == versionId, http.RequestAborted))
                 return Results.NotFound(new { error = "lesson_not_found" });
-            var draft = await db.LessonAiContents.AsNoTracking()
-                .Where(x => x.LessonVersionId == versionId && x.Status == "Draft")
+            // Only the newest non-failed job is editable. Returning an older Draft
+            // makes the editor send a PUT that IsSuperseded will always reject.
+            var latest = await db.LessonAiContents.AsNoTracking()
+                .Where(x => x.LessonVersionId == versionId && x.Status != "Failed")
                 .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
                 .FirstOrDefaultAsync(http.RequestAborted);
             http.Response.Headers.CacheControl = "no-store";
-            return Results.Ok(draft is null ? null : View(draft));
+            return Results.Ok(latest?.Status == "Draft" ? View(latest) : null);
         });
 
         group.MapGet("/{versionId:guid}/ai/stages/statuses", async (Guid versionId,
@@ -117,13 +120,13 @@ public static class AdminLessonAiEndpoints
                 return Results.NotFound(new { error = "lesson_not_found" });
             var latest = await db.LessonAiContents.AsNoTracking()
                 .Where(x => x.LessonVersionId == versionId)
-                .OrderByDescending(x => x.UpdatedAtUtc).ThenByDescending(x => x.Id)
+                .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
                 .FirstOrDefaultAsync(http.RequestAborted);
             var contentRow = latest?.Status == "Failed"
                 ? await db.LessonAiContents.AsNoTracking()
                     .Where(x => x.LessonVersionId == versionId && x.Status != "Failed" &&
                         x.PayloadJson != null)
-                    .OrderByDescending(x => x.UpdatedAtUtc).ThenByDescending(x => x.Id)
+                    .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
                     .FirstOrDefaultAsync(http.RequestAborted)
                 : latest;
             var material = ReadMaterial(contentRow?.PayloadJson ?? latest?.PayloadJson);
@@ -143,6 +146,22 @@ public static class AdminLessonAiEndpoints
             });
             http.Response.Headers.CacheControl = "no-store";
             return Results.Ok(statuses);
+        });
+
+        group.MapGet("/{versionId:guid}/ai/stages/{stageType}/latest-attempt", async (
+            Guid versionId, string stageType, ApplicationDbContext db, HttpContext http) =>
+        {
+            if (!LessonMaterialRules.GeneratableStages.Contains(stageType))
+                return Results.BadRequest(new { error = "invalid_stage" });
+            if (!await db.LessonVersions.AnyAsync(x => x.Id == versionId, http.RequestAborted))
+                return Results.NotFound(new { error = "lesson_not_found" });
+            var latest = await db.LessonAiContents.AsNoTracking()
+                .Where(x => x.LessonVersionId == versionId && x.StageType == stageType)
+                .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
+                .Select(x => new { x.Id, x.Status, x.ErrorCode })
+                .FirstOrDefaultAsync(http.RequestAborted);
+            http.Response.Headers.CacheControl = "no-store";
+            return Results.Ok(latest);
         });
 
         group.MapPost("/{versionId:guid}/ai/stages/{stageType}/generate", async (
@@ -187,7 +206,7 @@ public static class AdminLessonAiEndpoints
             var baseline = await db.LessonAiContents.AsNoTracking()
                 .Where(x => x.LessonVersionId == versionId && x.PayloadJson != null &&
                     (x.Status == "Draft" || x.Status == "Approved"))
-                .OrderByDescending(x => x.UpdatedAtUtc).ThenByDescending(x => x.Id)
+                .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
                 .Select(x => x.PayloadJson).FirstOrDefaultAsync(http.RequestAborted);
             var now = DateTimeOffset.UtcNow;
             if (stageType == "vocabulary" && request.VocabularyTargetCount is { } targetCount)
@@ -313,12 +332,14 @@ public static class AdminLessonAiEndpoints
                     (x.Status == "Pending" || x.Status == "Generating"),
                     http.RequestAborted))
                     return Results.Conflict(new { error = "ai_draft_in_progress" });
-                var openDraft = await db.LessonAiContents.AsNoTracking()
-                    .Where(x => x.LessonVersionId == versionId && x.Status == "Draft")
+                var latest = await db.LessonAiContents.AsNoTracking()
+                    .Where(x => x.LessonVersionId == versionId && x.Status != "Failed")
                     .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
                     .FirstOrDefaultAsync(http.RequestAborted);
-                if (openDraft is not null)
-                    return Results.Ok(View(openDraft));
+                if (latest?.Status == "Draft")
+                    return Results.Ok(View(latest));
+                if (latest?.Id != source.Id)
+                    return Results.Conflict(new { error = "approved_content_changed" });
 
                 var now = DateTimeOffset.UtcNow;
                 var draft = new LessonAiContent
@@ -396,8 +417,24 @@ public static class AdminLessonAiEndpoints
                 job.Status = "Approved"; job.ApprovedAtUtc = DateTimeOffset.UtcNow;
                 job.UpdatedAtUtc = job.ApprovedAtUtc.Value;
                 await db.SaveChangesAsync(http.RequestAborted);
+                var autoPublishedGroups = 0;
+                var autoPublishFailed = false;
+                try
+                {
+                    autoPublishedGroups = await ApprovedLessonPublisher.SyncAsync(db, versionId, log,
+                        http.RequestAborted);
+                }
+                catch (Exception syncError)
+                {
+                    // Approval is already durable. Report the partial outcome rather than
+                    // pretending the approval itself failed or retrying it as a new draft.
+                    autoPublishFailed = true;
+                    log.LogError(syncError, "Admin.AiContent.AutoPublish.Failed JobId={JobId}", jobId);
+                }
                 log.LogInformation("Admin.AiContent.Approve.Success JobId={JobId} DurationMs={DurationMs}", jobId, Ms(started));
-                return Results.Ok(View(job));
+                return Results.Ok(new { job.Id, job.LessonVersionId, job.Revision, job.Status,
+                    job.StageType, job.ProviderName, job.ErrorCode, job.CreatedAtUtc, job.ApprovedAtUtc,
+                    material, autoPublishedGroups, autoPublishFailed });
             }
             catch (DbUpdateConcurrencyException) { return Results.Conflict(new { error = "ai_draft_changed" }); }
             catch (Exception ex) { return Failure(log, ex, started, "Approve"); }

@@ -1,0 +1,175 @@
+using System.Data;
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using ShadowingEnglish.Api.Modules.AI;
+using ShadowingEnglish.Api.Modules.Lessons;
+using ShadowingEnglish.Core.Learning;
+using ShadowingEnglish.Infrastructure.Database;
+
+namespace ShadowingEnglish.Api.Modules.Curriculums;
+
+// A reviewed lesson update may advance an already published lesson without publishing
+// unrelated curriculum-draft edits. Every advance creates a new immutable snapshot.
+public static class ApprovedLessonPublisher
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    public static async Task<int> SyncAsync(ApplicationDbContext db, Guid lessonVersionId,
+        ILogger log, CancellationToken cancellation)
+    {
+        var approved = await db.LessonAiContents.AsNoTracking()
+            .Where(x => x.LessonVersionId == lessonVersionId && x.Status == "Approved")
+            .OrderByDescending(x => x.ApprovedAtUtc).ThenByDescending(x => x.Id)
+            .FirstOrDefaultAsync(cancellation);
+        var workflow = await db.LessonWorkflows.AsNoTracking()
+            .Where(x => x.LessonVersionId == lessonVersionId)
+            .Select(x => x.StagesJson).SingleOrDefaultAsync(cancellation);
+        if (approved?.PayloadJson is null || workflow is null) return 0;
+        var stages = ReadStages(workflow);
+        var required = stages.Where(x => x.Enabled && x.Type != "shadowing")
+            .Select(x => x.Type).Distinct().ToArray();
+        var material = JsonSerializer.Deserialize<LessonMaterial>(approved.PayloadJson, LessonMaterialRules.Json);
+        if (material is null || !LessonMaterialRules.ReadyToApprove(material, required) ||
+            required.Any(x => !LessonMaterialRules.HasStageData(material, x))) return 0;
+
+        var groupIds = await (from pointer in db.GroupCurriculumAssignments.AsNoTracking()
+            join slot in db.PublishedLessonSlots.AsNoTracking()
+                on pointer.PublishedCurriculumVersionId equals slot.PublishedCurriculumVersionId
+            where slot.LessonVersionId == lessonVersionId
+            select pointer.GroupId).Distinct().ToArrayAsync(cancellation);
+        var published = 0;
+        foreach (var groupId in groupIds)
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellation);
+            var pointer = await db.GroupCurriculumAssignments
+                .SingleOrDefaultAsync(x => x.GroupId == groupId, cancellation);
+            if (pointer is null) continue;
+            var previous = await db.PublishedCurriculumVersions.AsNoTracking()
+                .SingleAsync(x => x.Id == pointer.PublishedCurriculumVersionId, cancellation);
+            var group = await db.StudyGroups.AsNoTracking().SingleAsync(x => x.Id == groupId, cancellation);
+            var template = await db.CurriculumTemplates.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Id == previous.CurriculumTemplateId, cancellation);
+            // A separate curriculum edit still requires its own explicit publication.
+            if (template is null || group.AssignedCurriculumTemplateId != template.Id ||
+                previous.SourceDraftRevision != template.DraftRevision) continue;
+            var oldSlots = await db.PublishedLessonSlots.AsNoTracking()
+                .Where(x => x.PublishedCurriculumVersionId == previous.Id).ToArrayAsync(cancellation);
+            var target = oldSlots.SingleOrDefault(x => x.LessonVersionId == lessonVersionId);
+            if (target is null || oldSlots.Length == 0 ||
+                target.AiContentId == approved.Id && target.WorkflowStagesJson == workflow) continue;
+
+            var number = (await db.PublishedCurriculumVersions.AsNoTracking()
+                .Where(x => x.GroupId == groupId && x.CurriculumTemplateId == template.Id)
+                .Select(x => (int?)x.VersionNumber).MaxAsync(cancellation) ?? 0) + 1;
+            var now = DateTimeOffset.UtcNow;
+            var next = new PublishedCurriculumVersion
+            {
+                Id = Guid.NewGuid(), GroupId = groupId, CurriculumTemplateId = template.Id,
+                SourceDraftRevision = template.DraftRevision, VersionNumber = number,
+                Title = previous.Title, PublishedAtUtc = now, AvailableAtUtc = now
+            };
+            db.PublishedCurriculumVersions.Add(next);
+            var nextSlots = oldSlots.ToDictionary(x => x.Id, x => new PublishedLessonSlot
+            {
+                Id = Guid.NewGuid(), PublishedCurriculumVersionId = next.Id,
+                LessonVersionId = x.LessonVersionId,
+                AiContentId = x.Id == target.Id ? approved.Id : x.AiContentId,
+                WorkflowStagesJson = x.Id == target.Id ? workflow : x.WorkflowStagesJson,
+                WeekNumber = x.WeekNumber, DayNumber = x.DayNumber, SortOrder = x.SortOrder,
+                AvailableAtUtc = x.AvailableAtUtc
+            });
+            db.PublishedLessonSlots.AddRange(nextSlots.Values);
+            var oldIds = oldSlots.Select(x => x.Id).ToArray();
+            var progress = await db.StudentStageProgress.AsNoTracking()
+                .Where(x => x.PublishedCurriculumVersionId == previous.Id && oldIds.Contains(x.SlotId))
+                .ToArrayAsync(cancellation);
+            var oldStages = ReadStages(target.WorkflowStagesJson);
+            LessonMaterial? oldMaterial = null;
+            if (target.AiContentId == approved.Id) oldMaterial = material;
+            else if (target.AiContentId is { } oldContentId)
+            {
+                var oldPayload = await db.LessonAiContents.AsNoTracking()
+                    .Where(x => x.Id == oldContentId).Select(x => x.PayloadJson)
+                    .SingleOrDefaultAsync(cancellation);
+                if (oldPayload is not null)
+                    try { oldMaterial = JsonSerializer.Deserialize<LessonMaterial>(oldPayload, LessonMaterialRules.Json); }
+                    catch (JsonException) { /* Old content cannot safely carry stage-specific progress. */ }
+            }
+            var unchangedStages = oldStages.Where(before => before.Enabled &&
+                stages.Any(stage => stage.Enabled && stage.Type == before.Type && stage.Id == before.Id) &&
+                SameStageContent(before.Type, oldMaterial, material))
+                .Select(x => x.Type).ToHashSet(StringComparer.Ordinal);
+            if (oldStages.Any(x => x.Enabled && x.Type == "shadowing") &&
+                stages.Any(x => x.Enabled && x.Type == "shadowing"))
+                unchangedStages.Add("shadowing");
+            bool Carry(Guid slotId, string stageKey) => slotId != target.Id ||
+                unchangedStages.Contains(stageKey) ||
+                stageKey == "conversation-result" && unchangedStages.Contains("conversation");
+            var carry = progress.Where(x => Carry(x.SlotId, x.StageKey));
+            db.StudentStageProgress.AddRange(carry.Select(x => new StudentStageProgress
+            {
+                StudentId = x.StudentId, PublishedCurriculumVersionId = next.Id,
+                SlotId = nextSlots[x.SlotId].Id, StageKey = x.StageKey,
+                CompletedSegments = x.CompletedSegments, IsComplete = x.IsComplete,
+                UpdatedAtUtc = x.UpdatedAtUtc
+            }));
+            var attempts = await db.StudentPracticeAttempts.AsNoTracking()
+                .Where(x => x.PublishedCurriculumVersionId == previous.Id && oldIds.Contains(x.SlotId))
+                .ToArrayAsync(cancellation);
+            db.StudentPracticeAttempts.AddRange(attempts.Where(x => Carry(x.SlotId, x.StageKey))
+                .Select(x => new StudentPracticeAttempt
+                {
+                    Id = Guid.NewGuid(), StudentId = x.StudentId,
+                    PublishedCurriculumVersionId = next.Id, SlotId = nextSlots[x.SlotId].Id,
+                    StageKey = x.StageKey, Position = x.Position, Answer = x.Answer,
+                    FeedbackJson = x.FeedbackJson, CreatedAtUtc = x.CreatedAtUtc
+                }));
+            pointer.PublishedCurriculumVersionId = next.Id;
+            await db.SaveChangesAsync(cancellation);
+            await tx.CommitAsync(cancellation);
+            published++;
+            log.LogInformation("Admin.Lesson.AutoPublish GroupId={GroupId} LessonVersionId={LessonVersionId} VersionId={VersionId}",
+                groupId, lessonVersionId, next.Id);
+        }
+        return published;
+    }
+
+    private static AdminLessonWorkflowEndpoints.WorkflowStage[] ReadStages(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try { return JsonSerializer.Deserialize<AdminLessonWorkflowEndpoints.WorkflowStage[]>(json, Json) ?? []; }
+        catch (JsonException) { return []; }
+    }
+
+    private static bool SameStageContent(string stage, LessonMaterial? old, LessonMaterial current)
+    {
+        if (old is null) return false;
+        static bool Same<T>(T a, T b) => JsonSerializer.Serialize(a, Json) == JsonSerializer.Serialize(b, Json);
+        return stage switch
+        {
+            "shadowing" => true,
+            "vocabulary" => Same(old.Vocabulary, current.Vocabulary),
+            "listen-type" => Same(old.Dictation, current.Dictation),
+            "grammar" => old.GrammarFocus == current.GrammarFocus,
+            "quiz" => Same(old.Quiz, current.Quiz),
+            "vocabulary-quiz" => Same(old.Quiz.Where(x => x.Type == "vocabulary-card"),
+                current.Quiz.Where(x => x.Type == "vocabulary-card")),
+            "grammar-quiz" => Same(old.Quiz.Where(x => x.Type == "multiple-choice"),
+                current.Quiz.Where(x => x.Type == "multiple-choice")),
+            "word-order" => Same(old.Quiz.Where(x => x.Type == "word-order"),
+                current.Quiz.Where(x => x.Type == "word-order")),
+            "conversation" => ConversationSignature(old) == ConversationSignature(current),
+            _ => false
+        };
+    }
+
+    private static string ConversationSignature(LessonMaterial x) => JsonSerializer.Serialize(new
+    {
+        x.ConversationScenario, x.ConversationGoals, x.AiRole, x.StudentRole,
+        x.OpeningMessage, x.ConversationTurnTarget, x.ConversationLearningOutcome,
+        x.ConversationFocusTense, x.ConversationTargetWords, x.ConversationCorrectionMode,
+        x.ConversationSupportMode, x.ConversationHelpAr, x.ConversationModelAnswer,
+        x.ConversationContextType, x.ConversationAllowedFacts, x.ConversationSuccessSteps,
+        x.ConversationMinTurns, x.ConversationMaxTurns
+    }, Json);
+}

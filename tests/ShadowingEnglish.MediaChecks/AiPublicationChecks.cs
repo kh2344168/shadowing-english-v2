@@ -106,13 +106,70 @@ internal static class AiPublicationChecks
                 new { completedSegments = 1 });
             Assert(progress.StatusCode == HttpStatusCode.OK, "shadowing_progress_missing");
         });
-        await check("Approving Draft enables republish and pins approved AI for Vocabulary", async () =>
+        await check("Publishing an enabled unapproved stage names the blocked lesson and stage", async () =>
+        {
+            string original;
+            using (var editScope = app.Services.CreateScope())
+            {
+                var editDb = editScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var workflow = await editDb.LessonWorkflows.SingleAsync(x => x.LessonVersionId == lessonId);
+                original = workflow.StagesJson;
+                workflow.StagesJson = JsonSerializer.Serialize(new[]
+                {
+                    new { id = Guid.NewGuid(), type = "shadowing", title = "الشادوينج", position = 1, enabled = true, required = true },
+                    new { id = Guid.NewGuid(), type = "vocabulary", title = "الكلمات", position = 2, enabled = true, required = true }
+                });
+                await editDb.SaveChangesAsync();
+            }
+            var group = await Group();
+            using var blocked = await admin.PostAsJsonAsync(publishPath, new
+            {
+                requestId = Guid.NewGuid(), groupId = app.GroupId, curriculumTemplateId = templateId,
+                expectedDraftRevision = draftRevision,
+                expectedAssignmentRevision = group.GetProperty("assignmentRevision").GetGuid(),
+                expectedVersionId = group.GetProperty("versionId").GetGuid()
+            });
+            var detail = await blocked.Content.ReadFromJsonAsync<JsonElement>();
+            Assert(blocked.StatusCode == HttpStatusCode.Conflict &&
+                detail.GetProperty("error").GetString() == "lesson_stage_not_approved" &&
+                detail.GetProperty("lessonVersionId").GetGuid() == lessonId &&
+                detail.GetProperty("missingStages")[0].GetString() == "vocabulary",
+                "missing_stage_detail_not_returned");
+            using var blockedSave = await admin.PutAsJsonAsync($"/api/admin/shadowing/curriculums/{templateId}", new
+            {
+                requestId = Guid.NewGuid(), expectedDraftRevision = draftRevision,
+                name = "AI publish test", description = "",
+                lessons = new[] { new { lessonVersionId = lessonId, weekNumber = 1, dayNumber = 1, sortOrder = 1 } }
+            });
+            var saveDetail = await blockedSave.Content.ReadFromJsonAsync<JsonElement>();
+            Assert(blockedSave.StatusCode == HttpStatusCode.Conflict &&
+                saveDetail.GetProperty("error").GetString() == "lesson_stage_not_approved" &&
+                saveDetail.GetProperty("missingStages")[0].GetString() == "vocabulary",
+                "unapproved_stage_was_saved_in_curriculum");
+            using var restoreScope = app.Services.CreateScope();
+            var restoreDb = restoreScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            (await restoreDb.LessonWorkflows.SingleAsync(x => x.LessonVersionId == lessonId)).StagesJson = original;
+            await restoreDb.SaveChangesAsync();
+        });
+        await check("Approving Draft automatically advances a published lesson without mutating history", async () =>
         {
             using var approval = await admin.PostAsJsonAsync(
                 $"/api/admin/lessons/{lessonId}/ai/{firstAiId}/approve", new { expectedRevision = firstRevision });
             Assert(approval.StatusCode == HttpStatusCode.OK &&
                 (await approval.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString() == "Approved",
                 "draft_not_approved");
+            var autoSlot = await CurrentSlot();
+            Assert(autoSlot != initialSlot &&
+                !(await Group()).GetProperty("hasUnpublishedChanges").GetBoolean(),
+                "approved_lesson_not_auto_published");
+            using (var autoScope = app.Services.CreateScope())
+            {
+                var autoDb = autoScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                Assert(await autoDb.PublishedLessonSlots.AnyAsync(x => x.Id == initialSlot && x.AiContentId == null) &&
+                    await autoDb.PublishedLessonSlots.AnyAsync(x => x.Id == autoSlot && x.AiContentId == firstAiId) &&
+                    await autoDb.StudentStageProgress.AnyAsync(x => x.SlotId == autoSlot && x.StageKey == "shadowing"),
+                    "auto_publication_history_or_progress_invalid");
+            }
             using (var editScope = app.Services.CreateScope())
             {
                 var editDb = editScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -127,9 +184,8 @@ internal static class AiPublicationChecks
                 await editDb.SaveChangesAsync();
             }
             var group = await Group();
-            Assert(group.GetProperty("hasUnpublishedChanges").GetBoolean() &&
-                group.GetProperty("aiContentStates")[0].GetProperty("status").GetString() == "approved_needs_publish",
-                "approved_ai_did_not_enable_republish");
+            Assert(group.GetProperty("hasUnpublishedChanges").GetBoolean(),
+                "workflow_edit_did_not_enable_republish");
             var nextVersion = await Publish(group);
             var nextSlot = await CurrentSlot();
             using var scope = app.Services.CreateScope();
@@ -151,14 +207,27 @@ internal static class AiPublicationChecks
         await check("A newer Approved AI creates a new immutable publication", async () =>
         {
             var secondAiId = Guid.NewGuid(); var secondRevision = Guid.NewGuid();
+            var oldSlot = await CurrentSlot();
+            using (var vocabulary = await student.PutAsJsonAsync(
+                $"/api/student/learning/slots/{oldSlot}/vocabulary/progress", new { position = 1 }))
+                Assert(vocabulary.StatusCode == HttpStatusCode.OK, "vocabulary_progress_before_update_missing");
             using (var seedScope = app.Services.CreateScope())
             {
                 var seedDb = seedScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
                 var adminId = await seedDb.Users.Where(x => x.Email == "admin@v2-test.invalid")
                     .Select(x => x.Id).SingleAsync();
+                var studentId = await seedDb.Users.Where(x => x.Email == "student@v2-test.invalid")
+                    .Select(x => x.Id).SingleAsync();
+                var oldVersionId = await seedDb.PublishedLessonSlots.Where(x => x.Id == oldSlot)
+                    .Select(x => x.PublishedCurriculumVersionId).SingleAsync();
+                seedDb.StudentStageProgress.Add(new StudentStageProgress
+                { StudentId = studentId, PublishedCurriculumVersionId = oldVersionId,
+                    SlotId = oldSlot, StageKey = "conversation", CompletedSegments = 1,
+                    IsComplete = true, UpdatedAtUtc = DateTimeOffset.UtcNow });
                 seedDb.LessonAiContents.Add(new LessonAiContent
                 { Id = secondAiId, LessonVersionId = lessonId, CreatedByAdminId = adminId,
-                    Revision = secondRevision, Status = "Draft", PayloadJson = JsonSerializer.Serialize(material, LessonMaterialRules.Json),
+                    Revision = secondRevision, Status = "Draft", PayloadJson = JsonSerializer.Serialize(
+                        material with { ConversationScenario = "A changed conversation" }, LessonMaterialRules.Json),
                     CreatedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow });
                 await seedDb.SaveChangesAsync();
             }
@@ -176,16 +245,19 @@ internal static class AiPublicationChecks
                     UpdatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(1) });
                 await failedDb.SaveChangesAsync();
             }
-            var oldSlot = await CurrentSlot();
             var group = await Group();
-            Assert(group.GetProperty("hasUnpublishedChanges").GetBoolean(), "new_approval_not_detected");
-            await Publish(group);
+            Assert(!group.GetProperty("hasUnpublishedChanges").GetBoolean(), "new_approval_not_auto_published");
             var newSlot = await CurrentSlot();
             using var scope = app.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             Assert(await db.PublishedLessonSlots.AnyAsync(x => x.Id == oldSlot && x.AiContentId == firstAiId) &&
                 await db.PublishedLessonSlots.AnyAsync(x => x.Id == newSlot && x.AiContentId == secondAiId),
                 "ai_snapshot_changed_or_latest_not_selected");
+            Assert(await db.StudentStageProgress.AnyAsync(x => x.SlotId == newSlot &&
+                    x.StageKey == "vocabulary" && x.IsComplete) &&
+                !await db.StudentStageProgress.AnyAsync(x => x.SlotId == newSlot &&
+                    x.StageKey == "conversation"),
+                "ai_update_lost_unchanged_vocabulary_or_kept_changed_conversation_progress");
             group = await Group();
             Assert(!group.GetProperty("hasUnpublishedChanges").GetBoolean() &&
                 group.GetProperty("aiContentStates")[0].GetProperty("status").GetString() == "approved_published",
@@ -201,26 +273,40 @@ internal static class AiPublicationChecks
                 (await unchanged.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString() ==
                 "no_unpublished_changes", "unchanged_ai_allowed_republish");
         });
-        await check("Workflow edits require republish and cannot change the current student path", async () =>
+        await check("A reviewed workflow edit automatically advances the student path and keeps history", async () =>
         {
             var oldSlot = await CurrentSlot();
+            var oldOverview = await student.GetFromJsonAsync<JsonElement>($"/api/student/learning/slots/{oldSlot}");
+            Guid revision;
+            JsonNode stages;
             using (var scope = app.Services.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-                var workflow = await db.LessonWorkflows.SingleAsync(x => x.LessonVersionId == lessonId);
-                var stages = JsonNode.Parse(workflow.StagesJson)!.AsArray();
-                stages[1]!["title"] = "مفردات جديدة";
-                workflow.StagesJson = stages.ToJsonString();
-                workflow.Revision = Guid.NewGuid();
+                var studentId = await db.Users.Where(x => x.Email == "student@v2-test.invalid")
+                    .Select(x => x.Id).SingleAsync();
+                var publishedVersionId = await db.PublishedLessonSlots.Where(x => x.Id == oldSlot)
+                    .Select(x => x.PublishedCurriculumVersionId).SingleAsync();
+                db.StudentPracticeAttempts.Add(new StudentPracticeAttempt
+                { Id = Guid.NewGuid(), StudentId = studentId,
+                    PublishedCurriculumVersionId = publishedVersionId, SlotId = oldSlot,
+                    StageKey = "conversation", Position = 1, Answer = "Hello",
+                    FeedbackJson = "{}", CreatedAtUtc = DateTimeOffset.UtcNow });
                 await db.SaveChangesAsync();
+                var workflow = await db.LessonWorkflows.SingleAsync(x => x.LessonVersionId == lessonId);
+                revision = workflow.Revision;
+                stages = JsonNode.Parse(workflow.StagesJson)!;
+                stages.AsArray()[1]!["title"] = "مفردات جديدة";
             }
-            var oldOverview = await student.GetFromJsonAsync<JsonElement>($"/api/student/learning/slots/{oldSlot}");
+            using var save = await admin.PutAsJsonAsync($"/api/admin/lessons/{lessonId}/workflow",
+                new { expectedRevision = revision, stages });
+            Assert(save.StatusCode == HttpStatusCode.OK &&
+                (await save.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("autoPublishedGroups").GetInt32() == 1,
+                "workflow_auto_publish_failed");
             Assert(oldOverview.GetProperty("stages")[1].GetProperty("title").GetString() == "الكلمات",
                 "admin_edit_changed_published_student_path");
             var group = await Group();
-            Assert(group.GetProperty("hasUnpublishedChanges").GetBoolean(),
-                "workflow_edit_did_not_enable_republish");
-            await Publish(group);
+            Assert(!group.GetProperty("hasUnpublishedChanges").GetBoolean(),
+                "workflow_edit_not_auto_published");
             var newSlot = await CurrentSlot();
             var newOverview = await student.GetFromJsonAsync<JsonElement>($"/api/student/learning/slots/{newSlot}");
             Assert(newOverview.GetProperty("stages")[1].GetProperty("title").GetString() == "مفردات جديدة",
@@ -233,6 +319,9 @@ internal static class AiPublicationChecks
             Assert(JsonNode.Parse(snapshots[oldSlot]!)!.AsArray()[1]!["title"]!.GetValue<string>() == "الكلمات" &&
                 JsonNode.Parse(snapshots[newSlot]!)!.AsArray()[1]!["title"]!.GetValue<string>() == "مفردات جديدة",
                 "workflow_snapshot_was_mutated");
+            Assert(await verifyDb.StudentPracticeAttempts.AnyAsync(x => x.SlotId == newSlot &&
+                x.StageKey == "conversation" && x.Answer == "Hello"),
+                "unchanged_conversation_attempt_was_lost_on_workflow_edit");
         });
         return failures() == 0 ? 0 : 1;
     }

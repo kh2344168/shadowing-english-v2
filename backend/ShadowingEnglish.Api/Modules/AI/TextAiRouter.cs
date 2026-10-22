@@ -13,6 +13,9 @@ public sealed record AiResult<T>(T Value, string Provider);
 // in the private AiText:Providers configuration to extend the fallback list.
 public sealed class TextAiRouter(IHttpClientFactory clients, IConfiguration config, ILogger<TextAiRouter> logger)
 {
+    // Structured lesson stages can take longer than short chat replies on free-tier providers.
+    // Keep each provider bounded so the worker can still try the remaining fallbacks.
+    public const int ProviderTimeoutSeconds = 40;
     private sealed record Provider(string Name, string Url, string Model);
     private static readonly (string Name, string Url, string Model)[] Catalog =
     [
@@ -45,7 +48,7 @@ public sealed class TextAiRouter(IHttpClientFactory clients, IConfiguration conf
                     max_tokens = maxTokens, stream = false
                 }), Encoding.UTF8, "application/json");
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-                timeout.CancelAfter(TimeSpan.FromSeconds(12));
+                timeout.CancelAfter(TimeSpan.FromSeconds(ProviderTimeoutSeconds));
                 using var response = await clients.CreateClient(nameof(TextAiRouter)).SendAsync(
                     request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
                 if (!response.IsSuccessStatusCode)

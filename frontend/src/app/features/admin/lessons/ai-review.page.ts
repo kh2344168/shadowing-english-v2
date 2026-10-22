@@ -20,6 +20,7 @@ import {
   DictationCard,
   QuizCard,
   StageProcessingStatus,
+  StageLatestAttempt,
   VocabularyImageOption,
 } from './lesson-ai.api';
 import { LessonStageType, LessonWorkflowApi, LessonWorkflowStage } from './lesson-workflow.api';
@@ -56,7 +57,12 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   readonly voiceTermsRequired = signal(false);
   readonly vocabularyTargetCount = signal(12);
   readonly lessonLevel = signal('B1');
-  readonly dictationModes: { key: Exclude<NonNullable<DictationCard['mode']>, 'single-word'>; title: string; icon: string }[] = [
+  readonly lessonType = signal<'situation' | 'clip' | 'manual'>('manual');
+  readonly dictationModes: {
+    key: Exclude<NonNullable<DictationCard['mode']>, 'single-word'>;
+    title: string;
+    icon: string;
+  }[] = [
     { key: 'missing-word', title: 'كلمة ناقصة', icon: 'edit_note' },
     { key: 'word-order', title: 'ترتيب كلمات', icon: 'reorder' },
     { key: 'full-sentence', title: 'جملة كاملة', icon: 'subject' },
@@ -76,10 +82,13 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   readonly busy = signal(false);
   readonly globalProcessing = signal(false);
   readonly dirty = signal(false);
+  readonly staleDraft = signal(false);
   readonly error = signal('');
   readonly notice = signal('');
+  readonly approvalAttempted = signal(false);
   readonly selectedStage = signal<ReviewStage | null>(null);
   readonly stageStatus = signal<StageProcessingStatus>('NotStarted');
+  readonly latestAttempt = signal<StageLatestAttempt | null>(null);
   readonly activeWorkflowStage = signal<LessonWorkflowStage | null>(null);
   readonly requiredReviewStages = signal<ReviewStage[]>([
     'vocabulary',
@@ -172,9 +181,25 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       this.imagesConfigured.set(providers.imagesConfigured === true);
       this.voiceConfigured.set(providers.voiceConfigured === true);
       this.lessonLevel.set(workflow?.level ?? 'B1');
+      this.lessonType.set(workflow?.lessonType ?? 'manual');
       const requested = workflow?.stages.find((stage) => stage.id === this.workflowStageId);
-      this.segments.set(requested?.type === 'listen-type'
-        ? await this.resolveTeacherAudio(segments) : segments);
+      const reviewStage = requested ? this.toReviewStage(requested.type) : null;
+      let latestAttempt: StageLatestAttempt | null = null;
+      if (requested && reviewStage) {
+        try {
+          latestAttempt = await firstValueFrom(
+            this.api.latestStageAttempt(this.versionId, requested.type),
+          );
+        } catch {
+          // An older API can still serve the editor; only the failure detail is unavailable.
+        }
+      }
+      this.latestAttempt.set(latestAttempt);
+      if (latestAttempt?.status === 'Failed' && this.notice().startsWith('بدأت معالجة'))
+        this.notice.set('');
+      this.segments.set(
+        requested?.type === 'listen-type' ? await this.resolveTeacherAudio(segments) : segments,
+      );
       if (this.destroyed) return;
       this.globalProcessing.set(
         latestJob?.status === 'Pending' || latestJob?.status === 'Generating',
@@ -191,16 +216,16 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       }
       if (workflow) {
         this.activeWorkflowStage.set(requested ?? null);
-        const reviewStage = requested ? this.toReviewStage(requested.type) : null;
-        const stageStatus = requested ? statuses[requested.type] ?? 'NotStarted' : 'NotStarted';
+        const stageStatus = requested ? (statuses[requested.type] ?? 'NotStarted') : 'NotStarted';
         // A lesson has one editable draft shared by all stages. Show it even if
         // the approved source has a newer UpdatedAtUtc timestamp.
         const job = savedDraft ?? latestJob;
         this.setJob(job);
         this.stageStatus.set(stageStatus);
         this.selectedStage.set(
-          reviewStage && job?.status === 'Draft' &&
-          (stageStatus === 'NeedsReview' || stageStatus === 'Approved')
+          reviewStage &&
+            job?.status === 'Draft' &&
+            (stageStatus === 'NeedsReview' || stageStatus === 'Approved')
             ? reviewStage
             : null,
         );
@@ -213,7 +238,7 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       console.info('[Admin.AiReview.Load.Success]', {
         versionId: this.versionId,
         status: latestJob?.status ?? 'None',
-        errorCode: latestJob?.status === 'Failed' ? latestJob.errorCode : null,
+        errorCode: latestAttempt?.status === 'Failed' ? latestAttempt.errorCode : null,
         durationMs: Math.round(performance.now() - started),
       });
     } catch (ex) {
@@ -227,23 +252,30 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       this.loading.set(false);
     }
   }
-  private async resolveTeacherAudio(segments: LessonSegmentReview[]): Promise<LessonSegmentReview[]> {
-    return Promise.all(segments.map(async (segment) => {
-      if (segment.audioUrl !== undefined) return segment;
-      if (this.teacherAudioProbeCache.has(segment.position))
-        return { ...segment, audioUrl: this.teacherAudioProbeCache.get(segment.position) ?? null };
-      try {
-        await firstValueFrom(this.api.probeTeacherSegmentAudio(this.versionId, segment.position));
-        const audioUrl = this.api.teacherSegmentAudioUrl(this.versionId, segment.position);
-        this.teacherAudioProbeCache.set(segment.position, audioUrl);
-        return { ...segment, audioUrl };
-      } catch (error) {
-        // Older API versions omitted audioUrl. Only a genuine 404 proves the clip is absent.
-        if ((error as HttpErrorResponse).status !== 404) return segment;
-        this.teacherAudioProbeCache.set(segment.position, null);
-        return { ...segment, audioUrl: null };
-      }
-    }));
+  private async resolveTeacherAudio(
+    segments: LessonSegmentReview[],
+  ): Promise<LessonSegmentReview[]> {
+    return Promise.all(
+      segments.map(async (segment) => {
+        if (segment.audioUrl !== undefined) return segment;
+        if (this.teacherAudioProbeCache.has(segment.position))
+          return {
+            ...segment,
+            audioUrl: this.teacherAudioProbeCache.get(segment.position) ?? null,
+          };
+        try {
+          await firstValueFrom(this.api.probeTeacherSegmentAudio(this.versionId, segment.position));
+          const audioUrl = this.api.teacherSegmentAudioUrl(this.versionId, segment.position);
+          this.teacherAudioProbeCache.set(segment.position, audioUrl);
+          return { ...segment, audioUrl };
+        } catch (error) {
+          // Older API versions omitted audioUrl. Only a genuine 404 proves the clip is absent.
+          if ((error as HttpErrorResponse).status !== 404) return segment;
+          this.teacherAudioProbeCache.set(segment.position, null);
+          return { ...segment, audioUrl: null };
+        }
+      }),
+    );
   }
   private toReviewStage(type: LessonStageType): ReviewStage | null {
     if (type === 'vocabulary') return 'vocabulary';
@@ -260,13 +292,19 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   }
   private setJob(job: LessonAiJob | null): void {
     this.job.set(job);
+    this.staleDraft.set(false);
     this.imageOptions.set({});
     this.imagePages.set({});
     const material = job?.material ? structuredClone(job.material) : null;
-    if (material?.vocabularyTargetCount) this.vocabularyTargetCount.set(material.vocabularyTargetCount);
-    const needsDictation = !!material && job?.stageType == null &&
-      this.activeWorkflowStage()?.type === 'listen-type' && !material.vocabularyOnly &&
-      material.dictation == null && job?.status === 'Draft';
+    if (material?.vocabularyTargetCount)
+      this.vocabularyTargetCount.set(material.vocabularyTargetCount);
+    const needsDictation =
+      !!material &&
+      job?.stageType == null &&
+      this.activeWorkflowStage()?.type === 'listen-type' &&
+      !material.vocabularyOnly &&
+      material.dictation == null &&
+      job?.status === 'Draft';
     if (needsDictation && material) {
       material.dictation = this.segments()
         .filter(({ text, audioUrl }) => !!audioUrl && text.trim().length <= 600)
@@ -276,20 +314,39 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     if (material?.dictation && job?.status === 'Draft') {
       material.dictation = material.dictation.map((item) => {
         if (item.mode !== 'single-word') return item;
-        const text = this.segments().find((segment) => segment.position === item.position)?.text ?? '';
+        const text =
+          this.segments().find((segment) => segment.position === item.position)?.text ?? '';
         const words = this.dictationWords(text);
         convertedLegacyDictation = true;
-        if (words.length < 2) return { ...item, mode: 'full-sentence', targetWordIndex: null,
-          acceptedAnswers: [text.trim()], audioStartSeconds: null, audioEndSeconds: null };
-        const targetWordIndex = item.targetWordIndex != null && item.targetWordIndex >= 0 &&
+        if (words.length < 2)
+          return {
+            ...item,
+            mode: 'full-sentence',
+            targetWordIndex: null,
+            acceptedAnswers: [text.trim()],
+            audioStartSeconds: null,
+            audioEndSeconds: null,
+          };
+        const targetWordIndex =
+          item.targetWordIndex != null &&
+          item.targetWordIndex >= 0 &&
           item.targetWordIndex < words.length
-          ? item.targetWordIndex : Math.floor(words.length / 2);
-        return { ...item, mode: 'missing-word', targetWordIndex,
-          acceptedAnswers: [words[targetWordIndex]], audioStartSeconds: null, audioEndSeconds: null };
+            ? item.targetWordIndex
+            : Math.floor(words.length / 2);
+        return {
+          ...item,
+          mode: 'missing-word',
+          targetWordIndex,
+          acceptedAnswers: [words[targetWordIndex]],
+          audioStartSeconds: null,
+          audioEndSeconds: null,
+        };
       });
     }
     const needsReviewInit =
-      !!material && job?.stageType == null && job?.status === 'Draft' &&
+      !!material &&
+      job?.stageType == null &&
+      job?.status === 'Draft' &&
       material.reviewedStages == null;
     if (needsReviewInit && material) material.reviewedStages = [];
     this.draft.set(material);
@@ -314,16 +371,25 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   }
 
   stageCanEdit(): boolean {
-    return !this.globalProcessing() && !!this.draft() && this.job()?.status === 'Draft' &&
-      (this.stageStatus() === 'NeedsReview' || this.stageStatus() === 'Approved');
+    return (
+      !this.globalProcessing() &&
+      !!this.draft() &&
+      this.job()?.status === 'Draft' &&
+      (this.stageStatus() === 'NeedsReview' || this.stageStatus() === 'Approved')
+    );
   }
 
   stagePreview(): string {
     const material = this.draft();
     switch (this.activeWorkflowStage()?.type) {
       case 'vocabulary':
-        return material?.vocabulary.filter((card) => card.includeForStudent !== false)
-          .slice(0, 6).map((card) => card.word).join(' · ') || 'الكلمات محفوظة.';
+        return (
+          material?.vocabulary
+            .filter((card) => card.includeForStudent !== false)
+            .slice(0, 6)
+            .map((card) => card.word)
+            .join(' · ') || 'الكلمات محفوظة.'
+        );
       case 'conversation':
         return material?.conversationScenario || 'موقف المحادثة محفوظ.';
       case 'grammar':
@@ -339,7 +405,9 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       case 'provider_rate_limited':
         return 'المزوّد وصل لحد الطلبات الحالي (429). حاول لاحقًا أو أضف مزودًا آخر للانتقال التلقائي.';
       case 'provider_invalid_output':
-        return 'ردّ النموذج لم يجتز فحص الكلمات والأسئلة. أعد المعالجة، وإن تكرر جرّب نموذجًا نصيًا آخر.';
+        return 'ردّ النموذج لم يجتز التحقق من محتوى هذه المرحلة. جرّب مزودًا نصيًا آخر إذا تكرر الفشل.';
+      case 'invalid_previous_material':
+        return 'بيانات المحتوى السابق غير قابلة للقراءة. راجع سجل API قبل إعادة المعالجة.';
       case 'provider_timeout':
         return 'المزوّد لم يردّ في المهلة المحددة. أعد المحاولة أو جرّب مزودًا آخر.';
       case 'provider_request_rejected':
@@ -410,11 +478,20 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
         if (this.dictationAudioState() === 'unverified')
           return ['تعذر التحقق من تسجيلات المدرّس. راجع اتصال API وتخزين الصوت ثم حدّث الصفحة.'];
         if (this.dictationAudioState() === 'missing')
-          return ['لا يوجد تسجيل صوتي محفوظ لهذا الدرس. أضف صوت المدرّس أو ألغِ تفعيل مرحلة اسمع واكتب.'];
+          return [
+            'لا يوجد تسجيل صوتي محفوظ لهذا الدرس. أضف صوت المدرّس أو ألغِ تفعيل مرحلة اسمع واكتب.',
+          ];
         if (!material.dictation?.some((item) => item.enabled))
           return ['اختر جملة واحدة على الأقل من المقاطع التي لها تسجيل صوتي.'];
-        if (material.dictation.some((item) => item.enabled &&
-          !this.segments().some((segment) => segment.position === item.position && segment.audioUrl)))
+        if (
+          material.dictation.some(
+            (item) =>
+              item.enabled &&
+              !this.segments().some(
+                (segment) => segment.position === item.position && segment.audioUrl,
+              ),
+          )
+        )
           return ['إحدى الجمل المختارة ليس لها تسجيل من صوت المدرّس. استبعدها.'];
         for (const item of material.dictation.filter((card) => card.enabled)) {
           const segment = this.segments().find((x) => x.position === item.position);
@@ -431,8 +508,12 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
               return [`الجملة ${item.position}: اختر الكلمة المستهدفة.`];
           }
         }
-        return material.dictation.some((item) => item.enabled &&
-          this.dictationMode(item) === 'full-sentence' && !item.acceptedAnswers.length)
+        return material.dictation.some(
+          (item) =>
+            item.enabled &&
+            this.dictationMode(item) === 'full-sentence' &&
+            !item.acceptedAnswers.length,
+        )
           ? ['أضف إجابة مقبولة لكل جملة كاملة مختارة.']
           : [];
       case 'grammar':
@@ -449,26 +530,71 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
         const questions = this.questionsFor(type).map(({ question }) => question);
         if (!questions.some((question) => question.enabled !== false))
           return ['أضف سؤالًا واحدًا على الأقل أو فعّل سؤالًا موجودًا.'];
-        return questions.filter((question) => question.enabled !== false).some(
-          (question) =>
-            !question.question?.trim() ||
-            !question.explanationAr?.trim() ||
-            question.options.some((option) => !option.trim()),
-        )
+        return questions
+          .filter((question) => question.enabled !== false)
+          .some(
+            (question) =>
+              !question.question?.trim() ||
+              !question.explanationAr?.trim() ||
+              question.options.some((option) => !option.trim()),
+          )
           ? ['أكمل بيانات الأسئلة أو استبعد السؤال غير المكتمل من المسودة.']
           : [];
       }
-      case 'conversation':
-        if (!material.conversationScenario?.trim()) return ['أكمل موقف المحادثة قبل الاعتماد.'];
+      case 'conversation': {
+        const issues: string[] = [];
+        if (!material.conversationScenario?.trim()) issues.push('اكتب موقف المحادثة.');
+        if (!material.conversationContextType)
+          issues.push('اختر نوع المهمة: موقف حياتي أو مقطع أو تدريب مهني.');
+        if (!material.studentRole?.trim() || !material.aiRole?.trim())
+          issues.push('حدد دور الطالب ودور المحاور.');
+        if (
+          !material.conversationSuccessSteps?.length ||
+          material.conversationSuccessSteps.some((step) => !step.trim())
+        )
+          issues.push('اكتب خطوة نجاح واحدة على الأقل، كل خطوة في سطر.');
+        if (
+          material.conversationMinTurns == null ||
+          material.conversationMaxTurns == null ||
+          !Number.isInteger(material.conversationMinTurns) ||
+          !Number.isInteger(material.conversationMaxTurns) ||
+          material.conversationMinTurns < 1 ||
+          material.conversationMaxTurns < material.conversationMinTurns ||
+          material.conversationMaxTurns > 20
+        )
+          issues.push('حدد حدًا أدنى وأقصى لردود الطالب بين 1 و20.');
+        if (
+          material.conversationContextType === 'professional' &&
+          !material.conversationAllowedFacts?.length
+        )
+          issues.push('في التدريب المهني، اكتب حقائق الموقف المسموح بها.');
+        if (!material.conversationSupportMode) issues.push('اختر درجة المساعدة المناسبة للطالب.');
+        if (!material.openingMessage?.trim()) issues.push('اكتب أول سؤال سيظهر للطالب.');
+        if (!material.conversationLearningOutcome?.trim())
+          issues.push('حدد ما الذي سيتمكن الطالب من فعله بعد المحادثة.');
+        if (material.conversationSupportMode === 'first-steps') {
+          if (!material.conversationHelpAr?.trim() || !material.conversationModelAnswer?.trim())
+            issues.push('في «الخطوات الأولى»، أضف تلميحًا بالعربية ومثالًا قصيرًا للرد.');
+          if (material.conversationFocusTense)
+            issues.push('لا تفرض زمنًا نحويًا على طالب «الخطوات الأولى».');
+          if (material.conversationCorrectionMode === 'all')
+            issues.push('في «الخطوات الأولى»، صحّح أهداف الدرس فقط.');
+          if ((material.conversationTargetWords?.length ?? 0) > 3)
+            issues.push('اختر 3 كلمات أو عبارات على الأكثر في «الخطوات الأولى».');
+          if (material.conversationTurnTarget != null && material.conversationTurnTarget > 5)
+            issues.push('«الخطوات الأولى» تحتاج 5 ردود أو أقل.');
+          if (material.conversationMaxTurns != null && material.conversationMaxTurns > 6)
+            issues.push('«الخطوات الأولى» تحتاج 6 ردود أو أقل كحد أقصى.');
+        }
         if (
           material.conversationTurnTarget != null &&
           (!Number.isInteger(material.conversationTurnTarget) ||
             material.conversationTurnTarget < 1 ||
             material.conversationTurnTarget > 20)
         )
-          return ['حدد عدد ردود الطالب بين 1 و20.'];
+          issues.push('حدد عدد ردود الطالب بين 1 و20.');
         if ((material.conversationTargetWords?.length ?? 0) > 12)
-          return ['اختر 12 كلمة أو عبارة كحد أقصى.'];
+          issues.push('اختر 12 كلمة أو عبارة كحد أقصى.');
         if (
           material.conversationTargetWords?.some(
             (word) =>
@@ -477,15 +603,35 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
               ),
           )
         )
-          return ['احذف كلمات مستبعدة أو تغير اسمها من أهداف المحادثة.'];
-        return [];
+          issues.push('احذف الكلمات المستبعدة أو التي تغير اسمها من أهداف المحادثة.');
+        return issues;
+      }
     }
   }
   async reviewStage(): Promise<void> {
     const stage = this.selectedStage(),
       material = this.draft();
     if (stage === 'listen-type') this.syncDictationAnswers();
-    if (!stage || !material || this.busy() || this.stageIssues(stage).length) return;
+    if (!stage || !material || this.busy() || this.staleDraft()) return;
+    const issues = this.stageIssues(stage);
+    if (issues.length) {
+      this.approvalAttempted.set(true);
+      this.error.set(
+        stage === 'conversation'
+          ? 'لا يمكن الاعتماد الآن. راجع الرسالة الموجودة تحت كل حقل محدد بالأحمر.'
+          : `لا يمكن اعتماد المرحلة بعد: ${issues.join(' ')}`,
+      );
+      if (stage === 'conversation')
+        setTimeout(() => {
+          const field = document.querySelector<HTMLElement>(
+            '.conversation-workspace .conversation-field--invalid',
+          );
+          field?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+          field?.querySelector<HTMLElement>('input, textarea, select, button')?.focus();
+        });
+      return;
+    }
+    this.approvalAttempted.set(false);
     material.reviewedStages = [...new Set([...(material.reviewedStages ?? []), stage])];
     this.draft.set({ ...material });
     this.dirty.set(true);
@@ -518,7 +664,10 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   setVocabularySelection(include: boolean): void {
     const material = this.draft();
     if (!material) return;
-    material.vocabulary = material.vocabulary.map((card) => ({ ...card, includeForStudent: include }));
+    material.vocabulary = material.vocabulary.map((card) => ({
+      ...card,
+      includeForStudent: include,
+    }));
     this.draft.set({ ...material });
     this.changed();
   }
@@ -553,16 +702,23 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     this.imageBusy.set(index);
     try {
       await firstValueFrom(this.auth.csrf());
-      const result = await firstValueFrom(this.api.vocabularyImages(this.versionId, job, index, page));
+      const result = await firstValueFrom(
+        this.api.vocabularyImages(this.versionId, job, index, page),
+      );
       this.imageOptions.update((current) => ({ ...current, [index]: result.options }));
       this.imagePages.update((current) => ({ ...current, [index]: result.page }));
       this.notice.set('اختر الصورة المناسبة من الاقتراحات، ثم احفظ التعديل.');
     } catch (ex) {
       const status = (ex as { status?: number }).status;
-      this.error.set(status === 404 ? 'لم نجد صورة مناسبة لهذه الكلمة في Pexels. يمكنك وضع رابط يدويًا.' :
-        status === 503 ? 'مفتاح Pexels غير صالح أو غير مفعّل. راجعه من إعدادات مزودي الصور.' :
-        status === 429 ? 'وصل Pexels لحد الطلبات المتاح. حاول لاحقًا.' :
-        'تعذر جلب الصورة الآن. تحقق من اتصال Pexels أو أعد المحاولة.');
+      this.error.set(
+        status === 404
+          ? 'لم نجد صورة مناسبة لهذه الكلمة في Pexels. يمكنك وضع رابط يدويًا.'
+          : status === 503
+            ? 'مفتاح Pexels غير صالح أو غير مفعّل. راجعه من إعدادات مزودي الصور.'
+            : status === 429
+              ? 'وصل Pexels لحد الطلبات المتاح. حاول لاحقًا.'
+              : 'تعذر جلب الصورة الآن. تحقق من اتصال Pexels أو أعد المحاولة.',
+      );
     } finally {
       this.imageBusy.set(null);
     }
@@ -595,7 +751,9 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
         if (!card?.word.trim() || card.imageUrl) continue;
         this.imageBusy.set(index);
         try {
-          const result = await firstValueFrom(this.api.vocabularyImages(this.versionId, job, index, 1));
+          const result = await firstValueFrom(
+            this.api.vocabularyImages(this.versionId, job, index, 1),
+          );
           const image = result.options[0];
           if (!image) continue;
           const material = this.draft();
@@ -608,9 +766,11 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
           // One missing photo must not prevent suggestions for the remaining cards.
         }
       }
-      this.notice.set(filled
-        ? `تم اقتراح ${filled} صورة. راجع كل بطاقة ثم احفظ التعديلات.`
-        : 'لم نجد صورًا مناسبة الآن. تحقق من مفتاح Pexels أو اختر الصور يدويًا.');
+      this.notice.set(
+        filled
+          ? `تم اقتراح ${filled} صورة. راجع كل بطاقة ثم احفظ التعديلات.`
+          : 'لم نجد صورًا مناسبة الآن. تحقق من مفتاح Pexels أو اختر الصور يدويًا.',
+      );
     } catch {
       this.error.set('تعذر بدء البحث عن الصور. حدّث الصفحة وحاول مرة أخرى.');
     } finally {
@@ -687,7 +847,9 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     const value = text.trim();
     if (!value || this.voiceBusy()) return;
     if (!this.voiceConfigured()) {
-      this.error.set('الصوت الطبيعي غير مفعّل. أضف مفتاح Gemini Voice أو Groq Voice من إعدادات الخادم.');
+      this.error.set(
+        'الصوت الطبيعي غير مفعّل. أضف مفتاح Gemini Voice أو Groq Voice من إعدادات الخادم.',
+      );
       return;
     }
     this.voiceBusy.set(true);
@@ -705,9 +867,11 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       await audio.play();
     } catch (error) {
       this.stopVoice();
-      if (await this.voiceErrorCode(error) === 'voice_terms_required') {
+      if ((await this.voiceErrorCode(error)) === 'voice_terms_required') {
         this.voiceTermsRequired.set(true);
-        this.error.set('مفتاح الصوت محفوظ، لكن Groq يتطلب قبول شروط نموذج Orpheus من مالك الحساب قبل تشغيل النطق.');
+        this.error.set(
+          'مفتاح الصوت محفوظ، لكن Groq يتطلب قبول شروط نموذج Orpheus من مالك الحساب قبل تشغيل النطق.',
+        );
       } else {
         this.error.set('تعذر تشغيل الصوت الطبيعي الآن. راجع إعدادات مزود الصوت أو حاول مرة أخرى.');
       }
@@ -719,16 +883,20 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     if (!(error instanceof HttpErrorResponse)) return null;
     if (error.error instanceof Blob) {
       try {
-        const body = typeof error.error.text === 'function' ? await error.error.text() :
-          await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result ?? ''));
-            reader.onerror = () => reject(reader.error);
-            reader.readAsText(error.error);
-          });
+        const body =
+          typeof error.error.text === 'function'
+            ? await error.error.text()
+            : await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result ?? ''));
+                reader.onerror = () => reject(reader.error);
+                reader.readAsText(error.error);
+              });
         const result = JSON.parse(body);
         return typeof result?.error === 'string' ? result.error : null;
-      } catch { return null; }
+      } catch {
+        return null;
+      }
     }
     return typeof error.error?.error === 'string' ? error.error.error : null;
   }
@@ -757,22 +925,35 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     const words = this.dictationWords(text);
     if (this.lessonLevel() === 'A1' && words.length >= 2) {
       const targetWordIndex = Math.floor(words.length / 2);
-      return { position, enabled, mode: 'missing-word', targetWordIndex,
-        acceptedAnswers: [words[targetWordIndex]], hint: null };
+      return {
+        position,
+        enabled,
+        mode: 'missing-word',
+        targetWordIndex,
+        acceptedAnswers: [words[targetWordIndex]],
+        hint: null,
+      };
     }
     return { position, enabled, mode: 'full-sentence', acceptedAnswers: [text.trim()], hint: null };
   }
-  setDictationMode(position: number, mode: Exclude<NonNullable<DictationCard['mode']>, 'single-word'>, text: string): void {
+  setDictationMode(
+    position: number,
+    mode: Exclude<NonNullable<DictationCard['mode']>, 'single-word'>,
+    text: string,
+  ): void {
     const item = this.dictationItem(position);
     if (!item || this.dictationMode(item) === mode) return;
     const words = this.dictationWords(text);
-    if (!words.length || mode === 'missing-word' && words.length < 2 ||
-      mode === 'word-order' && (words.length < 3 || words.length > 12)) return;
+    if (
+      !words.length ||
+      (mode === 'missing-word' && words.length < 2) ||
+      (mode === 'word-order' && (words.length < 3 || words.length > 12))
+    )
+      return;
     item.mode = mode;
-    item.targetWordIndex = mode === 'missing-word'
-      ? Math.floor(words.length / 2) : null;
-    item.acceptedAnswers = item.targetWordIndex == null
-      ? [text.trim()] : [words[item.targetWordIndex]];
+    item.targetWordIndex = mode === 'missing-word' ? Math.floor(words.length / 2) : null;
+    item.acceptedAnswers =
+      item.targetWordIndex == null ? [text.trim()] : [words[item.targetWordIndex]];
     item.audioStartSeconds = null;
     item.audioEndSeconds = null;
     this.changed();
@@ -786,12 +967,12 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     this.changed();
   }
   dictationPrompt(item: DictationCard, text: string): string {
-    if (this.dictationMode(item) !== 'missing-word' || item.targetWordIndex == null)
-      return text;
+    if (this.dictationMode(item) !== 'missing-word' || item.targetWordIndex == null) return text;
     const matches = [...text.matchAll(/[a-zA-Z0-9]+(?:'[a-zA-Z0-9]+)?/g)];
     const match = matches[item.targetWordIndex];
-    return match?.index == null ? text :
-      `${text.slice(0, match.index)}_____${text.slice(match.index + match[0].length)}`;
+    return match?.index == null
+      ? text
+      : `${text.slice(0, match.index)}_____${text.slice(match.index + match[0].length)}`;
   }
   automaticDictationAnswer(item: DictationCard, text: string): string | null {
     const mode = this.dictationMode(item);
@@ -807,7 +988,10 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     for (const item of material.dictation) {
       const segment = this.segments().find((x) => x.position === item.position);
       const answer = segment ? this.automaticDictationAnswer(item, segment.text) : null;
-      if (answer != null && (item.acceptedAnswers.length !== 1 || item.acceptedAnswers[0] !== answer)) {
+      if (
+        answer != null &&
+        (item.acceptedAnswers.length !== 1 || item.acceptedAnswers[0] !== answer)
+      ) {
         item.acceptedAnswers = [answer];
         updated = true;
       }
@@ -818,13 +1002,19 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     }
   }
   dictationModeCount(mode: NonNullable<DictationCard['mode']>): number {
-    return this.draft()?.dictation?.filter((item) => item.enabled && this.dictationMode(item) === mode).length ?? 0;
+    return (
+      this.draft()?.dictation?.filter((item) => item.enabled && this.dictationMode(item) === mode)
+        .length ?? 0
+    );
   }
   setDictationSelection(enabled: boolean): void {
     const material = this.draft();
     if (!material?.dictation) return;
-    const playable = new Set(this.segments().filter((segment) => !!segment.audioUrl)
-      .map((segment) => segment.position));
+    const playable = new Set(
+      this.segments()
+        .filter((segment) => !!segment.audioUrl)
+        .map((segment) => segment.position),
+    );
     material.dictation = material.dictation.map((item) => ({
       ...item,
       enabled: enabled && playable.has(item.position),
@@ -839,7 +1029,8 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     const material = this.draft();
     if (!material) return;
     material.quiz = material.quiz.map((question) =>
-      (question.type ?? 'multiple-choice') === type ? { ...question, enabled } : question);
+      (question.type ?? 'multiple-choice') === type ? { ...question, enabled } : question,
+    );
     this.draft.set({ ...material });
     this.changed();
   }
@@ -870,6 +1061,123 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       .filter(Boolean);
     this.changed();
   }
+  updateConversationLines(
+    field: 'conversationSuccessSteps' | 'conversationAllowedFacts',
+    value: string,
+  ): void {
+    const material = this.draft();
+    if (!material) return;
+    material[field] = value
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    this.changed();
+  }
+  conversationSupportMode(): NonNullable<LessonMaterial['conversationSupportMode']> | 'legacy' {
+    return this.draft()?.conversationSupportMode ?? 'legacy';
+  }
+  conversationFieldIssue(field: string): string | null {
+    if (!this.approvalAttempted()) return null;
+    const material = this.draft();
+    if (!material) return null;
+    switch (field) {
+      case 'support':
+        return material.conversationSupportMode ? null : 'اختر مستوى المساعدة المناسب للطالب.';
+      case 'context':
+        return material.conversationContextType ? null : 'اختر نوع المحادثة.';
+      case 'scenario':
+        return material.conversationScenario?.trim() ? null : 'اكتب وصفًا مختصرًا للموقف.';
+      case 'studentRole':
+        return material.studentRole?.trim() ? null : 'اكتب دور الطالب في المحادثة.';
+      case 'aiRole':
+        return material.aiRole?.trim() ? null : 'اكتب دور المحاور الذكي.';
+      case 'facts':
+        return material.conversationContextType !== 'professional' ||
+          material.conversationAllowedFacts?.length
+          ? null
+          : 'اكتب حقيقة واحدة على الأقل حتى لا يخترع المحاور معلومات.';
+      case 'opening':
+        return material.openingMessage?.trim() ? null : 'اكتب السؤال الذي يبدأ به المحاور.';
+      case 'steps':
+        return material.conversationSuccessSteps?.length &&
+          material.conversationSuccessSteps.every((step) => step.trim())
+          ? null
+          : 'اكتب خطوة نجاح واحدة على الأقل، كل خطوة في سطر.';
+      case 'outcome':
+        return material.conversationLearningOutcome?.trim()
+          ? null
+          : 'اكتب ما سيتمكن الطالب من فعله بعد المحادثة.';
+      case 'minTurns':
+        return Number.isInteger(material.conversationMinTurns) &&
+          material.conversationMinTurns! >= 1 &&
+          material.conversationMinTurns! <= 20
+          ? null
+          : 'اكتب رقمًا من 1 إلى 20.';
+      case 'maxTurns':
+        return Number.isInteger(material.conversationMaxTurns) &&
+          material.conversationMaxTurns! >= 1 &&
+          material.conversationMaxTurns! <= 20 &&
+          material.conversationMaxTurns! >= (material.conversationMinTurns ?? 1) &&
+          (material.conversationSupportMode !== 'first-steps' ||
+            material.conversationMaxTurns! <= 6)
+          ? null
+          : material.conversationSupportMode === 'first-steps' &&
+              (material.conversationMaxTurns ?? 0) > 6
+            ? 'في «خطوات أولى» الحد الأقصى 6 ردود.'
+            : 'اكتب رقمًا من 1 إلى 20، ولا يقل عن الحد الأدنى.';
+      case 'help':
+        return material.conversationSupportMode !== 'first-steps' ||
+          material.conversationHelpAr?.trim()
+          ? null
+          : 'اكتب تلميحًا بالعربية يساعد الطالب إذا تعثر.';
+      case 'modelAnswer':
+        return material.conversationSupportMode !== 'first-steps' ||
+          material.conversationModelAnswer?.trim()
+          ? null
+          : 'اكتب مثال رد قصير للطالب.';
+      default:
+        return null;
+    }
+  }
+  setConversationSupportMode(mode: NonNullable<LessonMaterial['conversationSupportMode']>): void {
+    const material = this.draft();
+    if (!material || material.conversationSupportMode === mode) return;
+    const previous = material.conversationSupportMode;
+    material.conversationSupportMode = mode;
+    material.conversationContextType ??= this.lessonType() === 'clip' ? 'clip' : 'situation';
+    material.conversationMinTurns ??= mode === 'first-steps' ? 2 : mode === 'guided' ? 5 : 6;
+    material.conversationMaxTurns ??= mode === 'first-steps' ? 4 : mode === 'guided' ? 10 : 12;
+    if (
+      mode === 'first-steps' &&
+      (material.conversationMaxTurns > 6 ||
+        material.conversationMinTurns > material.conversationMaxTurns)
+    ) {
+      material.conversationMinTurns = 2;
+      material.conversationMaxTurns = 4;
+    }
+    if (
+      previous == null ||
+      material.conversationTurnTarget == null ||
+      material.conversationTurnTarget ===
+        (previous === 'first-steps' ? 3 : previous === 'guided' ? 5 : 8) ||
+      (mode === 'first-steps' && material.conversationTurnTarget > 5)
+    )
+      material.conversationTurnTarget = mode === 'first-steps' ? 3 : mode === 'guided' ? 5 : 8;
+    if (mode === 'first-steps') {
+      material.conversationFocusTense = null;
+      material.conversationCorrectionMode = 'lesson-only';
+      material.conversationTargetWords = material.conversationTargetWords?.slice(0, 3) ?? [];
+      if (
+        !material.openingMessage?.trim() ||
+        material.openingMessage === material.conversationScenario
+      )
+        material.openingMessage = 'Hi! How are you?';
+      material.conversationHelpAr ||= 'يمكنك الرد بكلمة واحدة أو عبارة قصيرة.';
+      material.conversationModelAnswer ||= "I'm good.";
+    }
+    this.draft.set({ ...material });
+    this.changed();
+  }
   conversationWordSelected(word: string): boolean {
     return this.draft()?.conversationTargetWords?.includes(word) ?? false;
   }
@@ -877,7 +1185,8 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     const material = this.draft();
     if (!material) return;
     const words = material.conversationTargetWords ?? [];
-    if (selected && !words.includes(word) && words.length >= 12) return;
+    const limit = material.conversationSupportMode === 'first-steps' ? 3 : 12;
+    if (selected && !words.includes(word) && words.length >= limit) return;
     material.conversationTargetWords = selected
       ? [...new Set([...words, word])]
       : words.filter((item) => item !== word);
@@ -886,8 +1195,15 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
 
   async generate(): Promise<void> {
     const stage = this.activeWorkflowStage();
-    if (this.busy() || this.globalProcessing() || !this.canGenerateStage() || !this.versionId || !stage ||
-      this.stageIsProcessing()) return;
+    if (
+      this.busy() ||
+      this.globalProcessing() ||
+      !this.canGenerateStage() ||
+      !this.versionId ||
+      !stage ||
+      this.stageIsProcessing()
+    )
+      return;
     if (this.dirty()) {
       this.error.set('احفظ تعديلات هذه المرحلة أولًا قبل إعادة معالجتها.');
       return;
@@ -896,12 +1212,19 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
     this.busy.set(true);
     this.error.set('');
     this.notice.set('');
-    console.info('[Admin.AiReview.Generate.Start]', { versionId: this.versionId, stageType: stage.type });
+    console.info('[Admin.AiReview.Generate.Start]', {
+      versionId: this.versionId,
+      stageType: stage.type,
+    });
     try {
       await firstValueFrom(this.auth.csrf());
       const job = await firstValueFrom(
-        this.api.generateStage(this.versionId, stage.type, crypto.randomUUID(),
-          stage.type === 'vocabulary' ? this.vocabularyTargetCount() : undefined),
+        this.api.generateStage(
+          this.versionId,
+          stage.type,
+          crypto.randomUUID(),
+          stage.type === 'vocabulary' ? this.vocabularyTargetCount() : undefined,
+        ),
       );
       this.setJob(job);
       this.globalProcessing.set(true);
@@ -930,7 +1253,8 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   }
   async reopenApproved(): Promise<void> {
     const approved = this.job();
-    if (!approved || approved.status !== 'Approved' || this.busy() || this.globalProcessing()) return;
+    if (!approved || approved.status !== 'Approved' || this.busy() || this.globalProcessing())
+      return;
     const started = performance.now();
     this.busy.set(true);
     this.error.set('');
@@ -952,11 +1276,13 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       });
     } catch (ex) {
       const code = await this.voiceErrorCode(ex);
-      this.error.set(code === 'ai_draft_in_progress'
-        ? 'هناك مرحلة قيد المعالجة الآن. انتظر انتهاءها ثم افتح نسخة التعديل.'
-        : code === 'approved_content_changed'
-          ? 'تغيّرت النسخة المعتمدة. حدّث الصفحة ثم افتح نسخة التعديل.'
-          : 'تعذر فتح نسخة التعديل. حدّث الصفحة وحاول مرة أخرى.');
+      this.error.set(
+        code === 'ai_draft_in_progress'
+          ? 'هناك مرحلة قيد المعالجة الآن. انتظر انتهاءها ثم افتح نسخة التعديل.'
+          : code === 'approved_content_changed'
+            ? 'تغيّرت النسخة المعتمدة. حدّث الصفحة ثم افتح نسخة التعديل.'
+            : 'تعذر فتح نسخة التعديل. حدّث الصفحة وحاول مرة أخرى.',
+      );
       console.warn('[Admin.AiReview.Reopen.Failed]', {
         jobId: approved.id,
         status: (ex as { status?: number }).status ?? null,
@@ -969,8 +1295,16 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
   async save(): Promise<void> {
     const job = this.job(),
       draft = this.draft();
-    if (!job || !draft || job.status !== 'Draft' || !this.dirty() || this.busy() ||
-      this.globalProcessing()) return;
+    if (
+      !job ||
+      !draft ||
+      job.status !== 'Draft' ||
+      !this.dirty() ||
+      this.staleDraft() ||
+      this.busy() ||
+      this.globalProcessing()
+    )
+      return;
     if (this.activeWorkflowStage()?.type === 'listen-type') {
       this.syncDictationAnswers();
       const issues = this.stageIssues('listen-type');
@@ -994,13 +1328,20 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
       });
     } catch (ex) {
       const code = await this.voiceErrorCode(ex);
-      this.error.set(code === 'invalid_csrf'
-        ? 'انتهت صلاحية جلسة الحفظ. حدّث الصفحة ثم حاول مجددًا.'
-        : code === 'invalid_dictation'
-          ? 'إعداد سؤال اسمع واكتب غير مكتمل. راجع الكلمة المختارة أو توقيت صوت الكلمة.'
-          : code === 'invalid_material'
-            ? 'رفض الخادم بيانات مسودة الدرس الكاملة، وليس بالضرورة هذه الجملة. لن تُفقد تعديلاتك؛ راجع المراحل الأخرى أو أرسل تفاصيل Response من طلب PUT لتحديد الحقل.'
-            : 'تعذر الحفظ أو تغيّرت المسودة. انسخ تعديلاتك ثم حدّث الصفحة.');
+      if (code === 'newer_ai_job_exists' || code === 'ai_draft_changed') this.staleDraft.set(true);
+      this.error.set(
+        code === 'invalid_csrf'
+          ? 'انتهت صلاحية جلسة الحفظ. حدّث الصفحة ثم حاول مجددًا.'
+          : code === 'invalid_dictation'
+            ? 'إعداد سؤال اسمع واكتب غير مكتمل. راجع الكلمة المختارة أو توقيت صوت الكلمة.'
+            : code === 'invalid_material'
+              ? 'رفض الخادم بيانات مسودة الدرس الكاملة، وليس بالضرورة هذه الجملة. لن تُفقد تعديلاتك؛ راجع المراحل الأخرى أو أرسل تفاصيل Response من طلب PUT لتحديد الحقل.'
+              : code === 'newer_ai_job_exists'
+                ? 'ظهرت معالجة أحدث لهذا الدرس. هذه النسخة قديمة ولا يمكن حفظها. تعديلاتك ما زالت ظاهرة هنا؛ انسخ ما تحتاجه قبل تحديث الصفحة، ثم افتح أحدث نسخة من رحلة الدرس.'
+                : code === 'ai_draft_changed'
+                  ? 'تغيّرت هذه المسودة بعد فتحها، ربما من تبويب آخر. تعديلاتك ما زالت ظاهرة هنا؛ انسخها قبل تحديث الصفحة ثم افتح المسودة الحالية.'
+                  : 'تعذر الحفظ أو تغيّرت المسودة. انسخ تعديلاتك ثم حدّث الصفحة.',
+      );
       console.warn('[Admin.AiReview.Save.Failed]', {
         jobId: job.id,
         status: (ex as { status?: number }).status ?? null,

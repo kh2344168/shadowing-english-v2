@@ -1,15 +1,17 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnInit,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
-import {
-  AdminGroupsApi,
-  GroupHistoryItem,
-  GroupStudent,
-  StudyGroup,
-} from '../groups/groups.api';
+import { AdminGroupsApi, GroupHistoryItem, GroupStudent, StudyGroup } from '../groups/groups.api';
 
 @Component({
   selector: 'app-admin-students-page',
@@ -40,6 +42,7 @@ export class AdminStudentsPage implements OnInit {
   readonly confirmMoveId = signal<string | null>(null);
   readonly historyStudentId = signal<string | null>(null);
   readonly createOpen = signal(false);
+  readonly createError = signal('');
   readonly error = signal('');
   readonly success = signal('');
   readonly page = signal(1);
@@ -139,6 +142,7 @@ export class AdminStudentsPage implements OnInit {
     const started = Date.now();
     this.creating.set(true);
     this.error.set('');
+    this.createError.set('');
     this.success.set('');
     console.info('[Admin.Students.UI.Create.Start]', { emailLength: email.length });
     try {
@@ -146,6 +150,7 @@ export class AdminStudentsPage implements OnInit {
       const created = await firstValueFrom(this.api.createStudent(email, password));
       this.password = '';
       this.email = '';
+      this.createError.set('');
       this.createOpen.set(false);
       this.searchQuery = created.email;
       await this.loadStudents(1);
@@ -156,7 +161,7 @@ export class AdminStudentsPage implements OnInit {
       });
     } catch (error) {
       this.password = '';
-      this.error.set(this.describe(error));
+      this.createError.set(this.describe(error));
       console.warn('[Admin.Students.UI.Create.Failed]', {
         status: this.status(error),
         durationMs: Date.now() - started,
@@ -177,7 +182,9 @@ export class AdminStudentsPage implements OnInit {
 
   selectedGroupName(studentId: string): string {
     const id = this.targetGroupIds[studentId];
-    return id ? this.groups().find((group) => group.id === id)?.name ?? 'المجموعة المحددة' : 'بدون مجموعة';
+    return id
+      ? (this.groups().find((group) => group.id === id)?.name ?? 'المجموعة المحددة')
+      : 'بدون مجموعة';
   }
 
   curriculumState(student: GroupStudent): string {
@@ -193,7 +200,12 @@ export class AdminStudentsPage implements OnInit {
   }
 
   async applyMove(student: GroupStudent): Promise<void> {
-    if (!this.targetChanged(student) || this.confirmMoveId() !== student.id || this.movingStudentId()) return;
+    if (
+      !this.targetChanged(student) ||
+      this.confirmMoveId() !== student.id ||
+      this.movingStudentId()
+    )
+      return;
     const targetGroupId = this.targetGroupIds[student.id] || null;
     const started = Date.now();
     this.movingStudentId.set(student.id);
@@ -208,7 +220,11 @@ export class AdminStudentsPage implements OnInit {
       this.confirmMoveId.set(null);
       await this.loadStudents(this.page());
       if (this.historyStudentId() === student.id) await this.loadHistory(student.id, 1);
-      this.success.set(targetGroupId ? 'تم إسناد/نقل الطالب وحُفظ تاريخ المجموعات.' : 'تم إلغاء المجموعة الحالية مع حفظ التاريخ.');
+      this.success.set(
+        targetGroupId
+          ? 'تم إسناد/نقل الطالب وحُفظ تاريخ المجموعات.'
+          : 'تم إلغاء المجموعة الحالية مع حفظ التاريخ.',
+      );
       console.info('[Admin.Students.UI.Move.Success]', {
         studentId: student.id,
         groupId: result.groupId,
@@ -216,7 +232,8 @@ export class AdminStudentsPage implements OnInit {
         durationMs: Date.now() - started,
       });
     } catch (error) {
-      if (error instanceof HttpErrorResponse && error.status === 409) await this.loadStudents(this.page());
+      if (error instanceof HttpErrorResponse && error.status === 409)
+        await this.loadStudents(this.page());
       this.error.set(this.describe(error));
       console.warn('[Admin.Students.UI.Move.Failed]', {
         studentId: student.id,
@@ -239,7 +256,9 @@ export class AdminStudentsPage implements OnInit {
     try {
       const response = await firstValueFrom(this.api.history(studentId, page));
       if (request !== this.historyRequest || this.historyStudentId() !== studentId) return;
-      this.history.update((current) => (page === 1 ? response.items : [...current, ...response.items]));
+      this.history.update((current) =>
+        page === 1 ? response.items : [...current, ...response.items],
+      );
       this.historyPage.set(page);
       this.moreHistory.set(response.hasMore);
       console.info('[Admin.Students.UI.History.Success]', {
@@ -280,8 +299,27 @@ export class AdminStudentsPage implements OnInit {
     if (error instanceof HttpErrorResponse) {
       const code = error.error?.error;
       if (code === 'student_email_exists') return 'يوجد حساب بهذا البريد بالفعل.';
-      if (code === 'invalid_student_account') return 'تحقق من البريد وكلمة المرور ومتطلبات الأمان.';
-      if (code === 'membership_changed') return 'تغيّرت عضوية الطالب أثناء التعديل. تم تحميل أحدث حالة؛ راجعها ثم أعد التأكيد.';
+      if (code === 'invalid_student_account') {
+        const codes: string[] = Array.isArray(error.error?.codes) ? error.error.codes : [];
+        const reasons: Record<string, string> = {
+          PasswordTooShort: 'كلمة المرور أقل من 10 أحرف',
+          PasswordRequiresUpper: 'أضف حرفًا إنجليزيًا كبيرًا',
+          PasswordRequiresLower: 'أضف حرفًا إنجليزيًا صغيرًا',
+          PasswordRequiresDigit: 'أضف رقمًا',
+          PasswordRequiresNonAlphanumeric: 'أضف رمزًا مثل ! أو @',
+          InvalidEmail: 'البريد الإلكتروني غير صالح',
+          InvalidUserName: 'البريد الإلكتروني غير صالح',
+          DuplicateEmail: 'يوجد حساب بهذا البريد بالفعل',
+          DuplicateUserName: 'يوجد حساب بهذا البريد بالفعل',
+        };
+        const details = [...new Set(codes.map((item) => reasons[item]).filter(Boolean))];
+        return details.length
+          ? `لم يُنشأ الطالب: ${details.join('، ')}.`
+          : 'لم يُنشأ الطالب. تأكد من صحة البريد وأن كلمة المرور تحقق الشروط الموضحة.';
+      }
+      if (code === 'invalid_csrf') return 'انتهت صلاحية جلسة الأمان. حدّث الصفحة وحاول مرة أخرى.';
+      if (code === 'membership_changed')
+        return 'تغيّرت عضوية الطالب أثناء التعديل. تم تحميل أحدث حالة؛ راجعها ثم أعد التأكيد.';
       if (code === 'student_not_found') return 'حساب الطالب غير موجود أو لم يعد يحمل دور Student.';
       if (code === 'group_not_found') return 'المجموعة لم تعد موجودة. حدّث الصفحة.';
       if (error.status === 401 || error.status === 403) return 'لا تملك صلاحية إدارة الطلاب.';

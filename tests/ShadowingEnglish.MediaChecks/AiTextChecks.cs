@@ -95,6 +95,28 @@ internal static class AiTextChecks
                 LessonMaterialRules.CountsConversationTurn(material,
                     new ChatFeedback("Good!", "", "", "", null)),
                 "off_tense_reply_counted_or_legacy_reply_blocked");
+            var firstSteps = material with
+            {
+                ConversationSupportMode = "first-steps", ConversationTurnTarget = 3,
+                OpeningMessage = "Hi! How are you?", ConversationLearningOutcome = "Answer a greeting",
+                ConversationHelpAr = "يمكنك الرد بكلمة واحدة", ConversationModelAnswer = "Good."
+            };
+            Assert(LessonMaterialRules.Valid(firstSteps, "Hello world") &&
+                LessonMaterialRules.ConversationTurns(firstSteps) == 3 &&
+                LessonMaterialRules.CountsConversationTurn(firstSteps,
+                    new ChatFeedback("Nice!", "", "", "", true)) &&
+                !LessonMaterialRules.CountsConversationTurn(firstSteps,
+                    new ChatFeedback("Try again.", "", "", "", false)),
+                "first_steps_response_not_counted_by_relevance");
+            Assert(!LessonMaterialRules.Valid(firstSteps with { ConversationFocusTense = "present-simple" },
+                    "Hello world") &&
+                !LessonMaterialRules.Valid(firstSteps with { ConversationTurnTarget = 6 }, "Hello world") &&
+                !LessonMaterialRules.Valid(firstSteps with {
+                    ConversationSuccessSteps = ["Answer greeting"], ConversationMinTurns = 3,
+                    ConversationMaxTurns = 7, AiRole = "Partner", StudentRole = "Learner",
+                    ConversationContextType = "situation" }, "Hello world") &&
+                !LessonMaterialRules.Valid(firstSteps with { ConversationHelpAr = null }, "Hello world"),
+                "first_steps_guardrails_not_enforced");
             return Task.CompletedTask;
         });
         await check("Generated chunks and safe dictation preserve the old model response", () =>
@@ -199,6 +221,119 @@ internal static class AiTextChecks
                     card.ImageUrl == "https://example.invalid/teacher-choice.jpg") &&
                 newVocabulary.ReviewedStages?.SequenceEqual(["conversation"]) == true,
                 "vocabulary_regeneration_broke_teacher_conversation_focus");
+            return Task.CompletedTask;
+        });
+        await check("A1 conversation generation starts small and keeps other stages untouched", () =>
+        {
+            var original = new LessonMaterial(
+                [new VocabularyCard("Hello", "مرحبًا", "Hello there", "مرحبًا بك")],
+                [], "", "", ReviewedStages: ["vocabulary"]);
+            var generated = LessonMaterialRules.MergeStageGenerated("conversation",
+                """{"conversationScenario":"Greet a classmate","conversationGoals":["Respond to a greeting"]}""",
+                original, "Hello there", [new LessonTranscriptSegment(1, "Hello there")], "A1");
+            Assert(generated is not null && generated.ConversationSupportMode == "first-steps" &&
+                generated.ConversationTurnTarget == 3 && generated.OpeningMessage == "Hi! How are you?" &&
+                generated.ConversationModelAnswer == "I'm good." &&
+                generated.Vocabulary.SequenceEqual(original.Vocabulary) &&
+                generated.ReviewedStages?.SequenceEqual(["vocabulary"]) == true,
+                "a1_conversation_generation_not_scoped_or_not_beginner_safe");
+            var legacy = original with { AiRole = "", StudentRole = "",
+                ConversationSuccessSteps = [], ConversationLearningOutcome = "",
+                ConversationSupportMode = "first-steps", ConversationMinTurns = 2,
+                ConversationMaxTurns = 4 };
+            var regenerated = LessonMaterialRules.MergeStageGenerated("conversation",
+                """{"conversationScenario":"Greet a classmate","conversationGoals":["Respond to a greeting"],"aiRole":"Classmate","studentRole":"Learner"}""",
+                legacy, "Hello there", [new LessonTranscriptSegment(1, "Hello there")], "A1");
+            Assert(regenerated is not null && regenerated.ConversationSuccessSteps?.Length == 1 &&
+                regenerated.ConversationLearningOutcome == "Respond to a greeting" &&
+                regenerated.AiRole == "Classmate" && regenerated.StudentRole == "Learner",
+                "empty_legacy_conversation_fields_block_regeneration");
+            var focusedSource = "spend social media waste limit affects";
+            var focusedWords = new[] { "spend", "social media", "waste", "limit", "affects" };
+            var focusedCards = focusedWords.Select(word => new VocabularyCard(word, "معنى", "We " + word,
+                "مثال", word.Contains(' ') ? "chunk" : "word")).ToArray();
+            var focusedDraft = new LessonMaterial(focusedCards, [], "", "",
+                ConversationTargetWords: ["spend", "social media", "waste", "affects"],
+                ConversationTurnTarget: 3, ReviewedStages: ["vocabulary"]);
+            var focusedConversation = LessonMaterialRules.MergeStageGenerated("conversation",
+                """{"conversationScenario":"Discuss phone use","conversationGoals":["Say how you use social media"],"aiRole":"Friend","studentRole":"Friend","openingMessage":"Do you use social media?","conversationHelpAr":"أجب بكلمة أو عبارة قصيرة","conversationModelAnswer":"Yes, I do."}""",
+                focusedDraft, focusedSource, [new LessonTranscriptSegment(1, focusedSource)], "A1");
+            Assert(focusedConversation is not null && focusedConversation.ConversationSupportMode == "guided" &&
+                focusedConversation.ConversationTargetWords?.Length == 4 &&
+                focusedConversation.Vocabulary.SequenceEqual(focusedCards),
+                "a1_four_teacher_focus_words_rejected_valid_ai_response");
+            return Task.CompletedTask;
+        });
+        await check("Conversation goals and reply bounds drive airport, clip, and professional outcomes", () =>
+        {
+            LessonMaterial Config(string kind, string[] steps) => new([], [], "", "Scenario",
+                AiRole: "Customer", StudentRole: "Learner",
+                ConversationLearningOutcome: "Complete the task", ConversationContextType: kind,
+                ConversationAllowedFacts: kind == "professional" ? ["No discount has been approved"] : [],
+                ConversationSuccessSteps: steps, ConversationMinTurns: 5, ConversationMaxTurns: 10);
+            ChatFeedback Step(string step) => new("Continue", "", "", "", true, [step], []);
+            var airport = Config("situation", ["Ask for the location", "State destination", "Answer flight duration"]);
+            var social = Config("clip", ["Give an opinion", "Use one clip phrase"]);
+            var support = Config("professional", ["Understand issue", "Explain an approved option", "Confirm customer decision"]);
+            Assert(LessonMaterialRules.Valid(airport, "") && LessonMaterialRules.Valid(social, "") &&
+                LessonMaterialRules.Valid(support, "") &&
+                !LessonMaterialRules.Valid(support with { ConversationAllowedFacts =
+                    [new string('x', 241)] }, ""), "conversation_configuration_invalid");
+            var airportTurns = new List<(string Answer, ChatFeedback Feedback)>
+            {
+                ("Where is the gate?", Step("Ask for the location")),
+                ("Cairo", Step("State destination")),
+                ("Two hours", Step("Answer flight duration"))
+            };
+            Assert(!LessonMaterialRules.ConversationSummary(airport, airportTurns, false).GoalMet,
+                "goal_completed_before_minimum_replies");
+            airportTurns.Add(("Thanks", new ChatFeedback("You're welcome", "", "", "", true, [], [])));
+            airportTurns.Add(("Goodbye", new ChatFeedback("Bye", "", "", "", true, [], [])));
+            Assert(LessonMaterialRules.ConversationSummary(airport, airportTurns, false).GoalMet &&
+                LessonMaterialRules.ConversationSummary(airport, airportTurns, true).EndedEarly,
+                "minimum_and_goal_not_respected");
+            var incomplete = LessonMaterialRules.ConversationSummary(social,
+                Enumerable.Range(0, 10).Select(_ => ("I like it",
+                    Step("Give an opinion"))).ToArray(), false);
+            Assert(!incomplete.GoalMet && incomplete.ReplyCount == 10 &&
+                incomplete.MissingSteps.SequenceEqual(["Use one clip phrase"]),
+                "maximum_missed_step_not_recorded");
+            var critical = new ChatFeedback("That discount is unconfirmed", "No approved discount",
+                "", "", true, ["Understand issue"],
+                [new ConversationIssue("50% discount", "No approved discount", "Not in policy", "fact")], true);
+            var early = LessonMaterialRules.ConversationSummary(support, [("50% discount", critical)], true);
+            Assert(!early.GoalMet && early.EndedEarly && early.Issues.Length == 1 &&
+                early.MissingSteps.Length == 2 &&
+                !LessonMaterialRules.SafeProfessionalReply(support, "I have cancelled your subscription") &&
+                !LessonMaterialRules.SafeProfessionalReply(support, "Your subscription is now cancelled") &&
+                !LessonMaterialRules.SafeProfessionalReply(support, "You get a 50% discount") &&
+                LessonMaterialRules.SafeProfessionalReply(support, "I cannot confirm a discount yet"),
+                "professional_early_end_or_fact_error_not_recorded");
+            var longMaterial = support with { ConversationSuccessSteps =
+                Enumerable.Range(0, 6).Select(i => i + new string('s', 155)).ToArray() };
+            var longIssues = Enumerable.Range(0, 3).Select(_ => new ConversationIssue(
+                new string('x', 300), new string('y', 300), new string('r', 160), "grammar")).ToArray();
+            var longSummary = LessonMaterialRules.ConversationSummary(longMaterial,
+                [("answer", new ChatFeedback("reply", "", "", "", true, [], longIssues))], true);
+            Assert(JsonSerializer.Serialize(longSummary, LessonMaterialRules.Json).Length <= 3000,
+                "conversation_report_exceeds_existing_storage_limit");
+            var compactFeedback = new ChatFeedback(new string('r', 400), "", "", "", true,
+                longMaterial.ConversationSuccessSteps,
+                LessonMaterialRules.CompactConversationIssues(longIssues));
+            Assert(JsonSerializer.Serialize(compactFeedback, LessonMaterialRules.Json).Length <= 3000,
+                "conversation_turn_exceeds_existing_storage_limit");
+            var ranked = LessonMaterialRules.ConversationSummary(support,
+                [("first", new ChatFeedback("reply", "", "", "", true, [],
+                    [new ConversationIssue("spel", "spell", "Small typo", "spelling")])),
+                 ("second", new ChatFeedback("reply", "", "", "", true, [],
+                    [new ConversationIssue("free cancellation", "not confirmed", "Policy", "fact")]))], true);
+            Assert(ranked.Issues[0].Kind == "fact" && ranked.Issues.Length == 2,
+                "important_factual_error_was_not_prioritized");
+            var now = DateTimeOffset.UtcNow;
+            Assert(!LessonMaterialRules.ConversationTimedOut([now.AddMinutes(-44)], now) &&
+                LessonMaterialRules.ConversationTimedOut([now.AddMinutes(-45)], now) &&
+                LessonMaterialRules.ConversationTimedOut([now.AddHours(-2), now], now),
+                "conversation_time_backup_wrong");
             return Task.CompletedTask;
         });
         await check("SQL Server migration metadata matches the current AI model", () =>
@@ -382,7 +517,10 @@ internal static class AiTextChecks
             Assert(opened.StatusCode == HttpStatusCode.OK, "workflow_defaults_missing");
             var openedJson = await opened.Content.ReadFromJsonAsync<JsonElement>();
             Assert(openedJson.GetProperty("revision").GetGuid() == Guid.Empty &&
-                openedJson.GetProperty("stages").GetArrayLength() == 8,
+                openedJson.GetProperty("stages").GetArrayLength() == 8 &&
+                openedJson.GetProperty("stages").EnumerateArray().Single(x =>
+                    x.GetProperty("type").GetString() == "conversation")
+                    .GetProperty("enabled").GetBoolean() == false,
                 "workflow_defaults_invalid");
             using (var scope = app.Services.CreateScope())
             {
@@ -699,9 +837,9 @@ internal static class AiTextChecks
             Assert(edit.StatusCode == HttpStatusCode.Conflict,
                 $"approved_material_edited_status_{(int)edit.StatusCode}");
         });
-        await check("Reopening an approved stage resumes the existing lesson draft", async () =>
+        await check("Reopening the latest approved content skips a superseded draft", async () =>
         {
-            Guid draftId; int before;
+            Guid staleDraftId; Guid sourceId; Guid sourceRevision; int before;
             using (var scope = app.Services.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -711,26 +849,166 @@ internal static class AiTextChecks
                 Assert((await users.CreateAsync(editor, app.Password)).Succeeded,
                     "second_admin_setup_failed");
                 await users.AddToRoleAsync(editor, "Admin");
-                draftId = await db.LessonAiContents.AsNoTracking()
+                staleDraftId = await db.LessonAiContents.AsNoTracking()
                     .Where(x => x.LessonVersionId == versionId && x.Status == "Draft")
                     .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
                     .Select(x => x.Id).FirstAsync();
+                var source = await db.LessonAiContents.AsNoTracking()
+                    .Where(x => x.LessonVersionId == versionId && x.Status != "Failed")
+                    .OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
+                    .FirstAsync();
+                Assert(source.Status == "Approved" && source.Id != staleDraftId,
+                    "test_needs_approved_content_newer_than_draft");
+                sourceId = source.Id; sourceRevision = source.Revision;
                 before = await db.LessonAiContents.CountAsync(x => x.LessonVersionId == versionId);
             }
             using var editorClient = await app.LoginAsync("editor");
+            using var latestDraft = await editorClient.GetAsync($"/api/admin/lessons/{versionId}/ai/draft");
+            var draftBody = (await latestDraft.Content.ReadAsStringAsync()).Trim();
+            Assert(latestDraft.StatusCode == HttpStatusCode.NoContent ||
+                (latestDraft.StatusCode == HttpStatusCode.OK &&
+                    (draftBody == "null" || draftBody.Length == 0)),
+                "superseded_draft_still_offered_for_editing");
             using var reopened = await editorClient.PostAsJsonAsync(
-                $"/api/admin/lessons/{versionId}/ai/{contentId}/reopen",
-                new { requestId = Guid.NewGuid(), expectedRevision = revision });
+                $"/api/admin/lessons/{versionId}/ai/{sourceId}/reopen",
+                new { requestId = Guid.NewGuid(), expectedRevision = sourceRevision });
             var body = await reopened.Content.ReadFromJsonAsync<JsonElement>();
-            Assert(reopened.StatusCode == HttpStatusCode.OK &&
-                body.GetProperty("id").GetGuid() == draftId &&
+            var newDraftId = body.GetProperty("id").GetGuid();
+            Assert(reopened.StatusCode == HttpStatusCode.Created &&
+                newDraftId != staleDraftId &&
                 body.GetProperty("status").GetString() == "Draft",
-                "existing_draft_not_reused");
+                "stale_draft_was_reused");
+            using var editable = await editorClient.GetAsync($"/api/admin/lessons/{versionId}/ai/draft");
+            Assert(editable.StatusCode == HttpStatusCode.OK &&
+                (await editable.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid() == newDraftId,
+                "new_draft_not_offered_for_editing");
+            using var saved = await editorClient.PutAsJsonAsync(
+                $"/api/admin/lessons/{versionId}/ai/{newDraftId}",
+                new { expectedRevision = body.GetProperty("revision").GetGuid(),
+                    material = body.GetProperty("material") });
+            Assert(saved.StatusCode == HttpStatusCode.OK, "new_draft_cannot_be_saved");
             using var verifyScope = app.Services.CreateScope();
             var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            Assert(await verifyDb.LessonAiContents.CountAsync(x => x.LessonVersionId == versionId) == before &&
-                (await verifyDb.LessonAiContents.AsNoTracking().SingleAsync(x => x.Id == contentId)).Status ==
-                "Approved", "reopen_changed_approved_or_created_duplicate");
+            Assert(await verifyDb.LessonAiContents.CountAsync(x => x.LessonVersionId == versionId) == before + 1 &&
+                (await verifyDb.LessonAiContents.AsNoTracking().SingleAsync(x => x.Id == sourceId)).Status ==
+                "Approved", "reopen_changed_approved_or_failed_to_create_draft");
+        });
+        await check("Admin sees the last failed stage attempt without losing earlier content", async () =>
+        {
+            var failedId = Guid.NewGuid();
+            using (var scope = app.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var admin = (await scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>()
+                    .FindByEmailAsync("admin@v2-test.invalid"))!;
+                var now = DateTimeOffset.UtcNow;
+                db.LessonAiContents.Add(new LessonAiContent { Id = failedId,
+                    LessonVersionId = versionId, CreatedByAdminId = admin.Id,
+                    StageType = "conversation", Revision = Guid.NewGuid(), Status = "Failed",
+                    ErrorCode = "provider_invalid_output", CreatedAtUtc = now, UpdatedAtUtc = now });
+                await db.SaveChangesAsync();
+            }
+            using var response = await adminClient.GetAsync(
+                $"/api/admin/lessons/{versionId}/ai/stages/conversation/latest-attempt");
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert(response.StatusCode == HttpStatusCode.OK &&
+                body.GetProperty("id").GetGuid() == failedId &&
+                body.GetProperty("status").GetString() == "Failed" &&
+                body.GetProperty("errorCode").GetString() == "provider_invalid_output",
+                "failed_stage_attempt_was_hidden");
+        });
+        await check("Three published lesson conversations persist distinct goal reports for student and admin", async () =>
+        {
+            var scenarios = new[]
+            {
+                (Kind: "situation", Steps: new[] { "Ask for gate", "State destination" },
+                    Met: new[] { "Ask for gate", "State destination" }, Replies: 5, Expected: true),
+                (Kind: "clip", Steps: new[] { "Give opinion", "Use a clip phrase" },
+                    Met: new[] { "Give opinion" }, Replies: 10, Expected: false),
+                (Kind: "professional", Steps: new[] { "Understand issue", "Explain option", "Confirm decision" },
+                    Met: new[] { "Understand issue" }, Replies: 1, Expected: false)
+            };
+            var slots = new List<(Guid Id, bool Expected, int Replies)>();
+            using (var scope = app.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+                var admin = (await users.FindByEmailAsync("admin@v2-test.invalid"))!;
+                var student = (await users.FindByEmailAsync("student@v2-test.invalid"))!;
+                var start = DateTimeOffset.UtcNow.AddMinutes(-2);
+                for (var index = 0; index < scenarios.Length; index++)
+                {
+                    var scenario = scenarios[index];
+                    var testSlot = Guid.NewGuid(); var testContent = Guid.NewGuid();
+                    var configured = material with
+                    {
+                        ConversationScenario = scenario.Kind,
+                        AiRole = "Customer", StudentRole = "Learner",
+                        ConversationLearningOutcome = "Complete " + scenario.Kind,
+                        ConversationContextType = scenario.Kind,
+                        ConversationAllowedFacts = scenario.Kind == "professional" ? ["No discount approved"] : [],
+                        ConversationSuccessSteps = scenario.Steps,
+                        ConversationMinTurns = 5, ConversationMaxTurns = 10
+                    };
+                    db.LessonAiContents.Add(new LessonAiContent { Id = testContent,
+                        LessonVersionId = versionId, CreatedByAdminId = admin.Id,
+                        Revision = Guid.NewGuid(), Status = "Approved",
+                        PayloadJson = JsonSerializer.Serialize(configured, LessonMaterialRules.Json),
+                        CreatedAtUtc = start, UpdatedAtUtc = start, ApprovedAtUtc = start });
+                    db.PublishedLessonSlots.Add(new PublishedLessonSlot { Id = testSlot,
+                        PublishedCurriculumVersionId = publishedId, LessonVersionId = versionId,
+                        AiContentId = testContent, WeekNumber = 1, DayNumber = 1, SortOrder = index + 2,
+                        AvailableAtUtc = start,
+                        WorkflowStagesJson = JsonSerializer.Serialize(new[] { new {
+                            type = "conversation", title = "Lesson conversation", position = 1,
+                            enabled = true, required = false } }) });
+                    for (var turn = 0; turn < scenario.Replies; turn++)
+                    {
+                        var met = turn == 0 ? scenario.Met : [];
+                        db.StudentPracticeAttempts.Add(new StudentPracticeAttempt { Id = Guid.NewGuid(),
+                            StudentId = student.Id, PublishedCurriculumVersionId = publishedId,
+                            SlotId = testSlot, StageKey = "conversation", Position = turn + 1,
+                            Answer = "Lesson reply", CreatedAtUtc = start.AddSeconds(turn),
+                            FeedbackJson = JsonSerializer.Serialize(new ChatFeedback("Next question", "", "", "",
+                                true, met, []), LessonMaterialRules.Json) });
+                    }
+                    slots.Add((testSlot, scenario.Expected, scenario.Replies));
+                }
+                await db.SaveChangesAsync();
+            }
+            foreach (var scenario in slots)
+            {
+                using var finished = await studentClient.PostAsJsonAsync(
+                    $"/api/student/learning/slots/{scenario.Id}/conversation/finish", new { });
+                var result = await finished.Content.ReadFromJsonAsync<JsonElement>();
+                Assert(finished.StatusCode == HttpStatusCode.OK &&
+                    result.GetProperty("goalMet").GetBoolean() == scenario.Expected &&
+                    result.GetProperty("replyCount").GetInt32() == scenario.Replies,
+                    "conversation_finish_did_not_persist_scenario_outcome");
+                using var repeated = await studentClient.PostAsJsonAsync(
+                    $"/api/student/learning/slots/{scenario.Id}/conversation/finish", new { });
+                var repeatedResult = await repeated.Content.ReadFromJsonAsync<JsonElement>();
+                Assert(repeated.StatusCode == HttpStatusCode.OK &&
+                    repeatedResult.GetProperty("replyCount").GetInt32() == scenario.Replies,
+                    "repeated_finish_changed_report");
+                using var historyResponse = await studentClient.GetAsync(
+                    $"/api/student/learning/slots/{scenario.Id}/conversation/turns");
+                var historyJson = await historyResponse.Content.ReadFromJsonAsync<JsonElement>();
+                Assert(historyResponse.StatusCode == HttpStatusCode.OK &&
+                    historyJson.GetProperty("report").GetProperty("goalMet").GetBoolean() == scenario.Expected,
+                    "student_cannot_restore_conversation_report");
+            }
+            using var reports = await adminClient.GetAsync("/api/admin/reports/conversations?page=1");
+            var reportsJson = await reports.Content.ReadFromJsonAsync<JsonElement>();
+            Assert(reports.StatusCode == HttpStatusCode.OK &&
+                reportsJson.GetProperty("items").GetArrayLength() >= 3,
+                "admin_cannot_view_student_conversation_reports");
+            using var review = await studentClient.GetAsync("/api/student/learning/conversation-review");
+            var reviewJson = await review.Content.ReadFromJsonAsync<JsonElement>();
+            Assert(review.StatusCode == HttpStatusCode.OK && reviewJson.GetArrayLength() >= 3 &&
+                reviewJson.EnumerateArray().Any(x =>
+                    x.GetProperty("result").GetProperty("missingSteps").GetArrayLength() > 0),
+                "student_later_review_did_not_restore_missing_skills");
         });
         return failures() == 0 ? 0 : 1;
     }

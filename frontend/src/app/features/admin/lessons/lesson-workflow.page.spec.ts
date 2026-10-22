@@ -200,7 +200,7 @@ describe('AdminLessonWorkflowPage', () => {
     await operation;
     fixture.detectChanges();
     expect(page.workflow()?.aiStatus).toBe('Approved');
-    expect(page.notice()).toContain('تم حفظ الرحلة واعتماد محتوى الدرس');
+    expect(page.notice()).toContain('تم اعتماد الدرس');
     http.expectNone((request) => request.method === 'PUT');
   });
 
@@ -211,11 +211,11 @@ describe('AdminLessonWorkflowPage', () => {
     const operation = page.saveAndApprove();
     await Promise.resolve();
     const save = http.expectOne(`/api/admin/lessons/${versionId}/workflow`);
-    save.flush({ revision: 'new-revision', stages: page.stages() });
+    save.flush({ revision: 'new-revision', stages: page.stages(), autoPublishedGroups: 1 });
     (await nextRequest(`/api/admin/lessons/${versionId}/ai/draft`)).flush(null);
     await operation;
     expect(page.error()).toBe('');
-    expect(page.notice()).toContain('أعد نشر المنهج');
+    expect(page.notice()).toContain('تحديثها تلقائيًا في 1 مجموعة');
     http.expectNone((request) => request.method === 'POST');
   });
 

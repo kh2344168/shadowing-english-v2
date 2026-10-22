@@ -85,6 +85,15 @@ export interface AiMaterial {
   conversationTurnTarget?: number | null;
   conversationLearningOutcome?: string | null;
   conversationFocusTense?: string | null;
+  conversationSupportMode?: 'first-steps' | 'guided' | 'independent' | null;
+  conversationHelpAr?: string | null;
+  conversationModelAnswer?: string | null;
+  conversationCorrectionMode?: 'lesson-only' | 'all' | null;
+  conversationContextType?: 'situation' | 'clip' | 'professional' | null;
+  conversationAllowedFacts?: string[] | null;
+  conversationSuccessSteps?: string[] | null;
+  conversationMinTurns?: number | null;
+  conversationMaxTurns?: number | null;
   targetPhrases?: string[];
   shadowingReviewEnabled?: boolean;
   quiz: {
@@ -161,11 +170,39 @@ export interface ConversationFeedback {
   betterAnswer: string;
   grammarTip: string;
   focusMet?: boolean | null;
+  metSteps?: string[] | null;
+  issues?: { original: string; suggested: string; reason: string; kind: string }[] | null;
+  criticalFactError?: boolean;
+}
+export interface ConversationResult {
+  goalMet: boolean;
+  replyCount: number;
+  relevantReplies?: number;
+  metSteps: string[];
+  missingSteps: string[];
+  issues: { original: string; suggested: string; reason: string; kind: string }[];
+  retrySentence?: string | null;
+  endedEarly: boolean;
+  outcome: string;
+}
+export interface ConversationReviewItem {
+  slotId: string;
+  lessonTitle: string;
+  createdAtUtc: string;
+  result: ConversationResult;
 }
 export interface ConversationHistory {
   turns: { id: string; message: string; feedback: ConversationFeedback }[];
   completedTurns?: number;
   turnTarget?: number;
+  minTurns?: number | null;
+  maxTurns?: number | null;
+  metSteps?: string[];
+  missingSteps?: string[];
+  goalMet?: boolean;
+  canFinish?: boolean;
+  timedOut?: boolean;
+  report?: ConversationResult | null;
   remainingToday: number;
 }
 
@@ -173,6 +210,10 @@ export interface ConversationHistory {
 export class StudentLearningApi {
   private readonly http = inject(HttpClient);
   private readonly base = '/api/student/learning';
+
+  conversationReview(): Observable<ConversationReviewItem[]> {
+    return this.http.get<ConversationReviewItem[]>(`${this.base}/conversation-review`);
+  }
 
   curriculum(page = 1, pageSize = 20, expectedPublishedVersionId?: string): Observable<Curriculum> {
     let params = new HttpParams().set('page', page).set('pageSize', pageSize);
@@ -264,6 +305,12 @@ export class StudentLearningApi {
   conversationHistory(slotId: string): Observable<ConversationHistory> {
     return this.http.get<ConversationHistory>(
       `${this.base}/slots/${encodeURIComponent(slotId)}/conversation/turns`,
+    );
+  }
+  finishConversation(slotId: string): Observable<ConversationResult> {
+    return this.http.post<ConversationResult>(
+      `${this.base}/slots/${encodeURIComponent(slotId)}/conversation/finish`,
+      {},
     );
   }
   transcribeConversation(slotId: string, audio: Blob): Observable<{ text: string }> {

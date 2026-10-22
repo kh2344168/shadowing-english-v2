@@ -41,9 +41,17 @@ export class LessonWorkflowApi {
   private readonly http = inject(HttpClient);
   private readonly base = '/api/admin/lessons';
 
-  create(request: { title: string; lessonType: 'situation' | 'clip' | 'manual'; level: string;
-    goal: string; sourceText: string }) {
-    return this.http.post<{ lessonId: string; versionId: string }>(`${this.base}/definitions`, request);
+  create(request: {
+    title: string;
+    lessonType: 'situation' | 'clip' | 'manual';
+    level: string;
+    goal: string;
+    sourceText: string;
+  }) {
+    return this.http.post<{ lessonId: string; versionId: string }>(
+      `${this.base}/definitions`,
+      request,
+    );
   }
 
   get(versionId: string) {
@@ -51,9 +59,11 @@ export class LessonWorkflowApi {
   }
 
   save(versionId: string, expectedRevision: string, stages: LessonWorkflowStage[]) {
-    return this.http.put<{ revision: string; stages: LessonWorkflowStage[] }>(
-      `${this.base}/${encodeURIComponent(versionId)}/workflow`,
-      { expectedRevision, stages },
-    );
+    return this.http.put<{
+      revision: string;
+      stages: LessonWorkflowStage[];
+      autoPublishedGroups?: number;
+      autoPublishFailed?: boolean;
+    }>(`${this.base}/${encodeURIComponent(versionId)}/workflow`, { expectedRevision, stages });
   }
 }

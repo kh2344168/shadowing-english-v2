@@ -6,7 +6,7 @@ import { of } from 'rxjs';
 import { vi } from 'vitest';
 import { AuthService } from '../../../core/auth/auth.service';
 import { AdminLessonStageEditorPage } from './ai-review.page';
-import { StageProcessingStatus } from './lesson-ai.api';
+import { StageLatestAttempt, StageProcessingStatus } from './lesson-ai.api';
 
 describe('AdminLessonStageEditorPage', () => {
   const versionId = '11111111-2222-4333-8444-555555555555';
@@ -41,11 +41,13 @@ describe('AdminLessonStageEditorPage', () => {
     status: 'Draft' | 'Approved',
     stageType = 'vocabulary',
     processingStatus: StageProcessingStatus = status === 'Approved' ? 'Approved' : 'NeedsReview',
-    segmentResponse = [{ position: 1, text: 'Hello there', audioUrl: `${base}/teacher-audio/1` }] as
-      { position: number; text: string; audioUrl?: string | null }[],
+    segmentResponse = [
+      { position: 1, text: 'Hello there', audioUrl: `${base}/teacher-audio/1` },
+    ] as { position: number; text: string; audioUrl?: string | null }[],
     probeStatus = 206,
     jobMaterial: object = material,
     savedDraft: object | null = null,
+    latestAttempt: StageLatestAttempt | null = null,
   ) {
     await TestBed.configureTestingModule({
       imports: [AdminLessonStageEditorPage],
@@ -68,10 +70,16 @@ describe('AdminLessonStageEditorPage', () => {
     const http = TestBed.inject(HttpTestingController);
     const fixture = TestBed.createComponent(AdminLessonStageEditorPage);
     fixture.detectChanges();
-    http.expectOne('/api/admin/lessons/ai-providers').flush({ configured: ['Groq'], imagesConfigured: true });
     http
-      .expectOne(`${base}/ai`)
-      .flush({ id: 'job-1', lessonVersionId: versionId, revision: 'rev-1', status, material: jobMaterial });
+      .expectOne('/api/admin/lessons/ai-providers')
+      .flush({ configured: ['Groq'], imagesConfigured: true });
+    http.expectOne(`${base}/ai`).flush({
+      id: 'job-1',
+      lessonVersionId: versionId,
+      revision: 'rev-1',
+      status,
+      material: jobMaterial,
+    });
     http.expectOne(`${base}/ai/draft`).flush(savedDraft);
     http.expectOne(`${base}/ai/segments`).flush(segmentResponse);
     http.expectOne(`${base}/workflow`).flush({
@@ -93,11 +101,18 @@ describe('AdminLessonStageEditorPage', () => {
       ],
     });
     http.expectOne(`${base}/ai/stages/statuses`).flush({ [stageType]: processingStatus });
-    if (stageType === 'listen-type' && segmentResponse.some((segment) => segment.audioUrl === undefined)) {
+    await vi.waitFor(() =>
+      http.expectOne(`${base}/ai/stages/${stageType}/latest-attempt`).flush(latestAttempt),
+    );
+    if (
+      stageType === 'listen-type' &&
+      segmentResponse.some((segment) => segment.audioUrl === undefined)
+    ) {
       const missing = segmentResponse.filter((segment) => segment.audioUrl === undefined);
       await vi.waitFor(() => {
-        const probes = http.match((request) => request.url.startsWith(
-          `/api/admin/shadowing/lessons/versions/${versionId}/segments/`));
+        const probes = http.match((request) =>
+          request.url.startsWith(`/api/admin/shadowing/lessons/versions/${versionId}/segments/`),
+        );
         expect(probes).toHaveLength(missing.length);
         for (const probe of probes) {
           expect(probe.request.headers.get('Range')).toBe('bytes=0-0');
@@ -117,8 +132,13 @@ describe('AdminLessonStageEditorPage', () => {
     const { http, fixture, page } = await setup('Draft');
     expect(page.selectedStage()).toBe('vocabulary');
     expect(fixture.nativeElement.querySelector('#words-title')).not.toBeNull();
-    expect((fixture.nativeElement.querySelector('.word-visual .include-toggle input') as HTMLInputElement).checked)
-      .toBe(true);
+    expect(
+      (
+        fixture.nativeElement.querySelector(
+          '.word-visual .include-toggle input',
+        ) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
     expect(fixture.nativeElement.querySelector('.stage-grid')).toBeNull();
     expect(fixture.nativeElement.textContent).not.toContain('اعتماد محتوى الدرس');
     page.clearVocabularyImage(0);
@@ -140,6 +160,44 @@ describe('AdminLessonStageEditorPage', () => {
     fixture.destroy();
   });
 
+  it('explains a superseded draft and prevents repeated rejected saves without discarding edits', async () => {
+    const { http, fixture, page } = await setup('Draft');
+    page.draft()!.vocabulary[0].word = 'Hi';
+    page.changed();
+    const saving = page.save();
+    await Promise.resolve();
+    http.expectOne(`${base}/ai/job-1`).flush(
+      { error: 'newer_ai_job_exists' },
+      {
+        status: 409,
+        statusText: 'Conflict',
+      },
+    );
+    await saving;
+    fixture.detectChanges();
+    expect(page.staleDraft()).toBe(true);
+    expect(page.draft()!.vocabulary[0].word).toBe('Hi');
+    expect(page.error()).toContain('معالجة أحدث');
+    expect(fixture.nativeElement.querySelector('.action-bar .primary-button').disabled).toBe(true);
+    await page.save();
+    http.expectNone(`${base}/ai/job-1`);
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('shows only the essential word fields and keeps extra options folded', async () => {
+    const { http, fixture } = await setup('Draft');
+    const page = fixture.nativeElement as HTMLElement;
+    expect(page.querySelector('.page-header')?.textContent).toContain('كلمات السفر');
+    expect(page.querySelector('#words-title')?.textContent).toContain('ما الكلمات');
+    expect(page.querySelector('.word-card .optional-details')?.hasAttribute('open')).toBe(false);
+    expect(page.querySelector('.action-bar .primary-button')?.textContent).toContain(
+      'حفظ واعتماد المرحلة',
+    );
+    http.verify();
+    fixture.destroy();
+  });
+
   it('lets the teacher select only recorded dictation sentences and persists that choice', async () => {
     const { http, fixture, page } = await setup('Draft', 'listen-type');
     const draft = page.draft()!;
@@ -157,21 +215,26 @@ describe('AdminLessonStageEditorPage', () => {
     fixture.detectChanges();
     page.setDictationSelection(false);
     expect(page.selectedDictationCount()).toBe(0);
-    expect(page.stageIssues('listen-type')).toContain('اختر جملة واحدة على الأقل من المقاطع التي لها تسجيل صوتي.');
+    expect(page.stageIssues('listen-type')).toContain(
+      'اختر جملة واحدة على الأقل من المقاطع التي لها تسجيل صوتي.',
+    );
     page.setDictationSelection(true);
     expect(page.draft()!.dictation!.map((item) => item.enabled)).toEqual([true, true, false]);
     page.draft()!.dictation![0].enabled = false;
     page.changed();
     fixture.detectChanges();
     expect(page.selectedDictationCount()).toBe(1);
-    const choices = fixture.nativeElement.querySelectorAll('.dictation-select input') as NodeListOf<HTMLInputElement>;
+    const choices = fixture.nativeElement.querySelectorAll(
+      '.dictation-select input',
+    ) as NodeListOf<HTMLInputElement>;
     expect(choices).toHaveLength(3);
     expect(choices[2].disabled).toBe(true);
     const saving = page.save();
     await Promise.resolve();
     const request = http.expectOne(`${base}/ai/job-1`);
-    expect(request.request.body.material.dictation.map((item: { enabled: boolean }) => item.enabled))
-      .toEqual([false, true, false]);
+    expect(
+      request.request.body.material.dictation.map((item: { enabled: boolean }) => item.enabled),
+    ).toEqual([false, true, false]);
     request.flush({ ...page.job(), revision: 'rev-2', material: request.request.body.material });
     await saving;
     http.verify();
@@ -205,7 +268,9 @@ describe('AdminLessonStageEditorPage', () => {
     await Promise.resolve();
     const request = http.expectOne(`${base}/ai/job-1`);
     expect(request.request.body.material.dictation[0]).toMatchObject({
-      mode: 'missing-word', targetWordIndex: 4, acceptedAnswers: ['every'],
+      mode: 'missing-word',
+      targetWordIndex: 4,
+      acceptedAnswers: ['every'],
     });
     request.flush({ ...page.job(), revision: 'rev-2', material: request.request.body.material });
     await saving;
@@ -217,8 +282,19 @@ describe('AdminLessonStageEditorPage', () => {
     const { http, fixture, page } = await setup('Draft', 'listen-type');
     const text = 'I go to school every day.';
     page.segments.set([{ position: 1, text, audioUrl: '/teacher/1/audio' }]);
-    page.draft.set({ ...page.draft()!, dictation: [{ position: 1, enabled: true, hint: null,
-      acceptedAnswers: ['school'], mode: 'missing-word', targetWordIndex: 3 }] });
+    page.draft.set({
+      ...page.draft()!,
+      dictation: [
+        {
+          position: 1,
+          enabled: true,
+          hint: null,
+          acceptedAnswers: ['school'],
+          mode: 'missing-word',
+          targetWordIndex: 3,
+        },
+      ],
+    });
     page.selectDictationWord(1, 4, text);
     page.dictationItem(1)!.acceptedAnswers = ['school']; // stale UI data must not override the selection
     fixture.detectChanges();
@@ -237,13 +313,34 @@ describe('AdminLessonStageEditorPage', () => {
   });
 
   it('converts an old single-word draft to a missing-word question without losing the chosen word', async () => {
-    const legacy = { ...material, dictation: [{ ...material.dictation[0], mode: 'single-word',
-      targetWordIndex: 1, acceptedAnswers: ['there'], audioStartSeconds: 0.2,
-      audioEndSeconds: 0.8 }] };
-    const { http, fixture, page } = await setup('Draft', 'listen-type', 'NeedsReview',
-      [{ position: 1, text: 'Hello there', audioUrl: '/teacher/1/audio' }], 206, legacy);
-    expect(page.dictationItem(1)).toMatchObject({ mode: 'missing-word', targetWordIndex: 1,
-      acceptedAnswers: ['there'], audioStartSeconds: null, audioEndSeconds: null });
+    const legacy = {
+      ...material,
+      dictation: [
+        {
+          ...material.dictation[0],
+          mode: 'single-word',
+          targetWordIndex: 1,
+          acceptedAnswers: ['there'],
+          audioStartSeconds: 0.2,
+          audioEndSeconds: 0.8,
+        },
+      ],
+    };
+    const { http, fixture, page } = await setup(
+      'Draft',
+      'listen-type',
+      'NeedsReview',
+      [{ position: 1, text: 'Hello there', audioUrl: '/teacher/1/audio' }],
+      206,
+      legacy,
+    );
+    expect(page.dictationItem(1)).toMatchObject({
+      mode: 'missing-word',
+      targetWordIndex: 1,
+      acceptedAnswers: ['there'],
+      audioStartSeconds: null,
+      audioEndSeconds: null,
+    });
     expect(page.dirty()).toBe(true);
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).not.toContain('كلمة مسموعة');
@@ -252,24 +349,35 @@ describe('AdminLessonStageEditorPage', () => {
   });
 
   it('recovers teacher recordings when the segments API omits audioUrl', async () => {
-    const { http, fixture, page } = await setup('Draft', 'listen-type', 'NeedsReview',
-      [{ position: 1, text: 'Hello there' }]);
+    const { http, fixture, page } = await setup('Draft', 'listen-type', 'NeedsReview', [
+      { position: 1, text: 'Hello there' },
+    ]);
     expect(page.segments()[0].audioUrl).toBe(
-      `/api/admin/shadowing/lessons/versions/${versionId}/segments/1/audio`);
+      `/api/admin/shadowing/lessons/versions/${versionId}/segments/1/audio`,
+    );
     expect(page.dictationAudioState()).toBe('ready');
     fixture.detectChanges();
-    expect((fixture.nativeElement.querySelector('.dictation-select input') as HTMLInputElement).disabled).toBe(false);
+    expect(
+      (fixture.nativeElement.querySelector('.dictation-select input') as HTMLInputElement).disabled,
+    ).toBe(false);
     http.verify();
     fixture.destroy();
   });
 
   it('only marks an old-API segment as missing when its teacher clip returns 404', async () => {
-    const { http, fixture, page } = await setup('Draft', 'listen-type', 'NeedsReview',
-      [{ position: 1, text: 'Hello there' }], 404);
+    const { http, fixture, page } = await setup(
+      'Draft',
+      'listen-type',
+      'NeedsReview',
+      [{ position: 1, text: 'Hello there' }],
+      404,
+    );
     expect(page.segments()[0].audioUrl).toBeNull();
     expect(page.dictationAudioState()).toBe('missing');
     fixture.detectChanges();
-    expect((fixture.nativeElement.querySelector('.dictation-select input') as HTMLInputElement).disabled).toBe(true);
+    expect(
+      (fixture.nativeElement.querySelector('.dictation-select input') as HTMLInputElement).disabled,
+    ).toBe(true);
     http.verify();
     fixture.destroy();
   });
@@ -298,12 +406,30 @@ describe('AdminLessonStageEditorPage', () => {
     const { http, fixture, page } = await setup('Draft', 'vocabulary-quiz');
     expect(page.draft()!.quiz[0].enabled).toBeUndefined();
     page.draft()!.quiz = [
-      { question: 'Word A', options: ['a', 'b', 'c', 'd'], correctIndex: 0,
-        explanationAr: 'شرح', type: 'vocabulary-card', enabled: true },
-      { question: 'Word B', options: ['a', 'b', 'c', 'd'], correctIndex: 1,
-        explanationAr: 'شرح', type: 'vocabulary-card', enabled: true },
-      { question: 'Grammar', options: ['a', 'b', 'c', 'd'], correctIndex: 2,
-        explanationAr: 'شرح', type: 'multiple-choice', enabled: true },
+      {
+        question: 'Word A',
+        options: ['a', 'b', 'c', 'd'],
+        correctIndex: 0,
+        explanationAr: 'شرح',
+        type: 'vocabulary-card',
+        enabled: true,
+      },
+      {
+        question: 'Word B',
+        options: ['a', 'b', 'c', 'd'],
+        correctIndex: 1,
+        explanationAr: 'شرح',
+        type: 'vocabulary-card',
+        enabled: true,
+      },
+      {
+        question: 'Grammar',
+        options: ['a', 'b', 'c', 'd'],
+        correctIndex: 2,
+        explanationAr: 'شرح',
+        type: 'multiple-choice',
+        enabled: true,
+      },
     ];
     page.setQuestionSelection('vocabulary-card', false);
     expect(page.selectedQuestionCount('vocabulary-card')).toBe(0);
@@ -321,14 +447,18 @@ describe('AdminLessonStageEditorPage', () => {
     const { http, fixture, page } = await setup('Draft');
     page.voiceConfigured.set(true);
     const speaking = page.speak('Hello');
-    http.expectOne((request) => request.url === `${base}/ai/voice`).flush(
-      new Blob([JSON.stringify({ error: 'voice_terms_required' })], { type: 'application/json' }),
-      { status: 503, statusText: 'Service Unavailable' },
-    );
+    http
+      .expectOne((request) => request.url === `${base}/ai/voice`)
+      .flush(
+        new Blob([JSON.stringify({ error: 'voice_terms_required' })], { type: 'application/json' }),
+        { status: 503, statusText: 'Service Unavailable' },
+      );
     await speaking;
     fixture.detectChanges();
     expect(page.error()).toContain('قبول شروط');
-    expect(fixture.nativeElement.querySelector('a[href^="https://console.groq.com/playground"]')).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('a[href^="https://console.groq.com/playground"]'),
+    ).not.toBeNull();
   });
 
   it('reopens approved content as an editable draft for the selected stage', async () => {
@@ -354,12 +484,69 @@ describe('AdminLessonStageEditorPage', () => {
     fixture.destroy();
   });
 
+  it('offers review instead of an empty screen when approved content has a stage needing review', async () => {
+    const { http, fixture, page } = await setup('Approved', 'conversation', 'NeedsReview');
+    expect(fixture.nativeElement.textContent).toContain('هذه المرحلة تحتاج مراجعة');
+    expect(fixture.nativeElement.querySelector('.approved-panel__preview').textContent).toContain(
+      'Say hello',
+    );
+    const button = fixture.nativeElement.querySelector('.approved-panel__actions .primary-button');
+    expect(button.textContent).toContain('فتح نسخة لمراجعة المرحلة');
+    const reopening = page.reopenApproved();
+    await Promise.resolve();
+    http.expectOne(`${base}/ai/job-1/reopen`).flush({
+      id: 'job-2',
+      lessonVersionId: versionId,
+      revision: 'rev-2',
+      status: 'Draft',
+      material,
+    });
+    await reopening;
+    fixture.detectChanges();
+    expect(page.stageCanEdit()).toBe(true);
+    expect(fixture.nativeElement.querySelector('.conversation-workspace')).not.toBeNull();
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('shows the real failed conversation attempt even when older content can be previewed', async () => {
+    const { http, fixture, page } = await setup(
+      'Approved',
+      'conversation',
+      'NeedsReview',
+      undefined,
+      206,
+      material,
+      null,
+      { id: 'failed-job', status: 'Failed', errorCode: 'provider_invalid_output' },
+    );
+    expect(page.latestAttempt()?.status).toBe('Failed');
+    expect(fixture.nativeElement.textContent).toContain('آخر محاولة لمعالجة هذه المرحلة فشلت');
+    expect(fixture.nativeElement.textContent).toContain('provider_invalid_output');
+    expect(fixture.nativeElement.querySelector('.approved-panel__preview').textContent).toContain(
+      'Say hello',
+    );
+    http.verify();
+    fixture.destroy();
+  });
+
   it('opens an existing lesson draft instead of showing the approved-stage reopen button', async () => {
-    const existingDraft = { id: 'draft-2', lessonVersionId: versionId,
-      revision: 'rev-2', status: 'Draft', material };
-    const { http, fixture, page } = await setup('Approved', 'vocabulary', 'Approved',
+    const existingDraft = {
+      id: 'draft-2',
+      lessonVersionId: versionId,
+      revision: 'rev-2',
+      status: 'Draft',
+      material,
+    };
+    const { http, fixture, page } = await setup(
+      'Approved',
+      'vocabulary',
+      'Approved',
       [{ position: 1, text: 'Hello there', audioUrl: '/teacher/1/audio' }],
-      206, material, existingDraft);
+      206,
+      material,
+      existingDraft,
+    );
     expect(page.job()?.id).toBe('draft-2');
     expect(page.selectedStage()).toBe('vocabulary');
     expect(fixture.nativeElement.querySelector('#words-title')).not.toBeNull();
@@ -374,10 +561,22 @@ describe('AdminLessonStageEditorPage', () => {
     await Promise.resolve();
     const request = http.expectOne(`${base}/ai/job-1/vocabulary-image`);
     expect(request.request.body).toEqual({ expectedRevision: 'rev-1', cardIndex: 0, page: 1 });
-    request.flush({ options: [
-      { imageUrl: 'https://images.pexels.com/photos/1/test.jpeg', photographer: 'One', photoUrl: 'https://www.pexels.com/photo/1' },
-      { imageUrl: 'https://images.pexels.com/photos/2/test.jpeg', photographer: 'Two', photoUrl: 'https://www.pexels.com/photo/2' },
-    ], provider: 'pexels', page: 1 });
+    request.flush({
+      options: [
+        {
+          imageUrl: 'https://images.pexels.com/photos/1/test.jpeg',
+          photographer: 'One',
+          photoUrl: 'https://www.pexels.com/photo/1',
+        },
+        {
+          imageUrl: 'https://images.pexels.com/photos/2/test.jpeg',
+          photographer: 'Two',
+          photoUrl: 'https://www.pexels.com/photo/2',
+        },
+      ],
+      provider: 'pexels',
+      page: 1,
+    });
     await suggesting;
     expect(page.imageOptions()[0]).toHaveLength(2);
     expect(page.draft()?.vocabulary[0].imageUrl).toBe(material.vocabulary[0].imageUrl);
@@ -388,9 +587,17 @@ describe('AdminLessonStageEditorPage', () => {
     await Promise.resolve();
     const nextRequest = http.expectOne(`${base}/ai/job-1/vocabulary-image`);
     expect(nextRequest.request.body.page).toBe(2);
-    nextRequest.flush({ options: [
-      { imageUrl: 'https://images.pexels.com/photos/3/test.jpeg', photographer: 'Three', photoUrl: 'https://www.pexels.com/photo/3' },
-    ], provider: 'pexels', page: 2 });
+    nextRequest.flush({
+      options: [
+        {
+          imageUrl: 'https://images.pexels.com/photos/3/test.jpeg',
+          photographer: 'Three',
+          photoUrl: 'https://www.pexels.com/photo/3',
+        },
+      ],
+      provider: 'pexels',
+      page: 2,
+    });
     await nextPage;
     expect(page.imageOptions()[0][0].imageUrl).toContain('/photos/3/');
     const saving = page.save();
@@ -406,8 +613,13 @@ describe('AdminLessonStageEditorPage', () => {
   it('saves the teacher conversation target, tense, vocabulary, and correction scope', async () => {
     const { http, fixture, page } = await setup('Draft', 'conversation');
     expect(fixture.nativeElement.textContent).toContain('قواعد نجاح المحادثة');
+    page.setConversationSupportMode('guided');
     const draft = page.draft()!;
     draft.conversationTurnTarget = 4;
+    draft.openingMessage = 'Hi! How are you?';
+    draft.aiRole = 'Tutor';
+    draft.studentRole = 'Learner';
+    draft.conversationSuccessSteps = ['Answer the question'];
     draft.conversationFocusTense = 'present-simple';
     draft.conversationLearningOutcome = 'Describe a daily routine';
     draft.conversationCorrectionMode = 'lesson-only';
@@ -421,10 +633,91 @@ describe('AdminLessonStageEditorPage', () => {
       conversationFocusTense: 'present-simple',
       conversationLearningOutcome: 'Describe a daily routine',
       conversationCorrectionMode: 'lesson-only',
+      conversationSupportMode: 'guided',
       conversationTargetWords: ['Hello'],
     });
     request.flush({ ...page.job(), revision: 'rev-2', material: request.request.body.material });
     await saving;
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('configures first steps for a one-word answer without a tense requirement', async () => {
+    const { http, fixture, page } = await setup('Draft', 'conversation');
+    page.setConversationSupportMode('guided');
+    const draft = page.draft()!;
+    draft.conversationFocusTense = 'present-simple';
+    draft.conversationCorrectionMode = 'all';
+    draft.conversationTurnTarget = 10;
+    page.setConversationSupportMode('first-steps');
+    expect(page.draft()).toMatchObject({
+      conversationSupportMode: 'first-steps',
+      conversationTurnTarget: 3,
+      conversationMinTurns: 2,
+      conversationMaxTurns: 4,
+      conversationFocusTense: null,
+      conversationCorrectionMode: 'lesson-only',
+      openingMessage: 'Hi! How are you?',
+      conversationModelAnswer: "I'm good.",
+    });
+    page.draft()!.conversationLearningOutcome = 'Answer a familiar greeting';
+    page.draft()!.aiRole = 'Tutor';
+    page.draft()!.studentRole = 'Learner';
+    page.draft()!.conversationSuccessSteps = ['Answer a greeting'];
+    expect(page.stageIssues('conversation')).toEqual([]);
+    page.draft()!.conversationTurnTarget = 6;
+    expect(page.stageIssues('conversation').length).toBeGreaterThan(0);
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('requires approved professional facts and valid reply bounds before review', async () => {
+    const { http, fixture, page } = await setup('Draft', 'conversation');
+    page.setConversationSupportMode('guided');
+    const draft = page.draft()!;
+    draft.conversationContextType = 'professional';
+    draft.aiRole = 'Customer';
+    draft.studentRole = 'Agent';
+    draft.openingMessage = 'Can you help me?';
+    draft.conversationLearningOutcome = 'Resolve a customer question';
+    draft.conversationSuccessSteps = ['Understand the issue', 'Explain an option'];
+    expect(page.stageIssues('conversation').join(' ')).toContain('حقائق الموقف');
+    page.updateConversationLines(
+      'conversationAllowedFacts',
+      'No discount is approved\nCancellation requires confirmation',
+    );
+    draft.conversationMinTurns = 5;
+    draft.conversationMaxTurns = 4;
+    expect(page.stageIssues('conversation').join(' ')).toContain('حدًا أدنى وأقصى');
+    draft.conversationMaxTurns = 10;
+    expect(page.stageIssues('conversation')).toEqual([]);
+    http.verify();
+    fixture.destroy();
+  });
+
+  it('marks missing conversation fields beside their inputs after a blocked review click', async () => {
+    const { http, fixture, page } = await setup('Draft', 'conversation');
+    const issues = page.stageIssues('conversation');
+    expect(issues).toContain('اكتب خطوة نجاح واحدة على الأقل، كل خطوة في سطر.');
+    expect(issues.length).toBeGreaterThan(1);
+    expect(fixture.nativeElement.querySelector('#conversation-success-steps').required).toBe(true);
+    await page.reviewStage();
+    expect(page.approvalAttempted()).toBe(true);
+    fixture.detectChanges();
+    const steps = fixture.nativeElement.querySelector('#conversation-success-steps');
+    expect(steps.getAttribute('aria-invalid')).toBe('true');
+    expect(steps.closest('.field').textContent).toContain('اكتب خطوة نجاح واحدة');
+    expect(fixture.nativeElement.querySelector('input[name="conversationMinTurns"]').required).toBe(
+      true,
+    );
+    expect(
+      fixture.nativeElement.querySelector('input[name="conversationMinTurns"]').closest('.field')
+        .textContent,
+    ).toContain('اكتب رقمًا من 1 إلى 20');
+    expect(
+      fixture.nativeElement.querySelector('.mode-picker--cards').closest('.section-block')
+        .textContent,
+    ).toContain('اختر مستوى المساعدة');
     http.verify();
     fixture.destroy();
   });
@@ -438,7 +731,13 @@ describe('AdminLessonStageEditorPage', () => {
     await Promise.resolve();
     const request = http.expectOne(`${base}/ai/stages/conversation/generate`);
     expect(request.request.body.requestId).toEqual(expect.any(String));
-    request.flush({ id: 'new-job', lessonVersionId: versionId, revision: 'new-rev', status: 'Pending', material: null });
+    request.flush({
+      id: 'new-job',
+      lessonVersionId: versionId,
+      revision: 'new-rev',
+      status: 'Pending',
+      material: null,
+    });
     await generating;
     fixture.detectChanges();
     expect(page.stageStatus()).toBe('Pending');
@@ -453,12 +752,20 @@ describe('AdminLessonStageEditorPage', () => {
     expect(page.vocabularyTargetCount()).toBe(12);
     page.vocabularyTargetCount.set(7);
     fixture.detectChanges();
-    expect((fixture.nativeElement as HTMLElement).querySelector('#vocabulary-target-count')).not.toBeNull();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('#vocabulary-target-count'),
+    ).not.toBeNull();
     const generating = page.generate();
     await Promise.resolve();
     const request = http.expectOne(`${base}/ai/stages/vocabulary/generate`);
     expect(request.request.body.vocabularyTargetCount).toBe(7);
-    request.flush({ id: 'new-job', lessonVersionId: versionId, revision: 'new-rev', status: 'Pending', material: null });
+    request.flush({
+      id: 'new-job',
+      lessonVersionId: versionId,
+      revision: 'new-rev',
+      status: 'Pending',
+      material: null,
+    });
     await generating;
     http.verify();
     fixture.destroy();
@@ -482,16 +789,31 @@ describe('AdminLessonStageEditorPage', () => {
     const refreshing = page.load();
     http.expectOne('/api/admin/lessons/ai-providers').flush({ configured: ['Groq'] });
     http.expectOne(`${base}/ai`).flush({
-      ...savedDraft, id: 'conversation-job', status: 'Generating', stageType: 'conversation',
+      ...savedDraft,
+      id: 'conversation-job',
+      status: 'Generating',
+      stageType: 'conversation',
     });
     http.expectOne(`${base}/ai/draft`).flush(savedDraft);
     http.expectOne(`${base}/ai/segments`).flush([{ position: 1, text: 'Hello there' }]);
-    http.expectOne(`${base}/workflow`).flush({ stages: [{
-      id: stageId, type: 'vocabulary', title: 'كلمات السفر', position: 1, enabled: true,
-    }] });
-    http.expectOne(`${base}/ai/stages/statuses`).flush({
-      vocabulary: 'Approved', conversation: 'Generating',
+    http.expectOne(`${base}/workflow`).flush({
+      stages: [
+        {
+          id: stageId,
+          type: 'vocabulary',
+          title: 'كلمات السفر',
+          position: 1,
+          enabled: true,
+        },
+      ],
     });
+    http.expectOne(`${base}/ai/stages/statuses`).flush({
+      vocabulary: 'Approved',
+      conversation: 'Generating',
+    });
+    await vi.waitFor(() =>
+      http.expectOne(`${base}/ai/stages/vocabulary/latest-attempt`).flush(null),
+    );
     await refreshing;
     fixture.detectChanges();
     expect(page.job()?.id).toBe(savedDraft?.id);

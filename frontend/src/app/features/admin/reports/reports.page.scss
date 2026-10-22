@@ -1,1 +1,118 @@
-/* Shared placeholder styles live in the V2 global foundation. */
+.reports-page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 32px 20px 60px;
+  color: #18342f;
+}
+header {
+  padding: 30px;
+  border-radius: 24px;
+  background: linear-gradient(130deg, #e3f7ee, #f4f8ff);
+}
+header span {
+  color: #007568;
+  font-size: 12px;
+  font-weight: 800;
+}
+h1 {
+  margin: 8px 0;
+  font-size: clamp(24px, 3vw, 34px);
+}
+header p {
+  margin: 0;
+  color: #58716b;
+}
+.report-list {
+  display: grid;
+  gap: 16px;
+  margin-top: 22px;
+}
+.report-card {
+  padding: 23px;
+  border: 1px solid #dce8e4;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 10px 30px #123d2e0a;
+}
+.report-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.report-card__head small {
+  color: #738780;
+}
+.report-card h2 {
+  margin: 5px 0;
+  font-size: 19px;
+}
+.report-card__head > span {
+  padding: 8px 12px;
+  border-radius: 99px;
+  background: #fff0df;
+  color: #8c5015;
+  font-weight: 750;
+}
+.report-card__head > span.report-card__success {
+  background: #ddf7e9;
+  color: #08634b;
+}
+.report-card > p {
+  color: #637b74;
+}
+.report-card__steps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.report-card__steps > div {
+  display: grid;
+  gap: 7px;
+  padding: 15px;
+  border-radius: 14px;
+  background: #f5faf8;
+}
+.report-card__steps strong {
+  color: #006e61;
+}
+.report-card__steps span {
+  color: #344b45;
+}
+details {
+  margin-top: 16px;
+}
+summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+details p {
+  color: #526760;
+}
+.report-error,
+.report-empty {
+  margin-top: 20px;
+  padding: 18px;
+  border-radius: 14px;
+  background: #fff4ef;
+}
+button {
+  cursor: pointer;
+}
+.more {
+  margin-top: 18px;
+  padding: 11px 20px;
+  border: 1px solid #b7d6cb;
+  border-radius: 12px;
+  background: #fff;
+  color: #006e61;
+}
+@media (max-width: 650px) {
+  .report-card__steps {
+    grid-template-columns: 1fr;
+  }
+  .report-card__head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

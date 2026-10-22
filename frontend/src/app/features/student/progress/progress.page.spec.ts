@@ -21,9 +21,27 @@ describe('StudentProgressPage', () => {
         hasMore: false,
         items: [{ slotId: 'slot-1', isComplete: true, completedSegments: 2 }],
       });
+    await Promise.resolve();
+    http.expectOne('/api/student/learning/conversation-review').flush([
+      {
+        slotId: 'slot-1',
+        lessonTitle: 'Airport',
+        createdAtUtc: '2026-10-20',
+        result: {
+          goalMet: false,
+          replyCount: 5,
+          metSteps: [],
+          missingSteps: ['Ask for the gate'],
+          issues: [],
+          endedEarly: true,
+          outcome: 'goal-incomplete',
+        },
+      },
+    ]);
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('1 من 1');
+    expect(fixture.nativeElement.textContent).toContain('Ask for the gate');
     expect(http.match((r) => r.method !== 'GET')).toEqual([]);
     http.verify();
   });

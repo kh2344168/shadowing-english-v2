@@ -1,577 +1,636 @@
 <section class="review-page" dir="rtl" aria-labelledby="review-title">
-  <header class="review-hero" [class.review-hero--vocabulary]="activeWorkflowStage()?.type === 'vocabulary'">
-    <div>
-      <button type="button" class="back" [disabled]="busy()" (click)="backToStages()">
-        <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
-        رحلة الدرس
-      </button>
-      <span class="eyebrow">LESSON ACTIVITY STUDIO</span>
-      <h1 id="review-title">{{ pageTitle() }}</h1>
-      <p>كل مرحلة لها مساحة عمل وأدوات مراجعة مناسبة لها، ولن يظهر شيء للطالب قبل الاعتماد.</p>
+  <header class="page-header">
+    <button type="button" class="back-link" [disabled]="busy()" (click)="backToStages()">
+      <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span> رحلة الدرس
+    </button>
+    <div class="page-header__main">
+      <div>
+        <span class="eyebrow">إعداد مرحلة من الدرس · المستوى {{ lessonLevel() }}</span>
+        <h1 id="review-title">{{ pageTitle() }}</h1>
+        <p>اشتغل على هذه المرحلة فقط. راجع ما سيظهر للطالب، ثم اعتمدها.</p>
+      </div>
+      <span class="status-pill" [class.status-pill--done]="stageStatus() === 'Approved'">
+        <span class="material-symbols-outlined" aria-hidden="true"
+          >{{ stageStatus() === 'Approved' ? 'check_circle' : stageIsProcessing() ?
+          'progress_activity' : 'edit_note' }}</span
+        >
+        @switch (stageStatus()) { @case ('NotStarted') { لم تبدأ } @case ('Pending') { في الانتظار }
+        @case ('Generating') { قيد المعالجة } @case ('NeedsReview') { تحتاج مراجعة } @case
+        ('Approved') { مرحلة معتمدة } @case ('Failed') { فشلت المعالجة } }
+      </span>
     </div>
-    @if (job()?.status === 'Draft' && draft()) {
-    <div class="hero-progress">
-      <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
-      <strong>{{ reviewedCount() }} / {{ requiredReviewStages().length }}</strong>
-      <small>مراحل مكتملة</small>
-    </div>
-    }
   </header>
 
   @if (error()) {
-  <p role="alert" class="alert alert--error">
-    {{ error() }}
-    @if (voiceTermsRequired()) {
-      <a href="https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english"
-        target="_blank" rel="noopener noreferrer">افتح Groq لقبول شروط نموذج الصوت</a>
-    }
-  </p>
+  <div class="message message--error" role="alert">
+    <span class="material-symbols-outlined" aria-hidden="true">error</span
+    ><span
+      >{{ error() }} @if (voiceTermsRequired()) {
+      <a
+        href="https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english"
+        target="_blank"
+        rel="noopener noreferrer"
+        >افتح Groq لقبول شروط نموذج الصوت</a
+      >
+      }</span
+    >
+  </div>
   } @if (notice()) {
-  <p role="status" class="alert alert--success">{{ notice() }}</p>
+  <div class="message message--success" role="status">
+    <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>{{ notice() }}
+  </div>
+  } @if (latestAttempt()?.status === 'Failed' && !loading()) {
+  <div class="message message--error" role="alert">
+    <span class="material-symbols-outlined" aria-hidden="true">error</span>
+    <span
+      >آخر محاولة لمعالجة هذه المرحلة فشلت: {{ failureReason(latestAttempt()?.errorCode ?? null) }}
+      @if (latestAttempt()?.errorCode) {
+      <small>رمز السبب: {{ latestAttempt()?.errorCode }}</small> }
+    </span>
+  </div>
   } @if (loading()) {
-  <div class="loading">
-    <span class="material-symbols-outlined spin">progress_activity</span> جاري تجهيز مساحة العمل...
+  <div class="waiting">
+    <span class="material-symbols-outlined spin" aria-hidden="true">progress_activity</span> جاري
+    تحميل المرحلة...
   </div>
   } @else {
-  <div class="service-bar">
-    <span class="service-dot" [class.off]="!canGenerateStage()"></span>
-    <span
-      >{{ providers().length ? 'الذكاء الاصطناعي جاهز: ' + providers().join('، ') :
-      activeWorkflowStage()?.type === 'listen-type' ? 'هذه المرحلة تستخدم نص الدرس والصوت ولا تحتاج مزود AI' :
-      'لم تتم إضافة مزود ذكاء اصطناعي بعد' }}</span
-    >
-    <strong>
-      @switch (stageStatus()) { @case ('NotStarted') { لم تبدأ هذه المرحلة }
-      @case ('Pending') { في قائمة الانتظار } @case ('Generating') { جاري معالجة هذه المرحلة }
-      @case ('NeedsReview') { تحتاج مراجعة } @case ('Approved') { مرحلة معتمدة }
-      @case ('Failed') { توقفت معالجة هذه المرحلة } }
-    </strong>
+  <div class="journey-note">
+    <span><b>١</b> عالج المرحلة</span><span><b>٢</b> راجع وعدّل</span><span><b>٣</b> اعتمدها</span>
   </div>
 
-  @if (activeWorkflowStage()?.type === 'listen-type' && dictationAudioState() === 'unverified') {
-  <p role="alert" class="alert alert--error">
-    تعذر التحقق من تسجيلات المدرّس بسبب خطأ في اتصال API أو تخزين الصوت. حدّث الصفحة وحاول مجددًا؛
-    لن نسمح باختيار جمل بلا صوت مؤكّد.
-  </p>
-  } @else if (activeWorkflowStage()?.type === 'listen-type' && dictationAudioState() === 'missing') {
-  <p role="alert" class="alert alert--error">
-    هذا الدرس لا يحتوي على تسجيلات محفوظة للمقاطع. أضف صوت المدرّس من إعداد الدرس، أو ألغِ تفعيل
-    «اسمع واكتب» من <button type="button" class="inline-link" (click)="backToStages()">رحلة الدرس</button>.
-  </p>
-  }
-
-  @if (stageStatus() === 'Failed') {
-  <p class="alert alert--error">{{ failureReason(job()?.errorCode ?? null) }}</p>
-  } @if (stageStatus() === 'NotStarted') {
-  <div class="empty-state">
-    <span class="material-symbols-outlined">auto_awesome</span>
-    <h2>هذه المرحلة لم تبدأ بعد</h2>
-    <p>اضغط «ابدأ المعالجة» لإنشاء محتوى هذه المرحلة وحدها. باقي المراحل وتعديلاتك فيها لن تتغير.</p>
+  @if (activeWorkflowStage()?.type === 'listen-type' && dictationAudioState() !== 'ready') {
+  <div class="message message--error" role="alert">
+    <span class="material-symbols-outlined" aria-hidden="true">mic_off</span>
+    {{ dictationAudioState() === 'unverified' ? 'تعذر التحقق من تسجيلات المدرّس. تأكد من تشغيل API
+    ثم حدّث الصفحة.' : 'لا يوجد تسجيل صوتي لهذا الدرس. أضف صوت المدرّس أو ألغِ مرحلة اسمع واكتب من
+    رحلة الدرس.' }}
   </div>
+  } @if (stageStatus() === 'NotStarted' || stageStatus() === 'Failed') {
+  <section class="start-panel" aria-labelledby="start-title">
+    <div class="start-panel__icon">
+      <span class="material-symbols-outlined" aria-hidden="true">auto_awesome</span>
+    </div>
+    <div>
+      <h2 id="start-title">
+        {{ stageStatus() === 'Failed' ? 'تعذرت المعالجة' : 'هذه المرحلة لم تبدأ بعد' }}
+      </h2>
+      <p>
+        {{ stageStatus() === 'Failed' ? failureReason(latestAttempt()?.errorCode ?? job()?.errorCode
+        ?? null) : 'اضغط ابدأ المعالجة. سيتم تجهيز هذه المرحلة وحدها، ثم تراجع النتيجة بنفسك.' }}
+      </p>
+      @if (activeWorkflowStage()?.type === 'vocabulary') {
+      <label class="target-count" for="vocabulary-target-count"
+        >عدد الكلمات المقترحة
+        <input
+          id="vocabulary-target-count"
+          type="number"
+          min="1"
+          max="20"
+          [ngModel]="vocabularyTargetCount()"
+          (ngModelChange)="vocabularyTargetCount.set(+$event)"
+        />
+        <small>من ١ إلى ٢٠، والنتيجة الفعلية تعتمد على محتوى الدرس.</small>
+      </label>
+      }
+      <button
+        type="button"
+        class="primary-button"
+        [disabled]="busy() || !canGenerateStage() || (activeWorkflowStage()?.type === 'vocabulary' && (vocabularyTargetCount() < 1 || vocabularyTargetCount() > 20))"
+        (click)="generate()"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">auto_awesome</span>{{
+        stageStatus() === 'Failed' ? 'أعد معالجة المرحلة' : 'ابدأ معالجة المرحلة' }}
+      </button>
+      @if (!canGenerateStage()) {
+      <p class="helper-text">
+        {{ activeWorkflowStage()?.type === 'listen-type' ? 'تحتاج هذه المرحلة تسجيل المدرّس.' : 'أضف
+        مزود ذكاء اصطناعي من إعدادات الأدمن أولًا.' }}
+      </p>
+      }
+    </div>
+  </section>
   } @if (stageIsProcessing()) {
   <div class="processing-state" role="status" aria-live="polite">
     <span class="material-symbols-outlined spin" aria-hidden="true">progress_activity</span>
     <div>
-      <h2>{{ stageStatus() === 'Pending' ? 'المرحلة في انتظار المعالجة' : 'جاري معالجة المرحلة' }}</h2>
-      <p>يمكنك العودة إلى رحلة الدرس. سنعرض النتيجة هنا فور اكتمال المعالجة لتراجعها وتعدّلها بنفسك.</p>
+      <h2>جاري تجهيز {{ pageTitle() }}</h2>
+      <p>يمكنك الرجوع لرحلة الدرس. سنعرض النتيجة هنا للمراجعة عند اكتمالها.</p>
     </div>
   </div>
-  } @if (activeWorkflowStage()?.type === 'vocabulary' && !stageIsProcessing()) {
-  <div class="vocabulary-generation-settings">
-    <label for="vocabulary-target-count">عدد الكلمات والعبارات المقترحة</label>
-    <input id="vocabulary-target-count" type="number" min="1" max="20"
-      [ngModel]="vocabularyTargetCount()"
-      (ngModelChange)="vocabularyTargetCount.set(+$event)" />
-    <small>اقترح حتى 20 بطاقة من نص الدرس، ثم اختر ما يصل للطالب. لو النص قصير قد تكون الاقتراحات أقل. تغيير العدد لا يعيد المعالجة إلا عند ضغط «إعادة معالجة هذه المرحلة».</small>
-  </div>
-  } @if (stageStatus() === 'NotStarted' || stageStatus() === 'Failed') {
-  <button
-    type="button"
-    class="generate-button"
-    [disabled]="busy() || !canGenerateStage() || (activeWorkflowStage()?.type === 'vocabulary' &&
-      (vocabularyTargetCount() < 1 || vocabularyTargetCount() > 20 || !vocabularyTargetCount()))"
-    (click)="generate()"
-  >
-    <span class="material-symbols-outlined">auto_awesome</span>
-    {{ stageStatus() === 'Failed' ? 'إعادة معالجة هذه المرحلة' : 'ابدأ المعالجة' }}
-  </button>
-  } @if ((stageStatus() === 'NeedsReview' || stageStatus() === 'Approved') &&
-    (globalProcessing() || (job()?.status !== 'Draft' && job()?.status !== 'Approved'))) {
+  } @if ((stageStatus() === 'NeedsReview' || stageStatus() === 'Approved') && !stageCanEdit() &&
+  job()?.status !== 'Approved') {
   <div class="stage-snapshot" role="status">
     <span class="material-symbols-outlined" aria-hidden="true">inventory_2</span>
     <div>
-      <strong>محتوى هذه المرحلة محفوظ</strong>
+      <strong>المحتوى محفوظ مؤقتًا</strong>
       <p>{{ stagePreview() }}</p>
-      <small>{{ globalProcessing()
-        ? 'تجري معالجة مرحلة أخرى الآن؛ التحرير متوقف مؤقتًا حتى لا تضيع تعديلاتك.'
-        : 'تعطلت معالجة مرحلة أخرى. أعد المحاولة من تلك المرحلة، ثم افتح هذه للتعديل.' }}</small>
+      <small>انتظر انتهاء معالجة المرحلة الأخرى ثم افتح هذه المرحلة للتعديل.</small>
     </div>
   </div>
-  } @if (stageCanEdit() && draft(); as material) { @if (selectedStage(); as activeStage)
-  {
-  <div class="stage-heading" [class.stage-heading--vocabulary]="activeStage === 'vocabulary'">
-    <div class="stage-heading__icon">
-      <span class="material-symbols-outlined">{{ stageIcon(activeStage) }}</span>
-    </div>
+  } @if (stageCanEdit() && draft(); as material) { @if (selectedStage(); as activeStage) {
+  <div class="editor-intro">
+    <span class="editor-intro__icon material-symbols-outlined" aria-hidden="true"
+      >{{ stageIcon(activeStage) }}</span
+    >
     <div>
       <span class="eyebrow">المرحلة {{ stageNumber() }}</span>
       <h2>{{ stageTitle(activeStage) }}</h2>
-      <p>راجع المحتوى كما سيظهر للطالب، ثم احفظ واعتمد المرحلة.</p>
+      <p>غيّر ما تحتاجه فقط، ثم احفظ واعتمد المرحلة.</p>
     </div>
-    <button type="button" class="secondary back-to-stages" (click)="backToStages()">
-      <span class="material-symbols-outlined">grid_view</span>
-      الرجوع لرحلة الدرس
-    </button>
   </div>
 
   @if (activeStage === 'vocabulary') {
   <section class="workspace vocabulary-workspace" aria-labelledby="words-title">
-    <div class="workspace-title">
+    <div class="section-title">
       <div>
-        <span class="eyebrow">VISUAL VOCABULARY</span>
-        <h2 id="words-title">الكلمات والعبارات</h2>
-        <p>صورة، معنى، نطق، ومثال لكل بطاقة. اختر بدقة ما يصل للطالب.</p>
+        <h2 id="words-title">ما الكلمات التي سيراها الطالب؟</h2>
+        <p>اختر البطاقات المناسبة، وعدّل الكلمة ومعناها ومثالها وصورتها.</p>
       </div>
-      <span class="count-chip">{{ material.vocabulary.length }} بطاقة</span>
+      <span class="count-chip"
+        >{{ visibleVocabularyCount() }} من {{ material.vocabulary.length }} مختارة</span
+      >
     </div>
-    <div class="vocabulary-toolbar">
-      <span>المختار للطالب: {{ visibleVocabularyCount() }} من {{ material.vocabulary.length }}</span>
-      <button type="button" class="selection-action" (click)="setVocabularySelection(true)" [disabled]="busy()">اختيار الكل</button>
-      <button type="button" class="selection-action" (click)="setVocabularySelection(false)" [disabled]="busy()">استبعاد الكل</button>
-      <span>عدد الاقتراحات عند آخر معالجة: {{ material.vocabularyTargetCount ?? 'تلقائي' }}</span>
-      <label>صوت المعاينة
-        <select [(ngModel)]="selectedVoice" aria-label="اختيار الصوت الطبيعي">
-          <option value="Kore">Kore</option><option value="Aoede">Aoede</option><option value="Puck">Puck</option>
-        </select>
-      </label>
+    <div class="selection-toolbar">
+      <div><strong>اختيار البطاقات</strong><small>البطاقة المستبعدة لن تظهر للطالب.</small></div>
+      <div class="selection-toolbar__actions">
+        <button type="button" (click)="setVocabularySelection(true)" [disabled]="busy()">
+          تحديد الكل</button
+        ><button type="button" (click)="setVocabularySelection(false)" [disabled]="busy()">
+          إلغاء الكل
+        </button>
+      </div>
+    </div>
+    <div class="tool-note">
+      <span class="material-symbols-outlined" aria-hidden="true">image</span
+      ><span
+        >{{ imagesConfigured() ? 'يمكنك اقتراح صورة لكل كلمة أو تغيير صورتها وحدها.' : 'لإضافة صور
+        مقترحة، فعّل Pexels من إعدادات الصور.' }}</span
+      >
+      @if (imagesConfigured()) {
+      <button
+        type="button"
+        (click)="fillMissingVocabularyImages()"
+        [disabled]="busy() || imageBusy() !== null"
+      >
+        صور للبطاقات الفارغة
+      </button>
+      } @else { <button type="button" (click)="openImageSettings()">إعدادات الصور</button> }
+    </div>
+    <div class="tool-note tool-note--soft">
+      <span class="material-symbols-outlined" aria-hidden="true">volume_up</span
+      ><span
+        >{{ voiceConfigured() ? 'صوت المعاينة الطبيعي متاح.' : 'معاينة الصوت غير مفعّلة؛ أضف مفتاح
+        الصوت من إعدادات AI.' }}</span
+      >
       @if (voiceConfigured()) {
-      <small class="voice-ready"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span> الصوت الطبيعي جاهز للمعاينة</small>
-      } @else {
-      <small class="voice-missing"><span class="material-symbols-outlined" aria-hidden="true">info</span>
-        الصوت غير مفعّل. <a routerLink="/admin/ai-tools">أضف مفتاح Groq Voice من إعدادات AI</a> لتشغيله للمدرّس والطالب.</small>
-      }
+      <label
+        >الصوت
+        <select [(ngModel)]="selectedVoice" aria-label="اختيار صوت المعاينة">
+          <option value="Kore">Kore</option>
+          <option value="Aoede">Aoede</option>
+          <option value="Puck">Puck</option>
+        </select></label
+      >
+      } @else { <a routerLink="/admin/ai-tools">إعدادات الصوت</a> }
     </div>
-    <div class="image-provider-notice" [class.image-provider-notice--off]="!imagesConfigured()">
-      <span class="material-symbols-outlined">{{ imagesConfigured() ? 'photo_library' : 'key_off' }}</span>
-      @if (imagesConfigured()) {
-      <span>بحث الصور عبر Pexels مفعّل. تظهر ١٢ صورة مقترحة لكل بطاقة، ويمكنك طلب المزيد واختيار الأنسب؛ الصور لا تُعتمد قبل الحفظ.</span>
-      } @else {
-      <span>صور الكلمات غير مفعّلة: أضف مفتاح Pexels من <button type="button" class="inline-link" [disabled]="busy()" (click)="openImageSettings()">إعدادات مزودي الصور</button> ثم حدّث الصفحة.</span>
-      }
-      @if (imagesConfigured()) {
-      <button type="button" class="image-provider-notice__action" (click)="fillMissingVocabularyImages()"
-        [disabled]="busy() || imageBusy() !== null">اقترح صورًا لكل البطاقات الفارغة</button>
-      }
-    </div>
-    <div class="vocabulary-grid">
+    <details class="optional-details">
+      <summary>لو أردت إعادة المعالجة: غيّر عدد الكلمات المقترحة</summary>
+      <div class="details-body">
+        <label class="target-count" for="vocabulary-target-count"
+          >عدد الكلمات المقترحة<input
+            id="vocabulary-target-count"
+            type="number"
+            min="1"
+            max="20"
+            [ngModel]="vocabularyTargetCount()"
+            (ngModelChange)="vocabularyTargetCount.set(+$event)"
+          /><small
+            >التغيير لا يبدأ المعالجة تلقائيًا؛ اضغط «إعادة معالجة» بعد حفظ تعديلاتك.</small
+          ></label
+        >
+      </div>
+    </details>
+    <div class="card-list">
       @for (word of material.vocabulary; track $index; let wordIndex = $index) {
       <article class="word-card" [class.word-card--excluded]="word.includeForStudent === false">
         <div class="word-visual">
+          <span class="material-symbols-outlined" aria-hidden="true">image</span>
           @if (word.imageUrl) {
           <img
             [src]="word.imageUrl"
-            [alt]="word.word"
+            [alt]="word.word || 'صورة الكلمة'"
             (error)="$any($event.target).style.display='none'"
           />
           }
-          <span class="visual-fallback material-symbols-outlined">image</span>
-          <span class="kind-badge">{{ word.kind === 'chunk' ? 'CHUNK' : 'WORD' }}</span>
-          <button type="button" class="visual-image-button" (click)="suggestVocabularyImage(wordIndex)"
-            [disabled]="!imagesConfigured() || imageBusy() !== null || busy() || !word.word.trim()">
-            <span class="material-symbols-outlined">add_photo_alternate</span>
-            {{ imageBusy() === wordIndex ? 'جاري البحث...' : word.imageUrl ? 'صور بديلة' : 'اختيار صورة' }}
-          </button>
           <label class="include-toggle"
             ><input
               type="checkbox"
               [ngModel]="word.includeForStudent !== false"
               [name]="'include-' + wordIndex"
               (ngModelChange)="word.includeForStudent = $event; changed()"
-            /><span></span>{{ word.includeForStudent === false ? 'مستبعدة' : 'مع الطالب' }}</label
+            />{{ word.includeForStudent === false ? 'مستبعدة' : 'مع الطالب' }}</label
           >
+          <button
+            type="button"
+            class="visual-image-button"
+            (click)="suggestVocabularyImage(wordIndex)"
+            [disabled]="!imagesConfigured() || imageBusy() !== null || busy() || !word.word.trim()"
+          >
+            {{ imageBusy() === wordIndex ? 'جاري البحث...' : word.imageUrl ? 'تغيير الصورة' : 'اختر
+            صورة' }}
+          </button>
         </div>
-        @if (imageOptions()[wordIndex]?.length) {
-        <div class="image-picker">
-          <div class="image-picker__heading">
-            <strong>اختر صورة مناسبة لـ {{ word.word }} · صفحة {{ imagePages()[wordIndex] }} من ١٠</strong>
-            <button type="button" (click)="suggestVocabularyImage(wordIndex)" [disabled]="imageBusy() !== null || busy()">
-              {{ imageBusy() === wordIndex ? 'جاري البحث...' : 'صور أخرى' }}
-            </button>
-          </div>
-          <div class="image-picker__grid">
-            @for (option of imageOptions()[wordIndex]; track option.imageUrl) {
-            <div class="image-picker__option">
-              <button type="button" (click)="selectVocabularyImage(wordIndex, option.imageUrl)"
-                [class.image-picker__option--selected]="word.imageUrl === option.imageUrl"
-                [attr.aria-label]="'اختيار صورة من ' + option.photographer">
-                <img [src]="option.imageUrl" [alt]="word.word" loading="lazy" />
-                @if (word.imageUrl === option.imageUrl) { <span class="material-symbols-outlined">check_circle</span> }
-              </button>
-              <a [href]="option.photoUrl" target="_blank" rel="noopener noreferrer">{{ option.photographer }} · Pexels</a>
-            </div>
-            }
-          </div>
-        </div>
-        }
         <div class="word-body">
-          <div class="word-card-heading"><span>بطاقة {{ wordIndex + 1 }}</span>
-            <strong>{{ word.includeForStudent === false ? 'مستبعدة من الدرس' : 'ستظهر للطالب' }}</strong></div>
-          <div class="word-head">
-            <label class="field field--word"
-              ><span>الكلمة أو العبارة</span
-              ><input
-                dir="ltr"
-                [(ngModel)]="word.word"
-                [name]="'word-' + wordIndex"
-                maxlength="80"
-                (ngModelChange)="changed()"
-            /></label>
-            <button
-              type="button"
-              class="sound-button"
-              (click)="speak(word.word)"
-              [disabled]="!word.word.trim() || voiceBusy() || !voiceConfigured()"
-              aria-label="اسمع نطق الكلمة"
-            >
-              <span class="material-symbols-outlined">volume_up</span>
-            </button>
+          <div class="card-heading">
+            <strong>بطاقة {{ wordIndex + 1 }}</strong
+            ><span>{{ word.kind === 'chunk' ? 'عبارة' : 'كلمة' }}</span>
           </div>
-          <label class="field"
-            ><span>المعنى بالعربي</span
-            ><input
-              [(ngModel)]="word.meaningAr"
-              [name]="'meaning-' + wordIndex"
-              maxlength="120"
-              (ngModelChange)="changed()"
-          /></label>
-          <div class="example-box example-box--editor">
-            <label class="field"><span>جملة المثال</span><input dir="ltr"
-              [(ngModel)]="word.exampleEn" [name]="'example-' + wordIndex" maxlength="200"
-              (ngModelChange)="changed()" /></label>
-            <button
-              type="button"
-              class="sound-button sound-button--soft"
-              (click)="speak(word.exampleEn)"
-              [disabled]="!word.exampleEn.trim() || voiceBusy() || !voiceConfigured()"
-              aria-label="اسمع جملة المثال"
-            >
-              <span class="material-symbols-outlined">play_arrow</span>
-            </button>
+          <div class="edit-grid">
+            <label class="field"
+              ><span>الكلمة أو العبارة</span>
+              <div class="input-with-action">
+                <input
+                  dir="ltr"
+                  [(ngModel)]="word.word"
+                  [name]="'word-' + wordIndex"
+                  maxlength="80"
+                  (ngModelChange)="changed()"
+                /><button
+                  type="button"
+                  (click)="speak(word.word)"
+                  [disabled]="!word.word.trim() || voiceBusy() || !voiceConfigured()"
+                  aria-label="اسمع الكلمة"
+                >
+                  <span class="material-symbols-outlined">volume_up</span>
+                </button>
+              </div></label
+            ><label class="field"
+              ><span>المعنى بالعربية</span
+              ><input
+                [(ngModel)]="word.meaningAr"
+                [name]="'meaning-' + wordIndex"
+                maxlength="120"
+                (ngModelChange)="changed()"
+            /></label>
           </div>
-          <label class="field"><span>معنى الجملة</span><input
-            [(ngModel)]="word.exampleAr" [name]="'example-ar-' + wordIndex" maxlength="200"
-            (ngModelChange)="changed()" /></label>
-          <details class="word-more">
-            <summary>تفاصيل إضافية: شرح، استخدام، ورابط الصورة</summary>
-            <div class="edit-grid">
-            <label class="field field--wide"
-              ><span>رابط الصورة</span
-              ><input
-                dir="ltr"
-                type="url"
-                [(ngModel)]="word.imageUrl"
-                [name]="'image-' + wordIndex"
-                maxlength="1000"
-                placeholder="https://..."
-                (ngModelChange)="changed()"
-            /></label>
-            @if (word.imageUrl) {
-            <div class="image-actions field--wide">
-              <a [href]="word.imageUrl" target="_blank" rel="noopener noreferrer">
-                <span class="material-symbols-outlined">open_in_new</span> معاينة الصورة الأصلية
-              </a>
-              <button type="button" class="danger-link" (click)="clearVocabularyImage(wordIndex)">
-                <span class="material-symbols-outlined">image_not_supported</span> حذف الصورة
-              </button>
-            </div>
-            }
+          <div class="edit-grid">
             <label class="field"
-              ><span>شرح مبسط</span
+              ><span>مثال من الدرس</span>
+              <div class="input-with-action">
+                <input
+                  dir="ltr"
+                  [(ngModel)]="word.exampleEn"
+                  [name]="'example-' + wordIndex"
+                  maxlength="200"
+                  (ngModelChange)="changed()"
+                /><button
+                  type="button"
+                  (click)="speak(word.exampleEn)"
+                  [disabled]="!word.exampleEn.trim() || voiceBusy() || !voiceConfigured()"
+                  aria-label="اسمع المثال"
+                >
+                  <span class="material-symbols-outlined">play_arrow</span>
+                </button>
+              </div></label
+            ><label class="field"
+              ><span>معنى المثال</span
               ><input
-                [(ngModel)]="word.explanation"
-                [name]="'explanation-' + wordIndex"
-                maxlength="300"
-                (ngModelChange)="changed()"
-            /></label>
-            <label class="field"
-              ><span>متى نستخدمها؟</span
-              ><input
-                [(ngModel)]="word.usageNote"
-                [name]="'usage-' + wordIndex"
+                [(ngModel)]="word.exampleAr"
+                [name]="'example-ar-' + wordIndex"
                 maxlength="200"
                 (ngModelChange)="changed()"
             /></label>
+          </div>
+          <details class="optional-details">
+            <summary>تفاصيل إضافية للبطاقة</summary>
+            <div class="details-body">
+              <div class="edit-grid">
+                <label class="field"
+                  ><span>شرح مبسط</span
+                  ><input
+                    [(ngModel)]="word.explanation"
+                    [name]="'explanation-' + wordIndex"
+                    maxlength="300"
+                    (ngModelChange)="changed()" /></label
+                ><label class="field"
+                  ><span>متى تُستخدم؟</span
+                  ><input
+                    [(ngModel)]="word.usageNote"
+                    [name]="'usage-' + wordIndex"
+                    maxlength="200"
+                    (ngModelChange)="changed()"
+                /></label>
+              </div>
+              <label class="field"
+                ><span>رابط صورة يدوي</span
+                ><input
+                  type="url"
+                  dir="ltr"
+                  [(ngModel)]="word.imageUrl"
+                  [name]="'image-' + wordIndex"
+                  maxlength="1000"
+                  (ngModelChange)="changed()"
+              /></label>
+              <div class="compact-actions">
+                <label
+                  >النوع
+                  <select
+                    [(ngModel)]="word.kind"
+                    [name]="'kind-' + wordIndex"
+                    (ngModelChange)="changed()"
+                  >
+                    <option value="word">كلمة</option>
+                    <option value="chunk">عبارة</option>
+                  </select></label
+                ><label
+                  ><input
+                    type="checkbox"
+                    [(ngModel)]="word.repeatForReview"
+                    [name]="'repeat-' + wordIndex"
+                    (ngModelChange)="changed()"
+                  />
+                  تكرارها للمراجعة</label
+                ><label
+                  ><input
+                    type="checkbox"
+                    [(ngModel)]="word.testLater"
+                    [name]="'test-later-' + wordIndex"
+                    (ngModelChange)="changed()"
+                  />
+                  لاختبار لاحق</label
+                >
+              </div>
+              <div class="compact-actions">
+                <button
+                  type="button"
+                  class="danger-link"
+                  (click)="clearVocabularyImage(wordIndex)"
+                  [disabled]="!word.imageUrl"
+                >
+                  إزالة الصورة</button
+                ><button
+                  type="button"
+                  class="danger-link"
+                  (click)="removeVocabulary(wordIndex)"
+                  [disabled]="material.vocabulary.length <= 1"
+                >
+                  حذف البطاقة
+                </button>
+              </div>
             </div>
           </details>
-          <div class="word-footer">
-            <label class="kind-select"
-              >النوع
-              <select
-                [(ngModel)]="word.kind"
-                [name]="'kind-' + wordIndex"
-                (ngModelChange)="changed()"
-              >
-                <option value="word">كلمة</option>
-                <option value="chunk">عبارة (Chunk)</option>
-              </select></label
-            >
-            <label class="compact-check">
-              <input
-                type="checkbox"
-                [(ngModel)]="word.repeatForReview"
-                [name]="'repeat-' + wordIndex"
-                (ngModelChange)="changed()"
-              />
-              تكرارها في المراجعة
-            </label>
-            <label class="compact-check">
-              <input
-                type="checkbox"
-                [(ngModel)]="word.testLater"
-                [name]="'test-later-' + wordIndex"
-                (ngModelChange)="changed()"
-              />
-              إضافتها لاختبار لاحق
-            </label>
-            <button
-              type="button"
-              class="danger-link"
-              [disabled]="material.vocabulary.length <= 1"
-              (click)="removeVocabulary(wordIndex)"
-            >
-              <span class="material-symbols-outlined">delete</span> حذف البطاقة
-            </button>
-          </div>
         </div>
+        @if (imageOptions()[wordIndex]?.length) {
+        <div class="image-picker">
+          <strong>اختر صورة لـ {{ word.word }} · صفحة {{ imagePages()[wordIndex] }}</strong>
+          <div class="image-picker__grid">
+            @for (option of imageOptions()[wordIndex]; track option.imageUrl) {
+            <div>
+              <button
+                type="button"
+                (click)="selectVocabularyImage(wordIndex, option.imageUrl)"
+                [attr.aria-label]="'اختيار صورة من ' + option.photographer"
+              >
+                <img [src]="option.imageUrl" [alt]="word.word" loading="lazy" /></button
+              ><a [href]="option.photoUrl" target="_blank" rel="noopener noreferrer"
+                >{{ option.photographer }} · Pexels</a
+              >
+            </div>
+            }
+          </div>
+          <button
+            type="button"
+            (click)="suggestVocabularyImage(wordIndex)"
+            [disabled]="imageBusy() !== null || busy()"
+          >
+            عرض صور أخرى
+          </button>
+        </div>
+        }
       </article>
       }
     </div>
     <button
       type="button"
       class="add-card"
-      [disabled]="material.vocabulary.length >= 20"
       (click)="addVocabulary()"
+      [disabled]="material.vocabulary.length >= 20"
     >
-      <span class="material-symbols-outlined">add</span> إضافة كلمة أو عبارة
+      <span class="material-symbols-outlined">add</span> أضف كلمة أو عبارة
     </button>
   </section>
   } @if (activeStage === 'listen-type') {
   <section class="workspace dictation-workspace" aria-labelledby="dictation-title">
-    <div class="workspace-title">
+    <div class="section-title">
       <div>
-        <span class="eyebrow">LISTEN & TYPE</span>
-        <h2 id="dictation-title">اسمع واكتب</h2>
-        <p>اختر الجمل، ثم صمّم سؤال كل جملة حسب المستوى. اقتراح A1 هو كلمة ناقصة، ولك حرية تغييره.</p>
+        <h2 id="dictation-title">ما الجمل التي سيسمعها الطالب؟</h2>
+        <p>اختر الجمل المسجلة بصوت المدرّس، ثم اختر شكل السؤال لكل جملة.</p>
       </div>
-      <span class="count-chip">{{ selectedDictationCount() }} من {{ material.dictation?.length ?? 0 }} جملة</span>
+      <span class="count-chip">{{ selectedDictationCount() }} جملة مختارة</span>
     </div>
-    <div class="selection-toolbar" aria-label="تحديد جمل التدريب">
-      <div class="selection-toolbar__summary">
-        <span class="material-symbols-outlined" aria-hidden="true">playlist_add_check</span>
-        <div><strong>{{ selectedDictationCount() }} جملة في التدريب</strong>
-          <small>اختر جملة واحدة على الأقل، ويمكنك تغيير الاختيار قبل اعتماد المرحلة.</small></div>
-      </div>
+    <div class="selection-toolbar">
+      <div><strong>اختيار الجمل</strong><small>يمكنك استخدام جملة واحدة فقط إن أردت.</small></div>
       <div class="selection-toolbar__actions">
-        <button type="button" (click)="setDictationSelection(true)" [disabled]="busy()">تحديد الكل</button>
-        <button type="button" (click)="setDictationSelection(false)" [disabled]="busy()">إلغاء الكل</button>
+        <button type="button" (click)="setDictationSelection(true)" [disabled]="busy()">
+          تحديد الكل</button
+        ><button type="button" (click)="setDictationSelection(false)" [disabled]="busy()">
+          إلغاء الكل
+        </button>
       </div>
     </div>
-    <div class="dictation-mode-summary" aria-label="أنواع الأسئلة المختارة">
-      @for (mode of dictationModes; track mode.key) {
-      <span><span class="material-symbols-outlined" aria-hidden="true">{{ mode.icon }}</span>
-        {{ mode.title }} <strong>{{ dictationModeCount(mode.key) }}</strong></span>
-      }
-    </div>
-    <div class="dictation-list">
+    <div class="card-list">
       @for (segment of segments(); track segment.position) { @if (dictationItem(segment.position);
       as item) {
-      <article class="dictation-card" [class.dictation-card--selected]="item.enabled"
-        [class.dictation-card--unavailable]="!segment.audioUrl">
-        <div class="sentence-number">{{ segment.position }}</div>
-        <div class="sentence-content">
-          <div class="sentence-line">
-            <p lang="en" dir="ltr">{{ segment.text }}</p>
-            <button type="button" class="sound-button" (click)="playTeacherSegment(segment.position, segment.audioUrl)"
-              [disabled]="!segment.audioUrl" [attr.aria-label]="'تشغيل تسجيل المدرّس للجملة ' + segment.position">
-              <span class="material-symbols-outlined">{{ playingSegment() === segment.position ? 'graphic_eq' : 'volume_up' }}</span>
+      <article class="dictation-card" [class.dictation-card--selected]="item.enabled">
+        <div class="card-heading">
+          <strong>الجملة {{ segment.position }}</strong
+          ><span
+            >{{ segment.audioUrl ? 'تسجيل المدرّس جاهز' : segment.audioUrl === undefined ? 'تعذر
+            التحقق من التسجيل' : 'لا يوجد تسجيل لهذه الجملة' }}</span
+          >
+        </div>
+        <div class="sentence-line">
+          <p lang="en" dir="ltr">{{ segment.text }}</p>
+          <button
+            type="button"
+            class="icon-button"
+            (click)="playTeacherSegment(segment.position, segment.audioUrl)"
+            [disabled]="!segment.audioUrl"
+            [attr.aria-label]="'تشغيل الجملة ' + segment.position"
+          >
+            <span class="material-symbols-outlined"
+              >{{ playingSegment() === segment.position ? 'graphic_eq' : 'volume_up' }}</span
+            >
+          </button>
+        </div>
+        @if (segment.audioUrl) {
+        <label class="dictation-select"
+          ><input
+            type="checkbox"
+            [ngModel]="item.enabled"
+            [name]="'dictation-' + segment.position"
+            (ngModelChange)="item.enabled = $event; changed()"
+          />
+          {{ item.enabled ? 'ضمن التدريب' : 'أضف الجملة للتدريب' }}</label
+        >
+        } @else {
+        <label class="dictation-select"
+          ><input type="checkbox" disabled aria-label="جملة بلا تسجيل صوتي" /> غير متاحة
+          للتدريب</label
+        >
+        } @if (item.enabled) {
+        <div class="dictation-editor">
+          <strong>ماذا سيفعل الطالب؟</strong>
+          <div
+            class="mode-picker"
+            role="group"
+            [attr.aria-label]="'نوع سؤال الجملة ' + segment.position"
+          >
+            @for (mode of dictationModes; track mode.key) {
+            <button
+              type="button"
+              [class.active]="dictationMode(item) === mode.key"
+              [attr.aria-pressed]="dictationMode(item) === mode.key"
+              [disabled]="(mode.key === 'missing-word' && dictationWords(segment.text).length < 2) || (mode.key === 'word-order' && (dictationWords(segment.text).length < 3 || dictationWords(segment.text).length > 12))"
+              (click)="setDictationMode(segment.position, mode.key, segment.text)"
+            >
+              {{ mode.title }}
             </button>
-          </div>
-          <div class="dictation-card__meta">
-            <span class="audio-source" [class.audio-source--missing]="!segment.audioUrl">
-              <span class="material-symbols-outlined" aria-hidden="true">{{ segment.audioUrl ? 'mic' : 'mic_off' }}</span>
-              {{ segment.audioUrl ? 'تسجيل المدرّس' : segment.audioUrl === undefined ? 'تعذر التحقق من التسجيل' : 'لا يوجد تسجيل لهذه الجملة' }}
-            </span>
-            @if (segment.audioUrl) {
-              <label class="dictation-select">
-              <input type="checkbox" [ngModel]="item.enabled" [name]="'dictation-' + segment.position"
-                (ngModelChange)="item.enabled = $event; changed()" />
-              <span>{{ item.enabled ? 'ضمن الاختبار' : 'إضافة للاختبار' }}</span>
-              </label>
-            } @else {
-              <span class="dictation-select">
-                <input type="checkbox" disabled aria-label="جملة بلا تسجيل صوتي" />
-                <span>غير متاحة للاختبار</span>
-              </span>
             }
           </div>
-          @if (item.enabled) {
-          <div class="dictation-editor">
-            <div class="dictation-editor__heading">
-              <strong>شكل السؤال للطالب</strong>
-              @if (lessonLevel() === 'A1') { <small>A1 · كلمة واحدة مقترحة تلقائيًا</small> }
-            </div>
-            <div class="dictation-mode-picker" role="group" [attr.aria-label]="'نوع سؤال الجملة ' + segment.position">
-              @for (mode of dictationModes; track mode.key) {
-              <button type="button" [class.active]="dictationMode(item) === mode.key"
-                [attr.aria-pressed]="dictationMode(item) === mode.key"
-                [disabled]="mode.key === 'missing-word' && dictationWords(segment.text).length < 2 ||
-                  mode.key === 'word-order' && (dictationWords(segment.text).length < 3 || dictationWords(segment.text).length > 12)"
-                (click)="setDictationMode(segment.position, mode.key, segment.text)">
-                <span class="material-symbols-outlined" aria-hidden="true">{{ mode.icon }}</span>{{ mode.title }}
+          @if (dictationMode(item) === 'missing-word') {
+          <div class="word-target">
+            <strong>اضغط الكلمة التي سيكتبها الطالب</strong>
+            <div dir="ltr">
+              @for (word of dictationWords(segment.text); track $index) {
+              <button
+                type="button"
+                [class.active]="item.targetWordIndex === $index"
+                (click)="selectDictationWord(segment.position, $index, segment.text)"
+              >
+                {{ word }}
               </button>
               }
             </div>
-            <p class="dictation-mode-explainer">
-              @if (dictationMode(item) === 'missing-word') {
-                الطالب يسمع الجملة كاملة ويرى نصها مع فراغ مكان الكلمة التي تختارها.
-              } @else if (dictationMode(item) === 'word-order') {
-                الطالب يسمع الجملة ويرتب كلماتها. الترتيب الصحيح يُحفظ تلقائيًا من نص الدرس.
-              } @else {
-                الطالب يسمع الجملة ويكتبها كاملة.
-              }
-            </p>
-            @if (dictationMode(item) === 'missing-word') {
-            <div class="dictation-target">
-              <strong>اختَر الكلمة المستهدفة من التسجيل</strong>
-              <div class="dictation-word-picker" role="group" [attr.aria-label]="'الكلمة المستهدفة للجملة ' + segment.position" dir="ltr">
-                @for (word of dictationWords(segment.text); track $index) {
-                <button type="button" [class.active]="item.targetWordIndex === $index"
-                  [attr.aria-pressed]="item.targetWordIndex === $index"
-                  (click)="selectDictationWord(segment.position, $index, segment.text)">{{ word }}</button>
-                }
-              </div>
-            </div>
-            }
-            <div class="dictation-student-preview">
-              <span>معاينة سؤال الطالب</span>
-              @if (dictationMode(item) === 'word-order') {
-                <strong>استمع ثم رتّب الكلمات</strong>
-                <p dir="ltr">{{ dictationWords(segment.text).slice(1).join(' ') }} {{ dictationWords(segment.text)[0] }}</p>
-              } @else {
-                <strong>{{ dictationMode(item) === 'missing-word' ? 'استمع واكتب الكلمة الناقصة' : 'استمع واكتب الجملة' }}</strong>
-                @if (dictationMode(item) === 'missing-word') {
-                  <p dir="ltr" lang="en">{{ dictationPrompt(item, segment.text) }}</p>
-                }
-              }
-            </div>
-          <div class="edit-grid">
-            @if (automaticDictationAnswer(item, segment.text); as automaticAnswer) {
-            <div class="dictation-auto-answer">
-              <span>الإجابة الصحيحة</span>
-              <strong dir="ltr" lang="en">{{ automaticAnswer }}</strong>
-              <small>تتحدث تلقائيًا عند اختيار كلمة أخرى؛ لا تحتاج إعادة معالجة بالذكاء الاصطناعي.</small>
-            </div>
-            } @else {
-            <label class="field"
-              ><span>الإجابات المقبولة — إجابة في كل سطر</span
-              ><textarea
-                dir="ltr"
-                [ngModel]="item.acceptedAnswers.join('\n')"
-                (ngModelChange)="updateAnswers(item.position, $event)"
-                [name]="'answers-' + segment.position"
-                maxlength="3000"
-              ></textarea></label>
-            }
-            <label class="field"
-              ><span>تلميح للطالب</span
-              ><input
-                [(ngModel)]="item.hint"
-                [name]="'hint-' + segment.position"
-                maxlength="160"
-                placeholder="مثال: تبدأ بحرف H"
-                (ngModelChange)="changed()"
-            /></label>
-          </div>
           </div>
           }
+          <div class="student-preview">
+            <span>معاينة للطالب</span
+            ><strong
+              >{{ dictationMode(item) === 'missing-word' ? 'استمع واكتب الكلمة الناقصة' :
+              dictationMode(item) === 'word-order' ? 'استمع ورتّب الكلمات' : 'استمع واكتب الجملة'
+              }}</strong
+            >@if (dictationMode(item) === 'missing-word') {
+            <p dir="ltr" lang="en">{{ dictationPrompt(item, segment.text) }}</p>
+            }
+          </div>
+          @if (automaticDictationAnswer(item, segment.text); as answer) {
+          <p class="auto-answer">
+            الإجابة: <b dir="ltr">{{ answer }}</b>
+            <small>تتحدث تلقائيًا عند تغيير الكلمة؛ لا تحتاج إعادة معالجة.</small>
+          </p>
+          } @else {
+          <label class="field"
+            ><span>الإجابات المقبولة — إجابة في كل سطر</span
+            ><textarea
+              dir="ltr"
+              [ngModel]="item.acceptedAnswers.join('\n')"
+              [name]="'answers-' + segment.position"
+              (ngModelChange)="updateAnswers(item.position, $event)"
+            ></textarea>
+          </label>
+          }
+          <details class="optional-details">
+            <summary>تلميح اختياري للطالب</summary>
+            <div class="details-body">
+              <label class="field"
+                ><span>التلميح</span
+                ><input
+                  [(ngModel)]="item.hint"
+                  [name]="'hint-' + segment.position"
+                  maxlength="160"
+                  (ngModelChange)="changed()"
+              /></label>
+            </div>
+          </details>
         </div>
+        }
       </article>
       } }
     </div>
   </section>
   } @if (activeStage === 'grammar') {
   <section class="workspace grammar-workspace" aria-labelledby="grammar-title">
-    <div class="grammar-hero">
-      <span class="material-symbols-outlined">school</span>
+    <div class="section-title">
       <div>
-        <span class="eyebrow">GRAMMAR FOCUS</span>
-        <h2 id="grammar-title">القاعدة المستهدفة</h2>
-        <p>اكتب شرحًا مباشرًا وبسيطًا يربط القاعدة بجمل الدرس.</p>
+        <h2 id="grammar-title">ما القاعدة التي سيتعلمها الطالب؟</h2>
+        <p>اكتب شرحًا قصيرًا مرتبطًا بجمل الدرس.</p>
       </div>
     </div>
     <label class="field"
       ><span>شرح القاعدة</span
       ><textarea
-        class="grammar-editor"
         [(ngModel)]="material.grammarFocus"
         name="grammar"
         maxlength="200"
         (ngModelChange)="changed()"
+        placeholder="مثال: نستخدم present simple للروتين اليومي..."
       ></textarea>
     </label>
-    <div class="source-examples">
-      <h3>أمثلة جاهزة من الدرس</h3>
-      @for (segment of segments().slice(0, 4); track segment.position) {
-      <div>
-        <span>{{ segment.position }}</span>
-        <p dir="ltr">{{ segment.text }}</p>
-        <button type="button" class="sound-button sound-button--soft" (click)="speak(segment.text)">
-          <span class="material-symbols-outlined">volume_up</span>
-        </button>
+    <details class="optional-details">
+      <summary>شاهد أمثلة من نص الدرس</summary>
+      <div class="details-body source-examples">
+        @for (segment of segments().slice(0, 4); track segment.position) {
+        <p dir="ltr" lang="en">{{ segment.text }}</p>
+        }
       </div>
-      }
-    </div>
+    </details>
   </section>
   } @if (activeStage === 'vocabulary-quiz' || activeStage === 'grammar-quiz' || activeStage ===
   'word-order') { @let questionType = activeStage === 'vocabulary-quiz' ? 'vocabulary-card' :
   activeStage === 'word-order' ? 'word-order' : 'multiple-choice';
   <section class="workspace quiz-workspace" aria-labelledby="quiz-title">
-    <div class="workspace-title">
+    <div class="section-title">
       <div>
-        <span class="eyebrow">ACTIVITY BUILDER</span>
-        <h2 id="quiz-title">{{ stageTitle(activeStage) }}</h2>
-        <p>كل سؤال هنا يخص هذه المرحلة فقط ويمكن استبعاده بشكل مستقل.</p>
+        <h2 id="quiz-title">أي أسئلة ستظهر للطالب؟</h2>
+        <p>راجع السؤال والإجابة. استبعد أي سؤال لا يناسب الدرس.</p>
       </div>
-      <span class="count-chip">{{ selectedQuestionCount(questionType) }} من {{ questionsFor(questionType).length }} سؤال</span>
+      <span class="count-chip">{{ selectedQuestionCount(questionType) }} سؤال مختار</span>
     </div>
-    <div class="selection-toolbar" aria-label="تحديد أسئلة الاختبار">
-      <div class="selection-toolbar__summary">
-        <span class="material-symbols-outlined" aria-hidden="true">fact_check</span>
-        <div><strong>{{ selectedQuestionCount(questionType) }} سؤال سيظهر للطالب</strong>
-          <small>استبعد أي سؤال لا يناسب الكلمات أو الجمل التي تريد اختبارها.</small></div>
-      </div>
+    <div class="selection-toolbar">
+      <div><strong>اختيار الأسئلة</strong><small>سؤال واحد معتمد على الأقل.</small></div>
       <div class="selection-toolbar__actions">
-        <button type="button" (click)="setQuestionSelection(questionType, true)" [disabled]="busy()">تحديد الكل</button>
-        <button type="button" (click)="setQuestionSelection(questionType, false)" [disabled]="busy()">إلغاء الكل</button>
+        <button
+          type="button"
+          (click)="setQuestionSelection(questionType, true)"
+          [disabled]="busy()"
+        >
+          تحديد الكل</button
+        ><button
+          type="button"
+          (click)="setQuestionSelection(questionType, false)"
+          [disabled]="busy()"
+        >
+          إلغاء الكل
+        </button>
       </div>
     </div>
-    <div class="question-list">
+    <div class="card-list">
       @for (entry of questionsFor(questionType); track entry.index; let displayIndex = $index) {
       <article class="question-card" [class.disabled-card]="entry.question.enabled === false">
-        <div class="question-card__top">
-          <span>سؤال {{ displayIndex + 1 }}</span
-          ><label class="include-toggle inline"
+        <div class="card-heading">
+          <strong>سؤال {{ displayIndex + 1 }}</strong
+          ><label class="include-toggle"
             ><input
               type="checkbox"
               [ngModel]="entry.question.enabled !== false"
               [name]="'question-enabled-' + entry.index"
               (ngModelChange)="entry.question.enabled = $event; changed()"
-            /><span></span>{{ entry.question.enabled === false ? 'مستبعد' : 'مع الطالب' }}</label
+            />
+            {{ entry.question.enabled === false ? 'مستبعد' : 'مع الطالب' }}</label
           >
         </div>
-        @if (entry.question.enabled === false) {
-        <p class="question-card__excluded" dir="auto">{{ entry.question.question || 'سؤال مستبعد من الاختبار' }}</p>
-        } @else {
+        @if (entry.question.enabled !== false) {
         <label class="field"
           ><span>نص السؤال</span
           ><input
@@ -582,16 +641,13 @@
         /></label>
         <div class="options-grid">
           @for (option of entry.question.options; track $index; let optionIndex = $index) {
-          <label
-            class="option-field"
-            [class.correct]="questionType !== 'word-order' && entry.question.correctIndex === optionIndex"
+          <label class="field"
             ><span
               >{{ questionType === 'word-order' ? 'كلمة ' : 'اختيار ' }}{{ optionIndex + 1 }}</span
             ><input
               [ngModel]="entry.question.options[optionIndex]"
-              (ngModelChange)="entry.question.options[optionIndex] = $event; changed()"
               [name]="'option-' + entry.index + '-' + optionIndex"
-              maxlength="120"
+              (ngModelChange)="entry.question.options[optionIndex] = $event; changed()"
           /></label>
           }
         </div>
@@ -602,11 +658,10 @@
             dir="ltr"
             [(ngModel)]="entry.question.correctAnswer"
             [name]="'order-' + entry.index"
-            maxlength="200"
             (ngModelChange)="changed()"
         /></label>
         } @else {
-        <label class="field compact"
+        <label class="field"
           ><span>الإجابة الصحيحة</span
           ><select
             [(ngModel)]="entry.question.correctIndex"
@@ -625,17 +680,18 @@
           ><input
             [(ngModel)]="entry.question.explanationAr"
             [name]="'explain-' + entry.index"
-            maxlength="250"
             (ngModelChange)="changed()"
         /></label>
+        } @else {
+        <p class="muted">هذا السؤال مستبعد ولن يظهر للطالب.</p>
         }
         <button
           type="button"
           class="danger-link"
-          [disabled]="material.quiz.length <= 1"
           (click)="removeQuestion(entry.index)"
+          [disabled]="material.quiz.length <= 1"
         >
-          <span class="material-symbols-outlined">delete</span> حذف السؤال
+          حذف السؤال
         </button>
       </article>
       }
@@ -643,104 +699,293 @@
     <button
       type="button"
       class="add-card"
-      [disabled]="material.quiz.length >= 12"
       (click)="addQuestion(questionType)"
+      [disabled]="material.quiz.length >= 12"
     >
-      <span class="material-symbols-outlined">add</span> إضافة سؤال
+      <span class="material-symbols-outlined">add</span> أضف سؤالًا
     </button>
   </section>
   } @if (activeStage === 'conversation') {
   <section class="workspace conversation-workspace" aria-labelledby="conversation-title">
-    <div class="conversation-preview">
-      <span class="material-symbols-outlined">forum</span>
+    <div class="section-title">
       <div>
-        <span>سيناريو المحادثة</span>
-        <p>{{ material.conversationScenario || 'اكتب موقفًا واضحًا يبدأ منه الحوار.' }}</p>
+        <h2 id="conversation-title">ابنِ محادثة لهذا الدرس</h2>
+        <p>حدد المهمة، أول سؤال، وكيف نعرف أن الطالب نجح. ابدأ بالقليل فقط.</p>
       </div>
     </div>
-    <h2 id="conversation-title">إعداد المحادثة</h2>
-    <div class="conversation-context-note">
-      <span class="material-symbols-outlined" aria-hidden="true">hub</span>
-      <p>
-        سياق المعلّم الذكي يأتي من موقف المحادثة، أهدافها، القاعدة والكلمات المعتمدة في هذه النسخة
-        من الدرس. اختياراتك هنا تحدد ما يركز عليه في الحوار والتغذية الراجعة، ولا تضيف له معلومات من
-        دروس أخرى.
-      </p>
+    <p class="conversation-instruction" id="conversation-readiness">
+      الحقول المعلّمة بـ <span class="required-mark">*</span> مطلوبة. عند الضغط على «حفظ واعتماد
+      المرحلة» سنحدد لك الحقل الذي يحتاج تعديلًا.
+    </p>
+    <div class="section-block">
+      <h3>١ · مستوى المساعدة <span class="required-mark" aria-label="مطلوب">*</span></h3>
+      <p>اختر ما يناسب قدرة الطالب الفعلية.</p>
+      <div
+        class="mode-picker mode-picker--cards"
+        role="group"
+        aria-label="مساعدة المحادثة"
+        [class.conversation-field--invalid]="conversationFieldIssue('support')"
+      >
+        <button
+          type="button"
+          [class.active]="conversationSupportMode() === 'first-steps'"
+          [attr.aria-pressed]="conversationSupportMode() === 'first-steps'"
+          (click)="setConversationSupportMode('first-steps')"
+        >
+          <strong>خطوات أولى</strong><small>رد بكلمة أو عبارة</small></button
+        ><button
+          type="button"
+          [class.active]="conversationSupportMode() === 'guided'"
+          [attr.aria-pressed]="conversationSupportMode() === 'guided'"
+          (click)="setConversationSupportMode('guided')"
+        >
+          <strong>موجّهة</strong><small>سؤال وتلميح</small></button
+        ><button
+          type="button"
+          [class.active]="conversationSupportMode() === 'independent'"
+          [attr.aria-pressed]="conversationSupportMode() === 'independent'"
+          (click)="setConversationSupportMode('independent')"
+        >
+          <strong>مستقلة</strong><small>حوار أوسع</small>
+        </button>
+      </div>
+      @if (conversationFieldIssue('support'); as issue) {
+      <small class="field-error" role="alert">{{ issue }}</small> }
     </div>
-    <label class="field"
-      ><span>الموقف</span
-      ><textarea
-        [(ngModel)]="material.conversationScenario"
-        name="scenario"
-        maxlength="240"
-        (ngModelChange)="changed()"
-      ></textarea>
-    </label>
-    <div class="edit-grid">
-      <label class="field"
-        ><span>دور المعلّم أو الذكاء الاصطناعي</span
-        ><input
-          [(ngModel)]="material.aiRole"
-          name="aiRole"
-          maxlength="100"
-          (ngModelChange)="changed()" /></label
-      ><label class="field"
-        ><span>دور الطالب</span
-        ><input
-          [(ngModel)]="material.studentRole"
-          name="studentRole"
-          maxlength="100"
-          (ngModelChange)="changed()"
-      /></label>
-    </div>
-    <label class="field"
-      ><span>رسالة البداية</span
-      ><input
-        [(ngModel)]="material.openingMessage"
-        name="opening"
-        maxlength="240"
-        (ngModelChange)="changed()"
-    /></label>
-    <label class="field"
-      ><span>أهداف المحادثة — هدف في كل سطر</span
-      ><textarea
-        [ngModel]="(material.conversationGoals || []).join('\n')"
-        name="goals"
-        (ngModelChange)="updateGoals($event)"
-      ></textarea>
-    </label>
-    <div class="conversation-settings">
-      <div class="conversation-settings__heading">
-        <span class="material-symbols-outlined" aria-hidden="true">tune</span>
-        <div>
-          <h3>قواعد نجاح المحادثة</h3>
-          <p>حدد ما يجب أن يتدرّب عليه الطالب قبل اكتمال المرحلة.</p>
-        </div>
+    <div class="section-block">
+      <h3>٢ · ما المهمة؟</h3>
+      <p>صف ما يحدث في الدرس، ودور كل طرف.</p>
+      <div class="edit-grid">
+        <label class="field" [class.conversation-field--invalid]="conversationFieldIssue('context')"
+          ><span>نوع المحادثة <span class="required-mark" aria-hidden="true">*</span></span
+          ><select
+            required
+            [attr.aria-invalid]="!!conversationFieldIssue('context')"
+            [(ngModel)]="material.conversationContextType"
+            name="conversationContextType"
+            (ngModelChange)="changed()"
+          >
+            <option [ngValue]="null">اختر النوع</option>
+            <option value="situation">موقف حياتي</option>
+            <option value="clip">رأي في مقطع</option>
+            <option value="professional">موقف مهني</option></select
+          >@if (conversationFieldIssue('context'); as issue) {
+          <small class="field-error" role="alert">{{ issue }}</small> }</label
+        ><label
+          class="field"
+          [class.conversation-field--invalid]="conversationFieldIssue('scenario')"
+          ><span>وصف الموقف <span class="required-mark" aria-hidden="true">*</span></span
+          ><input
+            required
+            [attr.aria-invalid]="!!conversationFieldIssue('scenario')"
+            [(ngModel)]="material.conversationScenario"
+            name="scenario"
+            maxlength="240"
+            (ngModelChange)="changed()"
+            placeholder="مثال: طالب يسأل موظف المطار عن البوابة"
+          />@if (conversationFieldIssue('scenario'); as issue) {
+          <small class="field-error" role="alert">{{ issue }}</small> }</label
+        >
       </div>
       <div class="edit-grid">
-        <label class="field"
-          ><span>عدد ردود الطالب لإكمال المحادثة</span
+        <label
+          class="field"
+          [class.conversation-field--invalid]="conversationFieldIssue('studentRole')"
+          ><span>دور الطالب <span class="required-mark" aria-hidden="true">*</span></span
           ><input
+            required
+            [attr.aria-invalid]="!!conversationFieldIssue('studentRole')"
+            [(ngModel)]="material.studentRole"
+            name="studentRole"
+            maxlength="100"
+            (ngModelChange)="changed()"
+          />@if (conversationFieldIssue('studentRole'); as issue) {
+          <small class="field-error" role="alert">{{ issue }}</small> }</label
+        ><label class="field" [class.conversation-field--invalid]="conversationFieldIssue('aiRole')"
+          ><span>دور المعلّم الذكي <span class="required-mark" aria-hidden="true">*</span></span
+          ><input
+            required
+            [attr.aria-invalid]="!!conversationFieldIssue('aiRole')"
+            [(ngModel)]="material.aiRole"
+            name="aiRole"
+            maxlength="100"
+            (ngModelChange)="changed()"
+          />@if (conversationFieldIssue('aiRole'); as issue) {
+          <small class="field-error" role="alert">{{ issue }}</small> }</label
+        >
+      </div>
+      @if (material.conversationContextType === 'professional') {
+      <label class="field" [class.conversation-field--invalid]="conversationFieldIssue('facts')"
+        ><span
+          >الحقائق المسموح بها — كل حقيقة في سطر
+          <span class="required-mark" aria-hidden="true">*</span></span
+        ><textarea
+          required
+          [attr.aria-invalid]="!!conversationFieldIssue('facts')"
+          [ngModel]="(material.conversationAllowedFacts || []).join('\n')"
+          name="conversationAllowedFacts"
+          (ngModelChange)="updateConversationLines('conversationAllowedFacts', $event)"
+        ></textarea
+        ><small>لا يختلق المعلّم خصمًا أو سياسة أو إجراءً غير مكتوب هنا.</small>@if
+        (conversationFieldIssue('facts'); as issue) {
+        <small class="field-error" role="alert">{{ issue }}</small> }</label
+      >
+      }
+    </div>
+    <div class="section-block">
+      <h3>٣ · قواعد نجاح المحادثة</h3>
+      <p>كيف يبدأ الطالب الحوار، وما الخطوات التي تُثبت أنه حقق الهدف؟</p>
+      <label class="field" [class.conversation-field--invalid]="conversationFieldIssue('opening')"
+        ><span>أول سؤال للطالب <span class="required-mark" aria-hidden="true">*</span></span
+        ><input
+          required
+          [attr.aria-invalid]="!!conversationFieldIssue('opening')"
+          [(ngModel)]="material.openingMessage"
+          name="opening"
+          maxlength="240"
+          dir="ltr"
+          (ngModelChange)="changed()"
+          placeholder="Hi! How can I help?"
+        />@if (conversationFieldIssue('opening'); as issue) {
+        <small class="field-error" role="alert">{{ issue }}</small> }</label
+      ><label class="field" [class.conversation-field--invalid]="conversationFieldIssue('steps')"
+        ><span
+          >خطوات النجاح — خطوة في كل سطر
+          <span class="required-mark" aria-hidden="true">*</span></span
+        ><textarea
+          required
+          [attr.aria-invalid]="!!conversationFieldIssue('steps')"
+          id="conversation-success-steps"
+          [ngModel]="(material.conversationSuccessSteps || []).join('\n')"
+          name="conversationSuccessSteps"
+          (ngModelChange)="updateConversationLines('conversationSuccessSteps', $event)"
+          placeholder="يسأل عن المكان&#10;يذكر الوجهة"
+        ></textarea
+        ><small>هذه أهداف يتعرف عليها النظام في ردود الطالب، وليست إجابات حرفية.</small>@if
+        (conversationFieldIssue('steps'); as issue) {
+        <small class="field-error" role="alert">{{ issue }}</small> }</label
+      ><label class="field" [class.conversation-field--invalid]="conversationFieldIssue('outcome')"
+        ><span
+          >ما المهارة التي سينهي بها الطالب الدرس؟
+          <span class="required-mark" aria-hidden="true">*</span></span
+        ><input
+          required
+          [attr.aria-invalid]="!!conversationFieldIssue('outcome')"
+          [(ngModel)]="material.conversationLearningOutcome"
+          name="conversationLearningOutcome"
+          maxlength="240"
+          (ngModelChange)="changed()"
+        />@if (conversationFieldIssue('outcome'); as issue) {
+        <small class="field-error" role="alert">{{ issue }}</small> }</label
+      >
+      <div class="edit-grid">
+        <label
+          class="field"
+          [class.conversation-field--invalid]="conversationFieldIssue('minTurns')"
+          ><span>أقل عدد ردود للطالب <span class="required-mark" aria-hidden="true">*</span></span
+          ><input
+            required
+            [attr.aria-invalid]="!!conversationFieldIssue('minTurns')"
             type="number"
             min="1"
             max="20"
-            step="1"
-            [(ngModel)]="material.conversationTurnTarget"
-            name="conversationTurnTarget"
+            [(ngModel)]="material.conversationMinTurns"
+            name="conversationMinTurns"
             (ngModelChange)="changed()"
-          /><small
-            >يُحسب الرد إذا التزم بالزمن المختار. الافتراضي للدروس القديمة: 10؛ وقد يكمل الطالب في
-            يوم آخر إذا تجاوز العدد الحد اليومي للـAI.</small
-          ></label
+          />@if (conversationFieldIssue('minTurns'); as issue) {
+          <small class="field-error" role="alert">{{ issue }}</small> }</label
+        ><label
+          class="field"
+          [class.conversation-field--invalid]="conversationFieldIssue('maxTurns')"
+          ><span>أكبر عدد ردود <span class="required-mark" aria-hidden="true">*</span></span
+          ><input
+            required
+            [attr.aria-invalid]="!!conversationFieldIssue('maxTurns')"
+            type="number"
+            min="1"
+            max="20"
+            [(ngModel)]="material.conversationMaxTurns"
+            name="conversationMaxTurns"
+            (ngModelChange)="changed()"
+          />@if (conversationFieldIssue('maxTurns'); as issue) {
+          <small class="field-error" role="alert">{{ issue }}</small> }</label
         >
+      </div>
+    </div>
+    @if (conversationSupportMode() === 'first-steps') {
+    <div class="section-block">
+      <h3>٤ · مساعدة الطالب في «خطوات أولى»</h3>
+      <p>هذه البيانات مطلوبة لهذا المستوى حتى لا يواجه الطالب السؤال وحده.</p>
+      <div class="edit-grid">
+        <label class="field" [class.conversation-field--invalid]="conversationFieldIssue('help')"
+          ><span>تلميح بالعربية <span class="required-mark" aria-hidden="true">*</span></span
+          ><input
+            required
+            [(ngModel)]="material.conversationHelpAr"
+            name="conversationHelpAr"
+            (ngModelChange)="changed()"
+          />@if (conversationFieldIssue('help'); as issue) {
+          <small class="field-error" role="alert">{{ issue }}</small> }</label
+        ><label
+          class="field"
+          [class.conversation-field--invalid]="conversationFieldIssue('modelAnswer')"
+          ><span>مثال رد قصير <span class="required-mark" aria-hidden="true">*</span></span
+          ><input
+            required
+            dir="ltr"
+            [(ngModel)]="material.conversationModelAnswer"
+            name="conversationModelAnswer"
+            (ngModelChange)="changed()"
+          />@if (conversationFieldIssue('modelAnswer'); as issue) {
+          <small class="field-error" role="alert">{{ issue }}</small> }</label
+        >
+      </div>
+    </div>
+    }
+    <details class="optional-details">
+      <summary>
+        اختياري: {{ conversationSupportMode() === 'first-steps' ? 'كلمات مستهدفة وتصحيح' : 'تلميح،
+        كلمات مستهدفة، وتصحيح' }}
+      </summary>
+      <div class="details-body">
+        @if (conversationSupportMode() !== 'first-steps') {
+        <div class="edit-grid">
+          <label class="field"
+            ><span>تلميح بالعربية</span
+            ><input
+              [(ngModel)]="material.conversationHelpAr"
+              name="conversationHelpAr"
+              (ngModelChange)="changed()" /></label
+          ><label class="field"
+            ><span>مثال رد قصير</span
+            ><input
+              dir="ltr"
+              [(ngModel)]="material.conversationModelAnswer"
+              name="conversationModelAnswer"
+              (ngModelChange)="changed()"
+          /></label>
+        </div>
+        }
         <label class="field"
-          ><span>الزمن المستهدف</span
+          ><span>نطاق التصحيح</span
+          ><select
+            [(ngModel)]="material.conversationCorrectionMode"
+            name="conversationCorrectionMode"
+            [disabled]="conversationSupportMode() === 'first-steps'"
+            (ngModelChange)="changed()"
+          >
+            <option value="lesson-only">أهداف الدرس فقط</option>
+            <option value="all">أخطاء لغوية مهمة أخرى</option>
+          </select></label
+        ><label class="field"
+          ><span>زمن محدد للتدريب</span
           ><select
             [(ngModel)]="material.conversationFocusTense"
             name="conversationFocusTense"
+            [disabled]="conversationSupportMode() === 'first-steps'"
             (ngModelChange)="changed()"
           >
-            <option value="">حسب قاعدة الدرس، بلا زمن محدد</option>
+            <option value="">بلا زمن محدد</option>
             <option value="present-simple">Present simple</option>
             <option value="present-continuous">Present continuous</option>
             <option value="past-simple">Past simple</option>
@@ -749,110 +994,128 @@
             <option value="future-simple">Future simple</option>
           </select></label
         >
+        <fieldset class="conversation-words">
+          <legend>كلمات أشجّع الطالب على استخدامها</legend>
+          <div class="chip-list">
+            @for (word of material.vocabulary; track word.word) { @if (word.includeForStudent !==
+            false) {
+            <label
+              ><input
+                type="checkbox"
+                [checked]="conversationWordSelected(word.word)"
+                (change)="toggleConversationWord(word.word, $any($event.target).checked)"
+              /><span dir="ltr">{{ word.word }}</span></label
+            >
+            } }
+          </div>
+        </fieldset>
+        <label class="field"
+          ><span>أهداف أخرى — كل هدف في سطر</span
+          ><textarea
+            [ngModel]="(material.conversationGoals || []).join('\n')"
+            name="goals"
+            (ngModelChange)="updateGoals($event)"
+          ></textarea>
+        </label>
       </div>
-      <label class="field"
-        ><span>ما الذي يجب أن يقدر عليه الطالب بعد المحادثة؟</span
-        ><textarea
-          [(ngModel)]="material.conversationLearningOutcome"
-          name="conversationLearningOutcome"
-          maxlength="240"
-          placeholder="مثال: يصف روتينه اليومي باستخدام Present Simple وكلمات الدرس"
-          (ngModelChange)="changed()"
-        ></textarea>
-      </label>
-      <label class="field"
-        ><span>نطاق التصحيح</span
-        ><select
-          [(ngModel)]="material.conversationCorrectionMode"
-          name="conversationCorrectionMode"
-          (ngModelChange)="changed()"
-        >
-          <option value="lesson-only">أخطاء أهداف الدرس فقط</option>
-          <option value="all">كل الأخطاء اللغوية المهمة</option>
-        </select>
-        <small
-          >في وضع الدرس فقط، لا يشتت الطالب بتصحيح أخطاء خارج الزمن والكلمات والقاعدة
-          المستهدفة.</small
-        ></label
-      >
-      <fieldset class="conversation-words">
-        <legend>كلمات وعبارات أريد تشجيع الطالب على استخدامها</legend>
-        <p>إذا قال مرادفًا صحيحًا، يقترح له المعلّم لفظ الدرس دون أن يعتبر كلامه خطأ.</p>
-        <div class="conversation-words__grid">
-          @for (word of material.vocabulary; track word.word) { @if (word.includeForStudent !==
-          false) {
-          <label [class.selected]="conversationWordSelected(word.word)">
-            <input
-              type="checkbox"
-              [checked]="conversationWordSelected(word.word)"
-              (change)="toggleConversationWord(word.word, $any($event.target).checked)"
-            />
-            <span dir="ltr">{{ word.word }}</span>
-          </label>
-          } }
-        </div>
-        <small
-          >يمكنك اختيار حتى 12 كلمة أو عبارة؛ تركها فارغة يعني أن جميع كلمات الدرس المعتمدة متاحة
-          كسياق.</small
-        >
-      </fieldset>
+    </details>
+    <div class="student-preview">
+      <span>معاينة البداية للطالب</span>
+      <p dir="ltr">{{ material.openingMessage || 'أول سؤال سيظهر هنا' }}</p>
+      <small>{{ material.conversationHelpAr || 'التلميح يظهر إذا تعثر الطالب.' }}</small>
     </div>
   </section>
-  } @if (stageIssues(activeStage).length) {
-  <div class="alert alert--warning" role="alert">
-    <span class="material-symbols-outlined">error</span>{{ stageIssues(activeStage).join(' ') }}
+  } @if (activeStage !== 'conversation' && stageIssues(activeStage).length) {
+  <div class="readiness" role="status">
+    <strong>قبل اعتماد هذه المرحلة:</strong>
+    <ul>
+      @for (issue of stageIssues(activeStage); track issue) {
+      <li>{{ issue }}</li>
+      }
+    </ul>
   </div>
   }
-  <footer class="stage-actions-bar">
+
+  <footer class="action-bar">
     <div>
       <strong
-        >{{ dirty() ? 'لديك تعديلات غير محفوظة' : stageReviewed(activeStage) ? 'هذه المرحلة معتمدة'
-        : 'راجع التفاصيل قبل الاعتماد' }}</strong
-      ><small>الحفظ لا ينشر المحتوى للطلاب.</small>
+        >{{ dirty() ? 'لديك تعديلات لم تُحفظ' : stageReviewed(activeStage) ? 'هذه المرحلة معتمدة' :
+        'راجع المحتوى ثم اعتمده' }}</strong
+      ><small>حفظ المسودة وحده لا ينشر شيئًا للطالب. الاعتماد النهائي للدرس من صفحة الرحلة.</small>
     </div>
-    <button type="button" class="secondary" [disabled]="busy() || !dirty()" (click)="save()">
-      حفظ فقط
-    </button>
-    <button type="button" class="secondary" [disabled]="busy() || dirty() || !canGenerateStage()"
-      (click)="generate()" title="لن تتغير المراحل الأخرى">
-      <span class="material-symbols-outlined">refresh</span> إعادة معالجة هذه المرحلة
-    </button>
-    <button
-      type="button"
-      [disabled]="busy() || stageIssues(activeStage).length > 0 || (stageReviewed(activeStage) && !dirty())"
-      (click)="reviewStage()"
-    >
-      <span class="material-symbols-outlined">verified</span> حفظ واعتماد المرحلة
-    </button>
-  </footer>
-  } } @if (job()?.status === 'Approved' && stageStatus() === 'Approved') {
-  <section class="approved-panel" aria-labelledby="approved-title">
-    <div class="approved-panel__icon">
-      <span class="material-symbols-outlined">verified</span>
-    </div>
-    <div>
-      <span class="eyebrow">نسخة محفوظة وآمنة</span>
-      <h2 id="approved-title">محتوى الدرس معتمد</h2>
-      <p>
-        يمكنك فتح نسخة جديدة من المحتوى الحالي وتعديل هذه المرحلة؛ تظل النسخة المعتمدة كما هي حتى
-        تعتمد تعديلاتك من جديد.
-      </p>
-    </div>
-    <div class="approved-panel__actions">
-      <button type="button" [disabled]="busy() || globalProcessing()" (click)="reopenApproved()">
-        <span class="material-symbols-outlined">edit_note</span> فتح نسخة للتعديل
-      </button>
+    <div class="action-bar__buttons">
       <button
         type="button"
-        class="secondary"
+        class="secondary-button"
+        [disabled]="busy() || !dirty() || staleDraft()"
+        (click)="save()"
+      >
+        حفظ مسودة</button
+      ><button
+        type="button"
+        class="secondary-button"
+        [disabled]="busy() || dirty() || !canGenerateStage()"
+        (click)="generate()"
+      >
+        إعادة معالجة</button
+      ><button
+        type="button"
+        class="primary-button"
+        [disabled]="busy() || staleDraft() || (stageReviewed(activeStage) && !dirty())"
+        (click)="reviewStage()"
+      >
+        حفظ واعتماد المرحلة
+      </button>
+    </div>
+  </footer>
+  } } @if (job()?.status === 'Approved' && (stageStatus() === 'Approved' || stageStatus() ===
+  'NeedsReview')) {
+  <section
+    class="approved-panel"
+    [class.approved-panel--needs-review]="stageStatus() === 'NeedsReview'"
+    aria-labelledby="approved-title"
+  >
+    <span class="material-symbols-outlined" aria-hidden="true"
+      >{{ stageStatus() === 'NeedsReview' ? 'rate_review' : 'verified' }}</span
+    >
+    <div>
+      <h2 id="approved-title">
+        {{ stageStatus() === 'NeedsReview' ? 'هذه المرحلة تحتاج مراجعة' : 'محتوى الدرس معتمد' }}
+      </h2>
+      <p>
+        {{ stageStatus() === 'NeedsReview' ? 'افتح نسخة مراجعة لهذه المرحلة. النسخة المنشورة للطالب
+        لا تتغير حتى تعتمد التعديلات وتعيد نشر المنهج.' : 'النسخة التي يذاكرها الطالب آمنة. يمكنك
+        فتح نسخة تعديل جديدة دون تغييرها حتى تعتمد التعديلات.' }}
+      </p>
+      @if (stageStatus() === 'NeedsReview' && draft(); as preview) {
+      <div class="approved-panel__preview">
+        <strong>النتيجة المحفوظة حاليًا</strong>
+        <p>{{ stagePreview() }}</p>
+        @if (activeWorkflowStage()?.type === 'conversation') {
+        <small
+          >دور الطالب: {{ preview.studentRole || 'لم يحدد بعد' }} · دور المحاور: {{ preview.aiRole
+          || 'لم يحدد بعد' }}</small
+        >
+        }
+      </div>
+      }
+    </div>
+    <div class="approved-panel__actions">
+      <button
+        type="button"
+        class="primary-button"
+        [disabled]="busy() || globalProcessing()"
+        (click)="reopenApproved()"
+      >
+        {{ stageStatus() === 'NeedsReview' ? 'فتح نسخة لمراجعة المرحلة' : 'فتح نسخة للتعديل' }}</button
+      ><button
+        type="button"
+        class="secondary-button"
         [disabled]="busy() || globalProcessing() || !canGenerateStage()"
         (click)="generate()"
       >
-        <span class="material-symbols-outlined">auto_awesome</span> إعادة معالجة هذه المرحلة
-      </button>
-      <a class="publish" routerLink="/admin/curriculums">
-        الذهاب للمنهج والنشر <span class="material-symbols-outlined">arrow_back</span>
-      </a>
+        إعادة معالجة المرحلة</button
+      ><a routerLink="/admin/curriculums">الذهاب للمنهج</a>
     </div>
   </section>
   } }

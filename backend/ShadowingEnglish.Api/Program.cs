@@ -95,7 +95,8 @@ builder.Services.AddHttpClient<AiProviderConnectionTester>(client =>
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient(nameof(TextAiRouter), client =>
     {
-        client.Timeout = TimeSpan.FromSeconds(12);
+        // The router owns its per-provider deadline and needs room to read the full JSON body.
+        client.Timeout = TimeSpan.FromSeconds(TextAiRouter.ProviderTimeoutSeconds + 5);
         client.DefaultRequestHeaders.UserAgent.ParseAdd("ShadowingEnglishV2/1.0");
     })
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
@@ -241,6 +242,7 @@ app.MapAuthEndpoints();
 app.MapAdminAccountsEndpoints();
 app.MapAdminAiProviderEndpoints();
 app.MapAdminLessonAiEndpoints();
+app.MapAdminConversationReportsEndpoints();
 app.MapAdminGroupsEndpoints();
 app.MapAdminCurriculumsEndpoints();
 app.MapAdminShadowingEndpoints();

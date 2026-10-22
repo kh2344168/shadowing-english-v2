@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using ShadowingEnglish.Api.Modules.Curriculums;
 using ShadowingEnglish.Core.Learning;
 using ShadowingEnglish.Infrastructure.Database;
 
@@ -171,10 +172,23 @@ public static class AdminLessonWorkflowEndpoints
                 try
                 {
                     await db.SaveChangesAsync(http.RequestAborted);
+                    var autoPublishedGroups = 0;
+                    var autoPublishFailed = false;
+                    try
+                    {
+                        autoPublishedGroups = await ApprovedLessonPublisher.SyncAsync(db, versionId, log,
+                            http.RequestAborted);
+                    }
+                    catch (Exception syncError)
+                    {
+                        autoPublishFailed = true;
+                        log.LogError(syncError, "Admin.LessonWorkflow.AutoPublish.Failed VersionId={VersionId}", versionId);
+                    }
                     log.LogInformation(
                         "Admin.LessonWorkflow.Save.Success VersionId={VersionId} StageCount={StageCount} Revision={Revision} DurationMs={DurationMs}",
                         versionId, normalized.Length, row.Revision, Duration(started));
-                    return Results.Ok(new { revision = row.Revision, stages = normalized });
+                    return Results.Ok(new { revision = row.Revision, stages = normalized,
+                        autoPublishedGroups, autoPublishFailed });
                 }
                 catch (DbUpdateConcurrencyException)
                 {
@@ -203,7 +217,7 @@ public static class AdminLessonWorkflowEndpoints
         Stage(versionId, "vocabulary-quiz", "اختبار الكلمات", 5, true, false),
         Stage(versionId, "grammar-quiz", "اختبار القواعد", 6, true, false),
         Stage(versionId, "word-order", "ترتيب الجمل", 7, true, false),
-        Stage(versionId, "conversation", "محادثة الدرس", 8, true, false)
+        Stage(versionId, "conversation", "محادثة الدرس", 8, false, false)
     ];
 
     private static WorkflowStage Stage(Guid versionId, string type, string title, int position,

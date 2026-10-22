@@ -480,6 +480,39 @@ describe('AdminCurriculumsPage — independent curriculum flow', () => {
     await Promise.all([first, second]);
     noWrites();
   });
+  it('names the lesson and missing stages when publication is blocked', async () => {
+    await initialize({ curriculumId, groupId }, savedDraft(), assigned());
+    const publishing = page.publishCurriculum();
+    const request = await writing(publishUrl);
+    request.flush(
+      {
+        error: 'lesson_stage_not_approved',
+        lessonVersionId: lessons[0].versionId,
+        missingStages: ['vocabulary', 'listen-type'],
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await publishing;
+    expect(page.error()).toContain('التحية');
+    expect(page.error()).toContain('الكلمات');
+    expect(page.error()).toContain('اسمع واكتب');
+    noWrites();
+  });
+  it('refreshes a stale view when the approved lesson was already published automatically', async () => {
+    await initialize({ curriculumId, groupId }, savedDraft(), assigned());
+    const publishing = page.publishCurriculum();
+    const request = await writing(publishUrl);
+    request.flush({ error: 'no_unpublished_changes' }, { status: 409, statusText: 'Conflict' });
+    await drain();
+    http
+      .expectOne(groupUrl)
+      .flush(assigned({ versionId: publicationId, hasUnpublishedChanges: false }));
+    await publishing;
+    expect(page.error()).toBe('');
+    expect(page.success()).toContain('تم نشر أحدث التعديلات بالفعل');
+    expect(page.canPublish()).toBe(false);
+    noWrites();
+  });
   it('uncertain Publish retries the exact request and retains all selections', async () => {
     await initialize({ curriculumId, groupId }, savedDraft(), assigned());
     const publishing = page.publishCurriculum();
@@ -537,7 +570,6 @@ describe('AdminCurriculumsPage — independent curriculum flow', () => {
     noWrites();
   });
   for (const [code, message] of [
-    ['no_unpublished_changes', 'مطابق لآخر نسخة'],
     ['slot_conflict', 'موجود بالفعل'],
     ['lesson_audio_missing', 'ملفات صوت'],
   ])

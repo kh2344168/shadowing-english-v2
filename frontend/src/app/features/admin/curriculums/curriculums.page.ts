@@ -69,6 +69,7 @@ export class AdminCurriculumsPage implements OnInit {
   readonly uncertain = signal(false);
   readonly reviewRequired = signal(false);
   readonly error = signal('');
+  readonly errorLessonId = signal<string | null>(null);
   readonly success = signal('');
   readonly createOpen = signal(false);
   readonly pickerOpen = signal(false);
@@ -478,6 +479,10 @@ export class AdminCurriculumsPage implements OnInit {
     });
     if (result) await this.refreshGroup();
   }
+  async openBlockedLesson(): Promise<void> {
+    const id = this.errorLessonId();
+    if (id && this.validId(id)) await this.router.navigate(['/admin/lessons', id, 'workflow']);
+  }
   async retryFailedOperation(): Promise<void> {
     switch (this.failedOperation()) {
       case 'Create':
@@ -677,6 +682,7 @@ export class AdminCurriculumsPage implements OnInit {
     if (this.busy()) return false;
     this.busy.set(operation);
     this.error.set('');
+    this.errorLessonId.set(null);
     this.success.set('');
     const started = Date.now();
     this.log(operation, 'Start');
@@ -687,7 +693,23 @@ export class AdminCurriculumsPage implements OnInit {
       this.log(operation, 'Success', started);
       return true;
     } catch (error) {
+      if (operation === 'Publish' && this.errorCode(error) === 'no_unpublished_changes') {
+        this.publishAttempt = null;
+        this.failedOperation.set('');
+        this.uncertain.set(false);
+        this.groupState.set(null);
+        this.success.set('تم نشر أحدث التعديلات بالفعل. جرى تحديث حالة المجموعة.');
+        this.log(operation, 'Success', started, { result: 'already_published' });
+        return true;
+      }
       this.failedOperation.set(operation);
+      const blockedLessonId =
+        error instanceof HttpErrorResponse ? error.error?.lessonVersionId : null;
+      this.errorLessonId.set(
+        typeof blockedLessonId === 'string' && this.validId(blockedLessonId)
+          ? blockedLessonId
+          : null,
+      );
       this.error.set(this.describe(error));
       const status = error instanceof HttpErrorResponse ? error.status : 0;
       this.uncertain.set(status === 0 || status >= 500);
@@ -750,6 +772,27 @@ export class AdminCurriculumsPage implements OnInit {
   private describe(error: unknown): string {
     if (error instanceof HttpErrorResponse && [401, 403].includes(error.status))
       return 'الجلسة غير صالحة أو لا تملك صلاحية Admin. أعد تسجيل الدخول.';
+    if (
+      error instanceof HttpErrorResponse &&
+      this.errorCode(error) === 'lesson_stage_not_approved'
+    ) {
+      const lessonId = error.error?.lessonVersionId;
+      const title =
+        this.slots().find((slot) => slot.lessonVersionId === lessonId)?.title ?? 'أحد الدروس';
+      const stageNames: Record<string, string> = {
+        vocabulary: 'الكلمات',
+        'listen-type': 'اسمع واكتب',
+        grammar: 'القواعد',
+        'vocabulary-quiz': 'اختبار الكلمات',
+        'grammar-quiz': 'اختبار القواعد',
+        'word-order': 'ترتيب الجمل',
+        conversation: 'المحادثة',
+      };
+      const stages = Array.isArray(error.error?.missingStages)
+        ? error.error.missingStages.map((stage: string) => stageNames[stage] ?? stage).join('، ')
+        : '';
+      return `الدرس «${title}» يحتاج مراجعة واعتماد ${stages || 'مراحله المفعّلة'} قبل حفظه في المنهج أو نشره. افتح رحلة الدرس وأكمل الاعتماد، ثم حاول مجددًا.`;
+    }
     return (
       this.messages[this.errorCode(error)] ??
       'تعذر تنفيذ العملية. احتفظ باختياراتك وأعد نفس المحاولة أو حمّل الحالة المحفوظة للمراجعة.'
@@ -757,6 +800,15 @@ export class AdminCurriculumsPage implements OnInit {
   }
   private readonly messages: Record<string, string> = {
     no_unpublished_changes: 'المنهج مطابق لآخر نسخة منشورة، بما فيها محتوى AI المعتمد.',
+    invalid_publication:
+      'تعذر إرسال طلب النشر بسبب بيانات غير مكتملة. حدّث حالة المجموعة ثم حاول مجددًا.',
+    invalid_assignment: 'راجع المجموعة والمنهج المحددين قبل الإسناد.',
+    invalid_csrf: 'انتهت صلاحية جلسة الكتابة. حدّث الصفحة ثم أعد المحاولة.',
+    lesson_stage_not_approved:
+      'بعض مراحل الدرس المفعّلة لا توجد في محتوى AI المعتمد أو لم تُراجع بعد. افتح رحلة الدرس، أكمل المرحلة واعتمدها، ثم حدّث حالة المجموعة.',
+    lesson_stages_missing:
+      'أحد الدروس لا يحتوي مرحلة مفعّلة. افتح رحلة الدرس واختر مرحلة واحدة على الأقل.',
+    lesson_archived: 'أحد الدروس مؤرشف. أزله من المنهج أو استبدله قبل النشر.',
     slot_conflict: 'الدرس أو موضع الأسبوع واليوم والترتيب موجود بالفعل.',
     lesson_audio_missing: 'لا يمكن نشر المنهج لأن ملفات صوت بعض الدروس غير متاحة.',
     curriculum_empty: 'أضف درسًا محفوظًا للمنهج واحفظه قبل النشر.',

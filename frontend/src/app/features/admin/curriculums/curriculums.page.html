@@ -4,14 +4,19 @@
   aria-labelledby="curriculum-title"
   [attr.aria-busy]="loading() || !!busy()"
 >
-  <header class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+  <header
+    class="curriculum-hero mb-6 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between"
+  >
     <div>
       <div class="mb-2 flex flex-wrap items-center gap-2">
-        <h1 id="curriculum-title" class="m-0 text-2xl font-bold tracking-tight">إدارة المناهج</h1>
-        <span class="badge bg-[#DAE2FD] text-[#5C647A]">{{ curriculums().length }} منهج محمّل</span>
+        <span class="hero-kicker">مساحة النشر</span>
+        <span class="hero-count">{{ curriculums().length }} منهج</span>
       </div>
-      <p class="m-0 max-w-2xl text-sm leading-6 text-[#3E4947]">
-        جهّز منهجًا من الدروس المحفوظة، ثم اسنده للمجموعة وانشره بعد المراجعة.
+      <h1 id="curriculum-title" class="m-0 text-2xl font-bold tracking-tight md:text-3xl">
+        إدارة المناهج
+      </h1>
+      <p class="mb-0 mt-2 max-w-2xl text-sm leading-6">
+        نظّم الدروس، راجع ما يراه الطالب، وانشر المنهج أول مرة بثقة.
       </p>
     </div>
     @if (!draft()) {
@@ -26,25 +31,57 @@
     }
   </header>
 
-  <section
-    class="mb-6 flex items-start gap-3 rounded-xl border border-[#A1F1E5] bg-[#EFFBF8] p-4 text-sm leading-6 text-[#004E47]"
-    aria-label="خطوات إعداد المنهج"
-  >
-    <span class="material-symbols-outlined mt-0.5" aria-hidden="true">route</span>
-    <div>
-      <strong class="block">الحفظ والإسناد والنشر ثلاث خطوات منفصلة</strong>
-      <span
-        >درس محفوظ ← مسودة منهج وترتيب الدروس ← حفظ المنهج ← إسناد للمجموعة ← نشر صريح للطلاب.</span
-      >
+  @if (!draft()) {
+  <section class="publish-guide mb-6" aria-label="خطوات إعداد المنهج">
+    <div class="guide-step" [class.done]="!!draft() && !dirty()">
+      <span class="guide-number">١</span>
+      <div>
+        <strong>رتّب الدروس</strong
+        ><small>{{ draft() && !dirty() ? 'الترتيب محفوظ' : 'أضف الدروس واحفظ المسودة' }}</small>
+      </div>
+    </div>
+    <div
+      class="guide-step"
+      [class.done]="!!draft() && groupState()?.assignedCurriculumTemplateId === draft()?.id"
+    >
+      <span class="guide-number">٢</span>
+      <div>
+        <strong>اختر المجموعة</strong
+        ><small
+          >{{ groupState()?.assignedCurriculumTemplateId === draft()?.id ? 'المنهج مسند للمجموعة' :
+          'حدّد مَن سيشاهد المنهج' }}</small
+        >
+      </div>
+    </div>
+    <div
+      class="guide-step"
+      [class.done]="!!groupState()?.versionId && !groupState()?.hasUnpublishedChanges"
+    >
+      <span class="guide-number">٣</span>
+      <div>
+        <strong>انشر أول مرة</strong
+        ><small
+          >{{ groupState()?.versionId && !groupState()?.hasUnpublishedChanges ? 'الطالب يرى أحدث
+          نسخة' : 'اعتماد تعديل الدرس المنشور يحدثه تلقائيًا' }}</small
+        >
+      </div>
     </div>
   </section>
-  @if (error()) {
-  <p
+  } @if (error()) {
+  <div
     role="alert"
     class="mb-5 rounded-xl border border-[#FFDAD6] bg-[#FFDAD6]/40 px-4 py-3 text-sm font-semibold text-[#93000A]"
   >
-    {{ error() }}
-  </p>
+    {{ error() }} @if (errorLessonId()) {
+    <button
+      type="button"
+      class="mt-2 block rounded-lg bg-white px-3 py-2 text-xs font-bold text-[#93000A] underline"
+      (click)="openBlockedLesson()"
+    >
+      فتح رحلة الدرس ومراجعة المراحل
+    </button>
+    }
+  </div>
   } @if (success()) {
   <p
     role="status"
@@ -202,7 +239,10 @@
     }
   </footer>
   } @else if (draft(); as item) {
-  <section class="mb-6 rounded-xl bg-white p-6 shadow-sm" aria-labelledby="draft-title">
+  <section
+    class="curriculum-panel mb-6 rounded-xl bg-white p-6 shadow-sm"
+    aria-labelledby="draft-title"
+  >
     <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
       <div>
         <button
@@ -220,7 +260,7 @@
           <span
             class="badge"
             [class]="dirty() ? 'badge bg-[#FFF0D8] text-[#825100]' : 'badge bg-[#E5EEFF] text-[#004E47]'"
-            >{{ dirty() ? 'تعديلات لم تُحفظ' : 'مسودة محفوظة' }}</span
+            >{{ dirty() ? 'تعديلات لم تُحفظ' : 'ترتيب الدروس محفوظ' }}</span
           >
         </div>
         <p class="mb-0 mt-2 text-xs text-[#6E7977]">
@@ -235,15 +275,6 @@
           [disabled]="locked() || dirty()"
         >
           الرجوع للمناهج
-        </button>
-        <button
-          type="button"
-          class="btn btn-primary"
-          (click)="saveCurriculum()"
-          [disabled]="locked() || !dirty()"
-        >
-          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">save</span>{{
-          busy() === 'Update' ? 'جارٍ الحفظ...' : 'حفظ التغييرات' }}
         </button>
       </div>
     </div>
@@ -283,6 +314,103 @@
     >
       تحميل المحفوظ من قاعدة البيانات
     </button>
+  </section>
+
+  <section class="release-console mb-6" aria-labelledby="release-console-title">
+    <div class="release-console__heading">
+      <div>
+        <span class="hero-kicker">مسار نشر واضح</span>
+        <h2 id="release-console-title">من التعديل إلى الطالب</h2>
+        <p>
+          نفّذ الخطوات بالترتيب. حفظ المنهج لا يعني نشره، والدرس الذي به مرحلة مفعّلة غير معتمدة لا
+          يُحفظ داخل المنهج.
+        </p>
+      </div>
+      <span class="release-console__count">{{ slots().length }} درس</span>
+    </div>
+    <div class="release-console__steps">
+      <article class="release-step" [class.release-step--done]="!dirty()">
+        <span class="release-step__number">١</span>
+        <div class="release-step__body">
+          <strong>احفظ الدروس وترتيبها</strong>
+          <small
+            >{{ dirty() ? 'لديك تعديلات محلية لم تُحفظ بعد.' : 'ترتيب المنهج محفوظ في قاعدة
+            البيانات.' }}</small
+          >
+          <button
+            type="button"
+            class="btn btn-primary"
+            (click)="saveCurriculum()"
+            [disabled]="locked() || !dirty()"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">save</span>{{ busy() ===
+            'Update' ? 'جارٍ الحفظ...' : 'حفظ التغييرات' }}
+          </button>
+        </div>
+      </article>
+      <article
+        class="release-step"
+        [class.release-step--done]="groupState()?.assignedCurriculumTemplateId === item.id"
+      >
+        <span class="release-step__number">٢</span>
+        <div class="release-step__body">
+          <strong>اختر المجموعة وأسند المنهج</strong>
+          <small
+            >{{ groupState()?.assignedCurriculumTemplateId === item.id ? 'المنهج مسند للمجموعة
+            المحددة.' : 'الإسناد يحدد المجموعة ولا يعرض المحتوى للطلاب بعد.' }}</small
+          >
+          <label for="curriculum-group" class="sr-only">المجموعة</label>
+          <select
+            id="curriculum-group"
+            class="field"
+            [ngModel]="selectedGroupId()"
+            (ngModelChange)="selectGroup($event)"
+            [disabled]="locked() || loadingGroup()"
+          >
+            <option value="">اختر المجموعة</option>
+            @for (group of groups(); track group.id) {
+            <option [value]="group.id">{{ group.name }}</option>
+            }
+          </select>
+          <button
+            type="button"
+            class="btn btn-secondary"
+            (click)="assignCurriculum()"
+            [disabled]="locked() || dirty() || !groupState() || loadingGroup() || groupState()?.assignedCurriculumTemplateId === item.id"
+          >
+            {{ busy() === 'Assign' ? 'جارٍ الإسناد...' : 'إسناد المنهج' }}
+          </button>
+        </div>
+      </article>
+      <article
+        class="release-step release-step--publish"
+        [class.release-step--done]="!!groupState()?.versionId && !groupState()?.hasUnpublishedChanges"
+      >
+        <span class="release-step__number">٣</span>
+        <div class="release-step__body">
+          <strong>انشر النسخة للطلاب</strong>
+          <small
+            >{{ dirty() ? 'احفظ التعديلات أولًا.' : !selectedGroupId() ? 'اختر المجموعة أولًا.' :
+            groupState()?.assignedCurriculumTemplateId !== item.id ? 'أسند المنهج أولًا.' :
+            !groupState()?.hasUnpublishedChanges ? 'الطلاب يرون أحدث نسخة معتمدة.' : 'راجع الدروس
+            المعتمدة ثم انشر.' }}</small
+          >
+          <button
+            type="button"
+            class="btn btn-primary"
+            (click)="openPublishConfirmation()"
+            [disabled]="!canPublish()"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">publish</span>{{ busy() ===
+            'Publish' ? 'جارٍ النشر...' : 'نشر للمجموعة' }}
+          </button>
+        </div>
+      </article>
+    </div>
+    <p class="release-console__note">
+      بعد أول نشر، اعتماد تعديل لدرس منشور ينشئ نسخة جديدة تلقائيًا. إضافة درس جديد للمنهج أو تغيير
+      ترتيبه تحتاج حفظًا ونشرًا من هنا.
+    </p>
   </section>
 
   <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -427,33 +555,10 @@
   <section class="mt-6 rounded-xl bg-white p-5 shadow-sm" aria-labelledby="assignment-title">
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div class="max-w-2xl">
-        <h2 id="assignment-title" class="m-0 text-lg font-bold">إسناد المنهج للمجموعة</h2>
+        <h2 id="assignment-title" class="m-0 text-lg font-bold">حالة المجموعة</h2>
         <p class="mb-0 mt-1 text-xs leading-5 text-[#6E7977]">
-          احفظ المنهج ثم اختر مجموعة. الإسناد وحده لا يغير النسخة التي يراها الطالب.
+          ملخص المجموعة والنسخة الحالية. خطوات الحفظ والإسناد والنشر متجاورة أعلى الصفحة.
         </p>
-      </div>
-      <div class="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
-        <label for="curriculum-group" class="sr-only">المجموعة</label>
-        <select
-          id="curriculum-group"
-          class="field lg:min-w-[240px]"
-          [ngModel]="selectedGroupId()"
-          (ngModelChange)="selectGroup($event)"
-          [disabled]="locked() || loadingGroup()"
-        >
-          <option value="">اختر المجموعة</option>
-          @for (group of groups(); track group.id) {
-          <option [value]="group.id">{{ group.name }}</option>
-          }
-        </select>
-        <button
-          type="button"
-          class="btn btn-primary whitespace-nowrap"
-          (click)="assignCurriculum()"
-          [disabled]="locked() || dirty() || !groupState() || loadingGroup() || groupState()?.assignedCurriculumTemplateId === item.id"
-        >
-          {{ busy() === 'Assign' ? 'جارٍ الإسناد...' : 'إسناد المنهج' }}
-        </button>
       </div>
     </div>
     @if (moreGroups()) {
@@ -502,23 +607,27 @@
   <section class="mt-6 rounded-xl bg-white p-5 shadow-sm" aria-labelledby="publish-title">
     <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
       <div>
-        <h2 id="publish-title" class="m-0 text-lg font-bold">مراجعة ونشر المنهج</h2>
+        <h2 id="publish-title" class="m-0 text-lg font-bold">النسخة المنشورة حاليًا</h2>
         <p class="mb-0 mt-1 text-xs leading-5 text-[#6E7977]">
-          النشر ينشئ نسخة كاملة وثابتة. النسخ السابقة وتقدم الطلاب محفوظان.
+          تحتاج النشر أول مرة أو عند تغيير دروس المنهج وترتيبها. تعديل مرحلة معتمدة في درس منشور
+          يُحدَّث تلقائيًا بنسخة جديدة؛ النسخ السابقة محفوظة.
         </p>
       </div>
-      <button
-        type="button"
-        class="btn btn-primary"
-        (click)="openPublishConfirmation()"
-        [disabled]="!canPublish()"
-      >
-        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">publish</span>{{
-        busy() === 'Publish' ? 'جارٍ النشر...' : 'نشر المنهج للمجموعة' }}
-      </button>
     </div>
     @if (dirty()) {
     <p class="mt-3 text-xs text-[#825100]">احفظ التغييرات قبل الإسناد والنشر.</p>
+    } @else if (!selectedGroupId()) {
+    <p class="publish-hint">اختر المجموعة أولًا لتعرف ما المنشور لها وما يحتاج نشرًا.</p>
+    } @else if (groupState()?.assignedCurriculumTemplateId !== item.id) {
+    <p class="publish-hint">اسند هذا المنهج للمجموعة قبل أول نشر.</p>
+    } @else if (!groupState()?.hasUnpublishedChanges) {
+    <p class="publish-hint publish-hint-success">
+      المجموعة ترى أحدث نسخة معتمدة. لا توجد تغييرات تنتظر النشر.
+    </p>
+    } @else {
+    <p class="publish-hint">
+      توجد تغييرات في مسودة المنهج أو درس يحتاج مراجعة. راجع حالة الدروس قبل النشر.
+    </p>
     } @if (groupState(); as state) { @if (state.lessons.length > 0) {
     <div class="mt-5 border-t border-[#EFF4FF] pt-4">
       <h3 class="m-0 text-sm font-bold">دروس النسخة المنشورة حاليًا</h3>

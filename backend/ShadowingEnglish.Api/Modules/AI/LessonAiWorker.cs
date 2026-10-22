@@ -19,7 +19,8 @@ public sealed class LessonAiWorker(IServiceScopeFactory scopes, ILogger<LessonAi
                 var ai = scope.ServiceProvider.GetRequiredService<TextAiRouter>();
                 var images = scope.ServiceProvider.GetRequiredService<PexelsImageService>();
                 var now = DateTimeOffset.UtcNow;
-                // Recover interrupted jobs after a process restart. Providers have a 12s timeout each.
+                // Recover interrupted jobs after a process restart. Five providers have a
+                // bounded 40s timeout each, well below this five-minute recovery window.
                 await db.LessonAiContents.Where(x => x.Status == "Generating" &&
                     x.UpdatedAtUtc < now.AddMinutes(-5))
                     .ExecuteUpdateAsync(x => x.SetProperty(row => row.Status, "Pending"), stoppingToken);
@@ -211,7 +212,7 @@ public sealed class LessonAiWorker(IServiceScopeFactory scopes, ILogger<LessonAi
                         $"Level: {lesson.Level}\nLearning goal: {lesson.Goal}\nTitle: {lesson.Title}\nSource:\n{source}")],
                     stageType == "vocabulary" ? 2600 : 1200,
                     text => LessonMaterialRules.MergeStageGenerated(stageType, text,
-                        baseline, source, segments), cancel, code => providerFailure = code);
+                        baseline, source, segments, lesson.Level, lesson.LessonType), cancel, code => providerFailure = code);
                 if (completion is not null)
                 {
                     generated = completion.Value;
@@ -262,7 +263,7 @@ public sealed class LessonAiWorker(IServiceScopeFactory scopes, ILogger<LessonAi
             "vocabulary" => common + "Return {\"vocabulary\":[{\"word\":\"\",\"kind\":\"word\",\"meaningAr\":\"\",\"exampleEn\":\"\",\"exampleAr\":\"\",\"explanation\":\"\"}]}. " +
                 $"Suggest {vocabularySuggestions} distinct useful words or chunks for the teacher to choose from. Return that many when the source supports it; otherwise return the maximum available without duplicates. Include single words and reusable multi-word chunks when available, but never invent a term absent from the source. Kind is chunk for phrases. Do not generate activities.",
             "grammar" => common + "Return {\"grammarFocus\":\"A concise lesson-grounded explanation in Arabic with short English examples\"}. Do not generate other stages.",
-            "conversation" => common + "Return {\"conversationScenario\":\"A short role-play situation grounded in the source\",\"conversationGoals\":[\"one concrete learning outcome\"]}. Do not generate other stages.",
+            "conversation" => common + "Return {\"conversationScenario\":\"A short role-play situation grounded in the source\",\"conversationGoals\":[\"one concrete, observable success step\"],\"aiRole\":\"role within this lesson\",\"studentRole\":\"role within this lesson\",\"openingMessage\":\"one short English question for the learner\",\"conversationHelpAr\":\"a brief Arabic hint\",\"conversationModelAnswer\":\"one short possible English answer\"}. For A1, begin with a concrete greeting or familiar word and allow a one-word or short-phrase answer; do not demand a self-introduction or daily-routine description. Keep the opening grounded in the lesson. Do not invent professional facts such as fees or discounts. Do not generate other stages.",
             "vocabulary-quiz" => common + "Return {\"quiz\":[{\"type\":\"vocabulary-card\",\"question\":\"Arabic meaning question\",\"options\":[\"a\",\"b\",\"c\",\"d\"],\"correctIndex\":0,\"explanationAr\":\"\"}]}. Generate one or two questions about source words; options must differ. Do not generate other stages.",
             "grammar-quiz" => common + "Return {\"quiz\":[{\"type\":\"multiple-choice\",\"question\":\"a short grammar question\",\"options\":[\"a\",\"b\",\"c\",\"d\"],\"correctIndex\":0,\"explanationAr\":\"\"}]}. Generate one or two lesson-grounded questions; options must differ. Do not generate other stages.",
             "word-order" => common + "Return {\"quiz\":[{\"type\":\"word-order\",\"question\":\"رتب الكلمات\",\"options\":[\"word2\",\"word1\",\"word3\"],\"correctIndex\":0,\"correctAnswer\":\"word1 word2 word3\",\"explanationAr\":\"\"}]}. Use three to twelve words from one sentence in the source, with each option a single word. Do not generate other stages.",

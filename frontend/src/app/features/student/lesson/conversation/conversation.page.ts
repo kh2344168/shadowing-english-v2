@@ -32,7 +32,12 @@ export class StudentConversationPage implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   readonly slotId = this.route.snapshot.paramMap.get('slotId') ?? '';
   readonly material = signal<AiMaterial | null>(null);
-  readonly turnTarget = computed(() => this.material()?.conversationTurnTarget ?? 10);
+  readonly turnTarget = computed(
+    () => this.history()?.turnTarget ?? this.material()?.conversationTurnTarget ?? 10,
+  );
+  readonly supportMode = computed(() => this.material()?.conversationSupportMode ?? null);
+  readonly structured = computed(() => this.history()?.minTurns != null);
+  readonly report = computed(() => this.history()?.report ?? null);
   readonly focusTenseLabel = computed(() => {
     const tense = this.material()?.conversationFocusTense;
     return tense
@@ -53,8 +58,18 @@ export class StudentConversationPage implements OnInit, OnDestroy {
   private readonly thread = viewChild<ElementRef<HTMLElement>>('thread');
   readonly history = signal<ConversationHistory | null>(null);
   readonly completedReplies = computed(
-    () => this.history()?.completedTurns ?? this.history()?.turns.length ?? 0,
+    () => this.history()?.completedTurns ?? this.material()?.progress?.conversation ?? 0,
   );
+  readonly latestTurn = computed(() => this.history()?.turns.at(-1) ?? null);
+  readonly missingSteps = computed(() => this.history()?.missingSteps ?? []);
+  readonly currentQuestion = computed(
+    () => this.latestTurn()?.feedback.reply || this.material()?.openingMessage || '',
+  );
+  readonly currentQuestionTurnId = computed(() => this.latestTurn()?.id);
+  readonly showHelp = signal(false);
+  readonly showExample = signal(false);
+  readonly syncNeeded = signal(false);
+  readonly dailyLimitReached = signal(false);
   readonly loading = signal(true);
   readonly busy = signal(false);
   readonly error = signal('');
@@ -73,6 +88,8 @@ export class StudentConversationPage implements OnInit, OnDestroy {
     !!navigator.mediaDevices?.getUserMedia &&
     typeof MediaRecorder !== 'undefined';
   message = '';
+  retrySentence = '';
+  readonly retryComparisonVisible = signal(false);
   private pendingId = '';
   private pendingMessage = '';
   private recorder: MediaRecorder | null = null;
@@ -108,7 +125,17 @@ export class StudentConversationPage implements OnInit, OnDestroy {
         this.error.set('أكمل المراحل السابقة قبل المحادثة.');
       } else {
         this.material.set(data);
-        this.history.set(await firstValueFrom(this.api.conversationHistory(this.slotId)));
+        const history = await firstValueFrom(this.api.conversationHistory(this.slotId));
+        this.history.set(history);
+        this.dailyLimitReached.set(history.remainingToday < 1);
+        this.showHelp.set(false);
+        this.showExample.set(false);
+        if (this.syncNeeded()) {
+          this.message = '';
+          this.pendingId = '';
+          this.pendingMessage = '';
+          this.syncNeeded.set(false);
+        }
         this.scrollToLatest();
       }
     } catch (ex) {
@@ -128,10 +155,16 @@ export class StudentConversationPage implements OnInit, OnDestroy {
       !this.material() ||
       !history ||
       this.busy() ||
+      this.syncNeeded() ||
+      this.recording() ||
+      this.transcribing() ||
       !text ||
       text.length > 400 ||
       history.remainingToday < 1 ||
-      this.completedReplies() >= this.turnTarget()
+      this.dailyLimitReached() ||
+      !!history.report ||
+      this.completedReplies() >= this.turnTarget() ||
+      !!history.timedOut
     )
       return;
     this.busy.set(true);
@@ -140,26 +173,54 @@ export class StudentConversationPage implements OnInit, OnDestroy {
       this.pendingId = crypto.randomUUID();
       this.pendingMessage = text;
     }
+    let sent = false;
     try {
       await firstValueFrom(this.auth.csrf());
       await firstValueFrom(this.api.conversationTurn(this.slotId, text, this.pendingId));
+      sent = true;
+      const updated = await firstValueFrom(this.api.conversationHistory(this.slotId));
+      this.history.set(updated);
+      this.dailyLimitReached.set(updated.remainingToday < 1);
       this.pendingId = '';
       this.pendingMessage = '';
       this.message = '';
-      const updated = await firstValueFrom(this.api.conversationHistory(this.slotId));
-      this.history.set(updated);
+      this.showHelp.set(false);
+      this.showExample.set(false);
       this.scrollToLatest();
       const latest = updated.turns.at(-1);
       if (latest?.id) void this.playReply(latest.id, true);
     } catch (ex) {
       const status = (ex as { status?: number }).status;
-      this.error.set(
-        status === 429
-          ? 'وصلت للحد اليومي للذكاء الاصطناعي. ارجع بكرة.'
-          : status === 503
-            ? 'خدمات الذكاء الاصطناعي مش متاحة حاليًا. جرّب لاحقًا.'
-            : 'لم نتمكن من إرسال الرسالة. اضغط تحديث للتأكد قبل إعادة المحاولة.',
-      );
+      if (sent) {
+        this.syncNeeded.set(true);
+        this.error.set('اترسل ردك، لكن تعذر تحديث السجل. اضغط تحديث قبل إرسال رد جديد.');
+      } else if (status === 429) {
+        this.dailyLimitReached.set(true);
+        this.error.set('وصلت للحد اليومي للذكاء الاصطناعي. تقدر تكمل المحادثة يومًا آخر.');
+      } else if (status === 409) {
+        this.error.set('قد يكون الرد قيد المعالجة أو المرحلة اكتملت. حدّث السجل قبل المحاولة.');
+      } else {
+        this.error.set(
+          status === 503
+            ? 'خدمات الذكاء الاصطناعي مش متاحة حاليًا. اكتب ردك وجرّب لاحقًا.'
+            : 'لم نتمكن من إرسال الرسالة. يمكنك المحاولة بنفس الرد أو تحديث السجل.',
+        );
+      }
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  async finish(): Promise<void> {
+    if (!this.structured() || this.report() || this.busy() || this.syncNeeded()) return;
+    this.busy.set(true);
+    this.error.set('');
+    try {
+      await firstValueFrom(this.auth.csrf());
+      await firstValueFrom(this.api.finishConversation(this.slotId));
+      this.history.set(await firstValueFrom(this.api.conversationHistory(this.slotId)));
+    } catch {
+      this.error.set('تعذر إنهاء المحادثة الآن. حدّث السجل وحاول مجددًا.');
     } finally {
       this.busy.set(false);
     }
@@ -168,6 +229,14 @@ export class StudentConversationPage implements OnInit, OnDestroy {
   insertSuggestion(phrase: string): void {
     this.message = phrase;
     document.getElementById('student-message')?.focus();
+  }
+
+  toggleHelp(): void {
+    this.showHelp.update((shown) => !shown);
+  }
+
+  toggleExample(): void {
+    this.showExample.update((shown) => !shown);
   }
 
   async toggleRecording(): Promise<void> {
@@ -245,8 +314,12 @@ export class StudentConversationPage implements OnInit, OnDestroy {
       await audio.play();
       if (this.audio === audio) this.speechNotice.set('');
     } catch {
-      if (!automatic && this.audio === audio)
-        this.speechNotice.set('اضغط زر الصوت مرة أخرى لتشغيله.');
+      if (this.audio === audio)
+        this.speechNotice.set(
+          automatic
+            ? 'التشغيل التلقائي غير متاح هنا. اضغط زر الصوت لسماع سؤال المعلّم.'
+            : 'تعذر تشغيل الصوت الآن. يمكنك متابعة المحادثة من النص المكتوب.',
+        );
     }
   }
 

@@ -1,6 +1,213 @@
 :host {
   display: block;
 }
+.curriculum-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #d8ebe7;
+  border-radius: 24px;
+  background: linear-gradient(115deg, #e9f7f4 0%, #f8fcfb 52%, #eaf2ff 100%);
+  padding: clamp(22px, 3vw, 36px);
+  box-shadow: 0 14px 34px rgb(24 65 69 / 6%);
+}
+.curriculum-hero::before {
+  content: '';
+  position: absolute;
+  inset: auto -72px -140px auto;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: rgb(50 183 161 / 9%);
+  pointer-events: none;
+}
+.curriculum-hero > * {
+  position: relative;
+}
+.hero-kicker {
+  color: #00685f;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.hero-count {
+  border-radius: 999px;
+  background: white;
+  padding: 5px 11px;
+  color: #315552;
+  font-size: 11px;
+  font-weight: 700;
+}
+.publish-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.guide-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid #dceae7;
+  border-radius: 16px;
+  background: white;
+  padding: 13px 16px;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+.guide-step.done {
+  border-color: #b8e4d8;
+  background: #effbf6;
+}
+.guide-step.done .guide-number {
+  background: #00685f;
+  color: white;
+}
+.guide-number {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border-radius: 10px;
+  background: #e0f4ef;
+  color: #00685f;
+  font-weight: 800;
+}
+.guide-step strong,
+.guide-step small {
+  display: block;
+}
+.guide-step strong {
+  font-size: 13px;
+}
+.guide-step small {
+  margin-top: 3px;
+  color: #647774;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.curriculum-panel {
+  border: 1px solid #e2ebe9;
+}
+.release-console {
+  overflow: hidden;
+  border: 1px solid #c9e3dc;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 18px 36px rgb(12 64 58 / 8%);
+}
+.release-console__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px 18px;
+  background: linear-gradient(115deg, #effaf6, #f5f8ff);
+}
+.release-console__heading h2 {
+  margin: 5px 0 2px;
+  font-size: 21px;
+  font-weight: 800;
+}
+.release-console__heading p {
+  margin: 0;
+  color: #596d69;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.release-console__count {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: white;
+  padding: 7px 12px;
+  color: #00685f;
+  font-size: 12px;
+  font-weight: 800;
+}
+.release-console__steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: #e2eeea;
+}
+.release-step {
+  display: flex;
+  min-width: 0;
+  gap: 12px;
+  padding: 19px;
+  background: white;
+}
+.release-step--publish {
+  background: #f8fcfa;
+}
+.release-step__number {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border-radius: 11px;
+  background: #deeee9;
+  color: #00685f;
+  font-weight: 900;
+}
+.release-step--done .release-step__number {
+  background: #00685f;
+  color: white;
+}
+.release-step__body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.release-step__body strong {
+  font-size: 14px;
+}
+.release-step__body small {
+  min-height: 32px;
+  color: #627773;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.release-step__body .field {
+  background: #f2f7f6;
+}
+.release-step__body .btn {
+  width: 100%;
+}
+.release-console__note {
+  margin: 0;
+  padding: 12px 24px;
+  color: #58716b;
+  font-size: 11px;
+  line-height: 1.7;
+}
+@media (max-width: 900px) {
+  .release-console__steps {
+    grid-template-columns: 1fr;
+  }
+  .release-step__body small {
+    min-height: 0;
+  }
+}
+.publish-hint {
+  margin: 14px 0 0;
+  border-radius: 10px;
+  background: #fff7e9;
+  padding: 10px 14px;
+  color: #825100;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.publish-hint-success {
+  background: #eaf8f4;
+  color: #006047;
+}
 .field {
   min-height: 44px;
   width: 100%;
@@ -120,6 +327,9 @@ button:disabled {
   }
 }
 @media (max-width: 639px) {
+  .publish-guide {
+    grid-template-columns: 1fr;
+  }
   .modal-dialog > form {
     padding: 16px;
   }

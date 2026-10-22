@@ -57,8 +57,13 @@ describe('AdminStudentsPage', () => {
       .expectOne((request) => request.url === '/api/admin/groups' && request.method === 'GET')
       .flush({ items: [group], hasMore: true });
     http
-      .expectOne((request) => request.url === '/api/admin/groups/students' && request.method === 'GET')
-      .flush({ items: [{ id: studentId, email: 'student@example.test', activeGroup: null }], hasMore: false });
+      .expectOne(
+        (request) => request.url === '/api/admin/groups/students' && request.method === 'GET',
+      )
+      .flush({
+        items: [{ id: studentId, email: 'student@example.test', activeGroup: null }],
+        hasMore: false,
+      });
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.componentInstance.moreGroups()).toBe(true);
@@ -77,7 +82,11 @@ describe('AdminStudentsPage', () => {
   });
 
   it('does not claim draft assignment is published content', async () => {
-    const assignedOnly = { ...group, currentVersionId: null, assignedCurriculumTemplateId: 'draft-id' };
+    const assignedOnly = {
+      ...group,
+      currentVersionId: null,
+      assignedCurriculumTemplateId: 'draft-id',
+    };
     http
       .expectOne((request) => request.url === '/api/admin/groups' && request.method === 'GET')
       .flush({ items: [assignedOnly], hasMore: false });
@@ -120,7 +129,10 @@ describe('AdminStudentsPage', () => {
       password: 'Synthetic!123',
     });
     expect(request.request.url).not.toContain('Synthetic!123');
-    request.flush({ id: studentId, email: 'new.student@example.test' }, { status: 201, statusText: 'Created' });
+    request.flush(
+      { id: studentId, email: 'new.student@example.test' },
+      { status: 201, statusText: 'Created' },
+    );
     await Promise.resolve();
     http
       .expectOne(
@@ -128,9 +140,45 @@ describe('AdminStudentsPage', () => {
           item.url === '/api/admin/groups/students' &&
           item.params.get('query') === 'new.student@example.test',
       )
-      .flush({ items: [{ id: studentId, email: 'new.student@example.test', activeGroup: null }], hasMore: false });
+      .flush({
+        items: [{ id: studentId, email: 'new.student@example.test', activeGroup: null }],
+        hasMore: false,
+      });
     await creating;
     expect(page.password).toBe('');
+  });
+
+  it('shows the server password requirements inside the create dialog after a 400', async () => {
+    await initial();
+    const page = fixture.componentInstance;
+    page.createOpen.set(true);
+    page.email = 'new.student@example.test';
+    page.password = 'simplepassword';
+    const creating = page.createStudent();
+    http.expectOne('/api/auth/csrf').flush(null);
+    await Promise.resolve();
+    http.expectOne('/api/admin/groups/students').flush(
+      {
+        error: 'invalid_student_account',
+        codes: [
+          'PasswordRequiresUpper',
+          'PasswordRequiresDigit',
+          'PasswordRequiresNonAlphanumeric',
+        ],
+      },
+      { status: 400, statusText: 'Bad Request' },
+    );
+    await creating;
+    fixture.detectChanges();
+
+    expect(page.createOpen()).toBe(true);
+    expect(page.password).toBe('');
+    const dialog = fixture.nativeElement.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain(
+      'أضف حرفًا إنجليزيًا كبيرًا',
+    );
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('أضف رقمًا');
+    expect(dialog.querySelector('#student-password-rules')?.textContent).toContain('10 أحرف');
   });
 
   it('requires explicit confirmation before moving a student and sends the expected membership', async () => {
@@ -159,9 +207,11 @@ describe('AdminStudentsPage', () => {
     await initial();
     const loading = fixture.componentInstance.loadHistory(studentId, 1);
     http
-      .expectOne((request) =>
-        request.url === `/api/admin/groups/students/${studentId}/history` &&
-        request.params.get('page') === '1' && request.params.get('pageSize') === '20',
+      .expectOne(
+        (request) =>
+          request.url === `/api/admin/groups/students/${studentId}/history` &&
+          request.params.get('page') === '1' &&
+          request.params.get('pageSize') === '20',
       )
       .flush({
         items: [

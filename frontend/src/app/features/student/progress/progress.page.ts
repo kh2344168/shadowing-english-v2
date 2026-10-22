@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { Curriculum, StudentLearningApi } from '../learning.api';
+import { ConversationReviewItem, Curriculum, StudentLearningApi } from '../learning.api';
 
 @Component({
   selector: 'app-student-progress-page',
@@ -14,6 +14,7 @@ import { Curriculum, StudentLearningApi } from '../learning.api';
 export class StudentProgressPage implements OnInit {
   private readonly api = inject(StudentLearningApi);
   readonly data = signal<Curriculum | null>(null);
+  readonly conversationReview = signal<ConversationReviewItem[]>([]);
   readonly loading = signal(true);
   readonly error = signal(false);
   ngOnInit(): void {
@@ -27,6 +28,12 @@ export class StudentProgressPage implements OnInit {
     try {
       const data = await firstValueFrom(this.api.curriculum(1, 20));
       this.data.set(data);
+      try {
+        this.conversationReview.set(await firstValueFrom(this.api.conversationReview()));
+      } catch {
+        // Curriculum progress remains usable when optional review history is unavailable.
+        this.conversationReview.set([]);
+      }
       console.info('[Student.Progress.UI.Load.Success]', {
         count: data.items.length,
         completed: this.completed(data),

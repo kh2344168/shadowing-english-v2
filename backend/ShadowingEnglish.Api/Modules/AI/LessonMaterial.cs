@@ -21,9 +21,18 @@ public sealed record LessonMaterial(VocabularyCard[] Vocabulary, QuizCard[] Quiz
     int? ConversationTurnTarget = null, string? ConversationLearningOutcome = null,
     string? ConversationFocusTense = null, string[]? ConversationTargetWords = null,
     string ConversationCorrectionMode = "lesson-only", bool VocabularyOnly = false,
-    int? VocabularyTargetCount = null);
+    int? VocabularyTargetCount = null, string? ConversationSupportMode = null,
+    string? ConversationHelpAr = null, string? ConversationModelAnswer = null,
+    string? ConversationContextType = null, string[]? ConversationAllowedFacts = null,
+    string[]? ConversationSuccessSteps = null, int? ConversationMinTurns = null,
+    int? ConversationMaxTurns = null);
 public sealed record ChatFeedback(string Reply, string Correction, string BetterAnswer, string GrammarTip,
-    bool? FocusMet = null);
+    bool? FocusMet = null, string[]? MetSteps = null, ConversationIssue[]? Issues = null,
+    bool CriticalFactError = false);
+public sealed record ConversationIssue(string Original, string Suggested, string Reason, string Kind);
+public sealed record ConversationResult(bool GoalMet, int ReplyCount, int RelevantReplies, string[] MetSteps,
+    string[] MissingSteps, ConversationIssue[] Issues, string? RetrySentence,
+    bool EndedEarly, string Outcome);
 
 public static class LessonMaterialRules
 {
@@ -42,9 +51,71 @@ public static class LessonMaterialRules
     private static readonly HashSet<string> ConversationTenses =
         ["present-simple", "present-continuous", "past-simple", "past-continuous",
             "present-perfect", "future-simple"];
+    private static readonly HashSet<string> ConversationSupportModes =
+        ["first-steps", "guided", "independent"];
+    private static readonly HashSet<string> ConversationContextTypes =
+        ["situation", "clip", "professional"];
 
-    public static int ConversationTurns(LessonMaterial material) => material.ConversationTurnTarget ?? 10;
+    public static bool StructuredConversation(LessonMaterial material) =>
+        material.ConversationMinTurns is not null && material.ConversationMaxTurns is not null &&
+        material.ConversationSuccessSteps is { Length: > 0 };
+    public static bool ConversationTimedOut(IReadOnlyList<DateTimeOffset> replyTimes, DateTimeOffset now) =>
+        replyTimes.Count > 0 &&
+        (now - replyTimes[0] >= TimeSpan.FromHours(2) ||
+            now - replyTimes[^1] >= TimeSpan.FromMinutes(45));
+    public static int ConversationMaximum(LessonMaterial material) =>
+        StructuredConversation(material) ? material.ConversationMaxTurns!.Value : ConversationTurns(material);
+    public static string[] MetConversationSteps(LessonMaterial material, IEnumerable<ChatFeedback> feedback) =>
+        (material.ConversationSuccessSteps ?? []).Where(step => feedback.Any(item =>
+            item.MetSteps?.Contains(step, StringComparer.OrdinalIgnoreCase) == true)).ToArray();
+    public static bool ConversationGoalMet(LessonMaterial material, IEnumerable<ChatFeedback> feedback) =>
+        StructuredConversation(material) && MetConversationSteps(material, feedback).Length ==
+            material.ConversationSuccessSteps!.Length;
+    public static ConversationResult ConversationSummary(LessonMaterial material,
+        IReadOnlyList<(string Answer, ChatFeedback Feedback)> turns, bool endedEarly)
+    {
+        var met = MetConversationSteps(material, turns.Select(x => x.Feedback));
+        var missing = (material.ConversationSuccessSteps ?? []).Except(met, StringComparer.OrdinalIgnoreCase).ToArray();
+        var goal = missing.Length == 0 && turns.Count >= (material.ConversationMinTurns ?? 1);
+        var issues = turns.SelectMany(x => x.Feedback.Issues ?? []).Where(x =>
+            !string.IsNullOrWhiteSpace(x.Original) && !string.IsNullOrWhiteSpace(x.Suggested) &&
+            !string.Equals(x.Original.Trim(), x.Suggested.Trim(), StringComparison.OrdinalIgnoreCase))
+            .GroupBy(x => x.Original.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.First())
+            .OrderByDescending(x => x.Kind.Contains("fact", StringComparison.OrdinalIgnoreCase) ? 3 :
+                x.Kind.Contains("goal", StringComparison.OrdinalIgnoreCase) ||
+                x.Kind.Contains("vocabulary", StringComparison.OrdinalIgnoreCase) ? 2 : 1)
+            .Take(3);
+        var compactIssues = CompactConversationIssues(issues);
+        return new ConversationResult(goal, turns.Count, turns.Count(x => x.Feedback.FocusMet == true),
+            met, missing, compactIssues,
+            compactIssues.FirstOrDefault()?.Suggested, endedEarly,
+            goal ? "goal-met" : endedEarly ? "ended-early" : "goal-incomplete");
+    }
+    public static ConversationIssue[] CompactConversationIssues(IEnumerable<ConversationIssue> issues) =>
+        issues.Take(3).Select(x => new ConversationIssue(
+            x.Original[..Math.Min(x.Original.Length, 120)],
+            x.Suggested[..Math.Min(x.Suggested.Length, 120)],
+            x.Reason[..Math.Min(x.Reason.Length, 100)],
+            x.Kind[..Math.Min(x.Kind.Length, 30)])).ToArray();
+    public static bool SafeProfessionalReply(LessonMaterial material, string reply)
+    {
+        if (material.ConversationContextType != "professional") return true;
+        if (Regex.IsMatch(reply, @"\b(?:I|we)\s+(?:have|just)\s+(?:cancelled|canceled|refunded|activated|changed|processed|issued|applied)\b",
+            RegexOptions.IgnoreCase)) return false;
+        if (Regex.IsMatch(reply,
+            @"\b(?:your|the)\s+(?:subscription|account|plan)\s+(?:has been|is now)\s+(?:cancelled|canceled|activated|changed)\b|\b(?:refund|cancellation)\s+(?:has been|is)\s+(?:processed|completed)\b",
+            RegexOptions.IgnoreCase)) return false;
+        var facts = string.Join(" ", material.ConversationAllowedFacts ?? []);
+        var amounts = Regex.Matches(reply, @"(?:[$€£]\s*\d+(?:\.\d+)?|\b\d+(?:\.\d+)?\s*%)");
+        return amounts.All(amount => facts.Contains(amount.Value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static int ConversationTurns(LessonMaterial material) => material.ConversationTurnTarget ??
+        (material.ConversationSupportMode switch { "first-steps" => 3, "guided" => 5,
+            "independent" => 8, _ => 10 });
     public static bool CountsConversationTurn(LessonMaterial material, ChatFeedback feedback) =>
+        material.ConversationSupportMode is not null ? feedback.FocusMet == true :
         string.IsNullOrWhiteSpace(material.ConversationFocusTense) || feedback.FocusMet == true;
 
     public static bool ReadyToApprove(LessonMaterial material, IEnumerable<string>? requiredStages = null)
@@ -115,7 +186,8 @@ public static class LessonMaterialRules
     // The worker merges only the requested stage into the newest teacher-edited snapshot.
     // A model response cannot replace fields belonging to a different stage.
     public static LessonMaterial? MergeStageGenerated(string stage, string raw, LessonMaterial current,
-        string source, IReadOnlyList<LessonTranscriptSegment> segments)
+        string source, IReadOnlyList<LessonTranscriptSegment> segments, string level = "B1",
+        string lessonType = "situation")
     {
         if (!GeneratableStages.Contains(stage)) return null;
         try
@@ -150,13 +222,67 @@ public static class LessonMaterialRules
                 {
                     var scenario = ReadString(root, "conversationScenario");
                     if (string.IsNullOrWhiteSpace(scenario)) return null;
+                    // A1 starts with first steps only when the teacher's existing choices
+                    // fit that mode. Never reject a valid model response because an
+                    // implicit default conflicts with four selected focus words, tense,
+                    // turn limits, or correction scope already saved in the draft.
+                    var firstStepsCompatible = current.ConversationTargetWords is not { Length: > 3 } &&
+                        string.IsNullOrWhiteSpace(current.ConversationFocusTense) &&
+                        current.ConversationTurnTarget is not > 5 &&
+                        current.ConversationMaxTurns is not > 6 &&
+                        current.ConversationCorrectionMode is null or "lesson-only";
+                    var support = current.ConversationSupportMode ?? (level switch
+                    {
+                        "A1" when firstStepsCompatible => "first-steps",
+                        "A1" or "A2" => "guided",
+                        _ => "independent"
+                    });
                     var goals = root.TryGetProperty("conversationGoals", out var goalsJson) &&
                         goalsJson.ValueKind == JsonValueKind.Array
                         ? goalsJson.Deserialize<string[]>(Json) : null;
+                    goals = goals?.Where(goal => !string.IsNullOrWhiteSpace(goal))
+                        .Select(goal => goal.Trim()).Take(6).ToArray();
+                    var steps = current.ConversationSuccessSteps is { Length: > 0 } savedSteps &&
+                        savedSteps.All(step => !string.IsNullOrWhiteSpace(step))
+                        ? savedSteps : goals is { Length: > 0 } ? goals :
+                            ["يجيب عن سؤال المحاور في موقف الدرس"];
+                    var opening = ReadString(root, "openingMessage")?.Trim();
+                    var help = ReadString(root, "conversationHelpAr")?.Trim();
+                    var example = ReadString(root, "conversationModelAnswer")?.Trim();
+                    var starterFallback = support == "first-steps" &&
+                        (string.IsNullOrWhiteSpace(help) || string.IsNullOrWhiteSpace(example));
                     result = current with
                     {
                         ConversationScenario = scenario.Trim(), ConversationGoals = goals,
-                        OpeningMessage = scenario.Trim()
+                        AiRole = !string.IsNullOrWhiteSpace(current.AiRole) ? current.AiRole :
+                            ReadString(root, "aiRole")?.Trim() is { Length: > 0 } aiRole ? aiRole : "Conversation partner",
+                        StudentRole = !string.IsNullOrWhiteSpace(current.StudentRole) ? current.StudentRole :
+                            ReadString(root, "studentRole")?.Trim() is { Length: > 0 } studentRole ? studentRole : "Learner",
+                        ConversationContextType = current.ConversationContextType ??
+                            (lessonType == "clip" ? "clip" : "situation"),
+                        ConversationSuccessSteps = steps,
+                        ConversationAllowedFacts = current.ConversationAllowedFacts ?? [],
+                        ConversationMinTurns = current.ConversationMinTurns ??
+                            (support == "first-steps" ? 2 : support == "guided" ? 5 : 6),
+                        ConversationMaxTurns = current.ConversationMaxTurns ??
+                            (support == "first-steps" ? 4 : support == "guided" ? 10 : 12),
+                        OpeningMessage = starterFallback ? "Hi! How are you?" :
+                            !string.IsNullOrWhiteSpace(opening) ? opening :
+                            support == "first-steps" ? "Hi! How are you?" : scenario.Trim(),
+                        ConversationSupportMode = support,
+                        ConversationTurnTarget = support == "first-steps" &&
+                            current.ConversationSupportMode is null &&
+                            current.ConversationTurnTarget is > 5 ? 3 :
+                            current.ConversationTurnTarget ??
+                            (support == "first-steps" ? 3 : support == "guided" ? 5 : 8),
+                        ConversationLearningOutcome = !string.IsNullOrWhiteSpace(current.ConversationLearningOutcome) ?
+                            current.ConversationLearningOutcome : steps[0],
+                        ConversationHelpAr = starterFallback ? "يمكنك الرد بكلمة واحدة أو عبارة قصيرة." :
+                            !string.IsNullOrWhiteSpace(help) ? help :
+                            support == "first-steps" ? "يمكنك الرد بكلمة واحدة أو عبارة قصيرة." : null,
+                        ConversationModelAnswer = starterFallback ? "I'm good." :
+                            !string.IsNullOrWhiteSpace(example) ? example :
+                            support == "first-steps" ? "I'm good." : null
                     };
                     break;
                 }
@@ -267,6 +393,41 @@ public static class LessonMaterialRules
             material.ConversationTurnTarget is < 1 or > 20 ||
             material.VocabularyTargetCount is < 1 or > 20 ||
             !Optional(material.ConversationLearningOutcome, 240) ||
+            (material.ConversationSupportMode is { } supportMode &&
+                !ConversationSupportModes.Contains(supportMode)) ||
+            !Optional(material.ConversationHelpAr, 160) ||
+            !Optional(material.ConversationModelAnswer, 160) ||
+            (material.ConversationContextType is { } contextType &&
+                !ConversationContextTypes.Contains(contextType)) ||
+            material.ConversationAllowedFacts is { Length: > 12 } ||
+            material.ConversationAllowedFacts?.Any(x => !Field(x, 240)) == true ||
+            (material.ConversationContextType == "professional" &&
+                material.ConversationMinTurns.HasValue &&
+                material.ConversationAllowedFacts is not { Length: > 0 }) ||
+            material.ConversationSuccessSteps is { Length: > 6 } ||
+            material.ConversationSuccessSteps?.Any(x => !Field(x, 160)) == true ||
+            (material.ConversationSuccessSteps is { } successSteps &&
+                successSteps.Distinct(StringComparer.OrdinalIgnoreCase).Count() != successSteps.Length) ||
+            (material.ConversationMinTurns.HasValue != material.ConversationMaxTurns.HasValue) ||
+            (material.ConversationMinTurns is { } minTurns &&
+                (minTurns < 1 || material.ConversationMaxTurns is not { } maxTurns ||
+                    maxTurns < minTurns || maxTurns > 20 ||
+                    material.ConversationSuccessSteps is not { Length: > 0 } ||
+                    string.IsNullOrWhiteSpace(material.ConversationContextType) ||
+                    string.IsNullOrWhiteSpace(material.AiRole) ||
+                    string.IsNullOrWhiteSpace(material.StudentRole) ||
+                    string.IsNullOrWhiteSpace(material.ConversationLearningOutcome))) ||
+            (material.ConversationSupportMode is not null &&
+                (string.IsNullOrWhiteSpace(material.OpeningMessage) ||
+                    string.IsNullOrWhiteSpace(material.ConversationLearningOutcome))) ||
+            (material.ConversationSupportMode == "first-steps" &&
+                (material.ConversationFocusTense is { Length: > 0 } ||
+                    material.ConversationTurnTarget is > 5 ||
+                    material.ConversationMaxTurns is > 6 ||
+                    material.ConversationTargetWords is { Length: > 3 } ||
+                    material.ConversationCorrectionMode != "lesson-only" ||
+                    string.IsNullOrWhiteSpace(material.ConversationHelpAr) ||
+                    string.IsNullOrWhiteSpace(material.ConversationModelAnswer))) ||
             (material.ConversationFocusTense is { Length: > 0 } tense && !ConversationTenses.Contains(tense)) ||
             material.ConversationCorrectionMode is not ("lesson-only" or "all") ||
             material.ConversationTargetWords is { Length: > 12 } ||
@@ -424,7 +585,12 @@ public static class LessonMaterialRules
         {
             var result = JsonSerializer.Deserialize<ChatFeedback>(ObjectOnly(raw), Json);
             return result is not null && Field(result.Reply, 400) && Optional(result.Correction, 300) &&
-                Optional(result.BetterAnswer, 300) && Optional(result.GrammarTip, 300) ? result : null;
+                Optional(result.BetterAnswer, 300) && Optional(result.GrammarTip, 300) &&
+                result.MetSteps is not { Length: > 6 } &&
+                result.MetSteps?.All(x => Field(x, 160)) != false &&
+                result.Issues is not { Length: > 3 } &&
+                result.Issues?.All(x => Field(x.Original, 300) && Field(x.Suggested, 300) &&
+                    Field(x.Reason, 160) && Field(x.Kind, 40)) != false ? result : null;
         }
         catch (JsonException) { return null; }
     }

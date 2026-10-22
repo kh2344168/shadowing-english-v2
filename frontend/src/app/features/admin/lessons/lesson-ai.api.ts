@@ -3,13 +3,13 @@ import { inject, Injectable } from '@angular/core';
 import { LessonStageType } from './lesson-workflow.api';
 
 export type StageProcessingStatus =
-  | 'NotStarted'
-  | 'Pending'
-  | 'Generating'
-  | 'NeedsReview'
-  | 'Approved'
-  | 'Failed';
+  'NotStarted' | 'Pending' | 'Generating' | 'NeedsReview' | 'Approved' | 'Failed';
 export type StageProcessingStatuses = Partial<Record<LessonStageType, StageProcessingStatus>>;
+export interface StageLatestAttempt {
+  id: string;
+  status: 'Pending' | 'Generating' | 'Draft' | 'Approved' | 'Failed';
+  errorCode: string | null;
+}
 
 export interface VocabularyCard {
   word: string;
@@ -69,6 +69,14 @@ export interface LessonMaterial {
   conversationFocusTense?: string | null;
   conversationTargetWords?: string[] | null;
   conversationCorrectionMode?: 'lesson-only' | 'all';
+  conversationSupportMode?: 'first-steps' | 'guided' | 'independent' | null;
+  conversationHelpAr?: string | null;
+  conversationModelAnswer?: string | null;
+  conversationContextType?: 'situation' | 'clip' | 'professional' | null;
+  conversationAllowedFacts?: string[] | null;
+  conversationSuccessSteps?: string[] | null;
+  conversationMinTurns?: number | null;
+  conversationMaxTurns?: number | null;
   shadowingReviewEnabled?: boolean;
   reviewedStages?: Array<
     | 'vocabulary'
@@ -94,6 +102,8 @@ export interface LessonAiJob {
   approvedAtUtc: string | null;
   material: LessonMaterial | null;
   stageType?: LessonStageType | null;
+  autoPublishedGroups?: number;
+  autoPublishFailed?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -101,11 +111,16 @@ export class LessonAiApi {
   private readonly http = inject(HttpClient);
   private readonly base = '/api/admin/lessons';
   providers() {
-    return this.http.get<{ configured: string[]; imagesConfigured?: boolean; voiceConfigured?: boolean }>(`${this.base}/ai-providers`);
+    return this.http.get<{
+      configured: string[];
+      imagesConfigured?: boolean;
+      voiceConfigured?: boolean;
+    }>(`${this.base}/ai-providers`);
   }
   voice(versionId: string, text: string, voice: string) {
     return this.http.get(`${this.base}/${encodeURIComponent(versionId)}/ai/voice`, {
-      params: { text, voice }, responseType: 'blob',
+      params: { text, voice },
+      responseType: 'blob',
     });
   }
   vocabularyImages(versionId: string, job: LessonAiJob, cardIndex: number, page: number) {
@@ -127,8 +142,17 @@ export class LessonAiApi {
       `${this.base}/${encodeURIComponent(versionId)}/ai/stages/statuses`,
     );
   }
-  generateStage(versionId: string, stageType: LessonStageType, requestId: string,
-    vocabularyTargetCount?: number) {
+  latestStageAttempt(versionId: string, stageType: LessonStageType) {
+    return this.http.get<StageLatestAttempt | null>(
+      `${this.base}/${encodeURIComponent(versionId)}/ai/stages/${encodeURIComponent(stageType)}/latest-attempt`,
+    );
+  }
+  generateStage(
+    versionId: string,
+    stageType: LessonStageType,
+    requestId: string,
+    vocabularyTargetCount?: number,
+  ) {
     return this.http.post<LessonAiJob>(
       `${this.base}/${encodeURIComponent(versionId)}/ai/stages/${encodeURIComponent(stageType)}/generate`,
       { requestId, vocabularyTargetCount },
