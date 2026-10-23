@@ -27,6 +27,34 @@ function Test-ProcessorListening {
     }
 }
 
+function Protect-ProcessorPath {
+    param([string]$Path, [bool]$IsDirectory)
+
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+    $system = [System.Security.Principal.SecurityIdentifier]::new(
+        [System.Security.Principal.WellKnownSidType]::LocalSystemSid, $null)
+    $administrators = [System.Security.Principal.SecurityIdentifier]::new(
+        [System.Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+    $security = Get-Acl -LiteralPath $Path
+    $security.SetAccessRuleProtection($true, $false)
+    foreach ($rule in @($security.Access)) { [void]$security.RemoveAccessRuleAll($rule) }
+    $inheritance = if ($IsDirectory) {
+        [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+            [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
+    } else { [System.Security.AccessControl.InheritanceFlags]::None }
+    foreach ($sid in @($currentUser, $system, $administrators)) {
+        $rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+            $sid, [System.Security.AccessControl.FileSystemRights]::FullControl,
+            $inheritance, [System.Security.AccessControl.PropagationFlags]::None,
+            [System.Security.AccessControl.AccessControlType]::Allow)
+        $security.AddAccessRule($rule)
+    }
+    Set-Acl -LiteralPath $Path -AclObject $security
+    if (-not (Get-Acl -LiteralPath $Path).AreAccessRulesProtected) {
+        throw "Could not restrict access to $Path."
+    }
+}
+
 function Register-ProcessorAutoStart {
     $startedAt = Get-Date
     $runPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
@@ -103,6 +131,8 @@ if (Test-ProcessorListening) {
     if (-not $sameConnection) {
         throw 'A Local Processor is already running with a different connection. Close it before installing a new connection; existing models were left untouched.'
     }
+    Protect-ProcessorPath -Path $processorRoot -IsDirectory $true
+    Protect-ProcessorPath -Path $installedLinkPath -IsDirectory $false
 
     # Refresh only the startup scripts. Do not overwrite live server files or touch the venv/models.
     foreach ($file in @('StartHidden.ps1', 'Install.ps1')) {
@@ -119,6 +149,7 @@ if (Test-ProcessorListening) {
 if (-not $reuseRunningInstall) {
     # Loopback-only processor. Register per-user hidden auto-start; no firewall rule or Windows service is required.
     New-Item -ItemType Directory -Force $processorRoot | Out-Null
+    Protect-ProcessorPath -Path $processorRoot -IsDirectory $true
     New-Item -ItemType Directory -Force $modelsRoot | Out-Null
     $files = @('contracts.py', 'worker.py', 'server.py', 'prepare.py', 'requirements.txt', 'Install.cmd', 'Install.ps1', 'Start.cmd', 'Start.ps1', 'StartHidden.ps1', 'PrepareLesson.cmd', 'PrepareLesson.ps1', 'README_AR.md', 'shadowing-link.json')
     foreach ($file in $files) {
@@ -126,6 +157,7 @@ if (-not $reuseRunningInstall) {
         $destination = Join-Path $processorRoot $file
         if ([IO.Path]::GetFullPath($source) -ne [IO.Path]::GetFullPath($destination)) { Copy-Item -LiteralPath $source -Destination $destination -Force }
     }
+    Protect-ProcessorPath -Path (Join-Path $processorRoot 'shadowing-link.json') -IsDirectory $false
 
     function Refresh-ProcessorPath {
         $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + [Environment]::GetEnvironmentVariable('Path', 'Machine')
