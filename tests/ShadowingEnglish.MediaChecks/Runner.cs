@@ -56,6 +56,60 @@ internal static class Runner
 
     public static async Task<int> Main(string[] args)
     {
+        if (args.SequenceEqual(new[] { "--health-check" }))
+        {
+            var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
+            using var healthLogs = new SafeLogs();
+            using var disabled = new MediaApp(apiRoot, new DisabledShadowingMediaStore(), healthLogs);
+            await disabled.SetupAsync();
+            await Check("Liveness stays available while readiness detects missing media", async () =>
+            {
+                using var client = disabled.Client();
+                using var live = await client.GetAsync("/health/live");
+                using var ready = await client.GetAsync("/health");
+                Assert(live.StatusCode == HttpStatusCode.OK && ready.StatusCode == HttpStatusCode.ServiceUnavailable,
+                    "missing_media_not_reported");
+                Assert(ready.Headers.CacheControl?.NoStore == true, "health_response_cached");
+            });
+            var probe = new HealthProbeMediaStore();
+            using var healthy = new MediaApp(apiRoot, probe, healthLogs);
+            await healthy.SetupAsync();
+            await Check("Readiness checks database and private media probe", async () =>
+            {
+                using var client = healthy.Client();
+                using var ready = await client.GetAsync("/health");
+                Assert(ready.StatusCode == HttpStatusCode.OK && probe.Probes == 1,
+                    "ready_dependencies_not_checked");
+                using var cached = await client.GetAsync("/health");
+                Assert(cached.StatusCode == HttpStatusCode.OK && probe.Probes == 1,
+                    "repeated_health_check_hit_media_again");
+            });
+            var failingMedia = new HealthProbeMediaStore { Fail = true };
+            using var unavailableMedia = new MediaApp(apiRoot, failingMedia, healthLogs);
+            await unavailableMedia.SetupAsync();
+            await Check("Readiness reports unavailable media", async () =>
+            {
+                using var client = unavailableMedia.Client();
+                using var unavailable = await client.GetAsync("/health");
+                Assert(unavailable.StatusCode == HttpStatusCode.ServiceUnavailable && failingMedia.Probes == 1,
+                    "unavailable_media_not_reported");
+            });
+            using var unavailableDb = new MediaApp(apiRoot, new HealthProbeMediaStore(), healthLogs);
+            await unavailableDb.SetupAsync();
+            unavailableDb.BreakDatabaseForHealthCheck();
+            await Check("Readiness reports database failure without exposing details", async () =>
+            {
+                using var client = unavailableDb.Client();
+                using var ready = await client.GetAsync("/health");
+                Assert(ready.StatusCode == HttpStatusCode.ServiceUnavailable,
+                    "unavailable_database_not_reported");
+                var body = await ready.Content.ReadAsStringAsync();
+                Assert(!body.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) &&
+                    !body.Contains("Exception", StringComparison.OrdinalIgnoreCase),
+                    "database_error_details_exposed");
+            });
+            return failures == 0 ? 0 : 1;
+        }
         if (args.SequenceEqual(new[] { "--security-check" }))
         {
             var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
@@ -617,10 +671,41 @@ internal sealed class BlobTraffic : DelegatingHandler
     }
 }
 
+internal sealed class HealthProbeMediaStore : IShadowingMediaStore
+{
+    public bool IsConfigured => true;
+    public bool Fail { get; set; }
+    public int Probes { get; private set; }
+    public Task<bool> ExistsAsync(string key, CancellationToken cancellation)
+    {
+        if (key != "health-probe.wav") throw new InvalidOperationException("unexpected_health_key");
+        Probes++;
+        if (Fail) throw new MediaStorageUnavailableException();
+        return Task.FromResult(false);
+    }
+    public Task WriteAsync(string key, Stream source, CancellationToken cancellation) =>
+        throw new NotSupportedException();
+    public Task<bool> MatchesAsync(string key, Stream source, CancellationToken cancellation) =>
+        throw new NotSupportedException();
+    public Task<ShadowingMediaRead?> OpenAsync(string key, CancellationToken cancellation) =>
+        throw new NotSupportedException();
+    public Task DeleteAsync(string key, CancellationToken cancellation) =>
+        throw new NotSupportedException();
+}
+
 internal sealed class MediaApp(string contentRoot, IShadowingMediaStore store, SafeLogs logs,
     SaveChangesInterceptor? interceptor = null, string environment = "Production") : WebApplicationFactory<global::Program>
 {
     private readonly SqliteConnection connection = new("Data Source=:memory:");
+    public void BreakDatabaseForHealthCheck()
+    {
+        connection.Close();
+        connection.ConnectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = Path.Combine(Path.GetTempPath(), "v2-health-missing-" + Guid.NewGuid(), "missing.db"),
+            Mode = SqliteOpenMode.ReadOnly
+        }.ToString();
+    }
     public readonly Guid GroupId = Guid.NewGuid();
     public readonly string Password = "Test!9" + Guid.NewGuid().ToString("N");
     public HttpClient Client() => CreateClient(new WebApplicationFactoryClientOptions

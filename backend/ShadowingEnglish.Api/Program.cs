@@ -106,6 +106,7 @@ builder.Services.AddSingleton<TextAiRouter>();
 builder.Services.AddHttpClient<PexelsImageService>()
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddMemoryCache(options => options.SizeLimit = 30_000_000);
+builder.Services.AddSingleton<HealthReadinessState>();
 builder.Services.AddHttpClient<GroqVoiceService>()
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient<GeminiSpeechService>()
@@ -287,23 +288,18 @@ app.MapStudentLearningEndpoints();
 app.MapStudentShadowingReportingEndpoints();
 app.MapStudentAiLearningEndpoints();
 
-app.MapGet("/health", (ILogger<Program> logger) =>
+app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
+
+app.MapGet("/health", async (HttpContext http, ApplicationDbContext db,
+    IShadowingMediaStore media, HealthReadinessState state, ILogger<Program> logger) =>
 {
-    var started = System.Diagnostics.Stopwatch.GetTimestamp();
-
-    logger.LogInformation("Foundation.Health.Start");
-
-    var result = Results.Ok(new
-    {
-        status = "ok",
-        application = "ShadowingEnglish.V2"
-    });
-
-    logger.LogInformation(
-        "Foundation.Health.Success DurationMs={DurationMs}",
-        System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-
-    return result;
+    http.Response.Headers.CacheControl = "no-store";
+    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(http.RequestAborted);
+    timeout.CancelAfter(TimeSpan.FromSeconds(4));
+    var ready = await state.CheckAsync(db, media, logger, timeout.Token);
+    return ready
+        ? Results.Ok(new { status = "ok", application = "ShadowingEnglish.V2" })
+        : Results.Json(new { status = "unavailable" }, statusCode: 503);
 });
 
 // Keep unknown API paths as 404; client-side Angular routes use index.html.
@@ -315,3 +311,46 @@ app.Run();
 
 // Allows isolated HTTP tests to use the real application without starting SQL Server or Azure resources.
 public partial class Program { }
+
+internal sealed class HealthReadinessState
+{
+    private readonly SemaphoreSlim gate = new(1, 1);
+    private DateTimeOffset validUntilUtc;
+    private bool lastReady;
+
+    public async Task<bool> CheckAsync(ApplicationDbContext db, IShadowingMediaStore media,
+        ILogger logger, CancellationToken cancellation)
+    {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            await gate.WaitAsync(cancellation);
+            try
+            {
+                if (DateTimeOffset.UtcNow < validUntilUtc) return lastReady;
+                try
+                {
+                    // A missing key is expected. Azure's implementation first checks that its
+                    // container exists and is private. This probe performs no writes.
+                    lastReady = await db.Database.CanConnectAsync(cancellation) &&
+                        media.IsConfigured;
+                    if (lastReady)
+                        await media.ExistsAsync("health-probe.wav", cancellation);
+                }
+                catch (Exception error)
+                {
+                    lastReady = false;
+                    logger.LogWarning("Foundation.Health.Unavailable ErrorType={ErrorType} DurationMs={DurationMs}",
+                        error.GetType().Name, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                }
+                validUntilUtc = DateTimeOffset.UtcNow.AddSeconds(lastReady ? 10 : 3);
+                return lastReady;
+            }
+            finally { gate.Release(); }
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+    }
+}
