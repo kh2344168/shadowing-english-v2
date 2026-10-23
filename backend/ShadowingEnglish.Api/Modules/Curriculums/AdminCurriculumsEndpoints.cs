@@ -126,6 +126,8 @@ public static class AdminCurriculumsEndpoints
                 // Saving an AI draft is still allowed inside the stage editor so a teacher can review it.
                 var workflows = await WorkflowSnapshots(db, ids, http.RequestAborted);
                 var approvedAi = await LatestApprovedAi(db, ids, http.RequestAborted);
+                var aiPayloads = await ApprovedPayloads(db,
+                    RequiredAiContentIds(ids, workflows, approvedAi), http.RequestAborted);
                 foreach (var lessonId in ids)
                 {
                     if (!workflows.TryGetValue(lessonId, out var workflowJson)) continue;
@@ -135,9 +137,7 @@ public static class AdminCurriculumsEndpoints
                     if (aiStages.Length == 0) continue;
                     if (!approvedAi.TryGetValue(lessonId, out var contentId))
                         return op.FailStages(lessonId, aiStages);
-                    var payload = await db.LessonAiContents.AsNoTracking()
-                        .Where(x => x.Id == contentId).Select(x => x.PayloadJson)
-                        .SingleAsync(http.RequestAborted);
+                    var payload = aiPayloads.GetValueOrDefault(contentId);
                     var material = payload is null ? null :
                         JsonSerializer.Deserialize<LessonMaterial>(payload, LessonMaterialRules.Json);
                     var missing = material is null ? aiStages : aiStages.Where(x =>
@@ -286,6 +286,9 @@ public static class AdminCurriculumsEndpoints
                     slots.Select(x => x.LessonVersionId).Distinct().ToArray(), http.RequestAborted);
                 var workflows = await WorkflowSnapshots(db,
                     slots.Select(x => x.LessonVersionId).Distinct().ToArray(), http.RequestAborted);
+                var aiPayloads = await ApprovedPayloads(db,
+                    RequiredAiContentIds(slots.Select(x => x.LessonVersionId), workflows, approvedAi),
+                    http.RequestAborted);
                 foreach (var lessonId in lessonIds)
                 {
                     if (!workflows.TryGetValue(lessonId, out var workflowJson)) continue;
@@ -296,9 +299,7 @@ public static class AdminCurriculumsEndpoints
                     if (stages.Any(x => x != "shadowing"))
                     {
                         var contentId = approvedAi[lessonId];
-                        var payload = await db.LessonAiContents.AsNoTracking()
-                            .Where(x => x.Id == contentId).Select(x => x.PayloadJson)
-                            .SingleAsync(http.RequestAborted);
+                        var payload = aiPayloads.GetValueOrDefault(contentId);
                         var material = payload is null ? null :
                             JsonSerializer.Deserialize<LessonMaterial>(payload, LessonMaterialRules.Json);
                         var missing = material is null
@@ -461,6 +462,28 @@ public static class AdminCurriculumsEndpoints
             .Select(x => new { x.LessonVersionId, x.Id }).ToArrayAsync(cancellation);
         return rows.GroupBy(x => x.LessonVersionId).ToDictionary(x => x.Key, x => x.First().Id);
     }
+
+    private static async Task<Dictionary<Guid, string?>> ApprovedPayloads(ApplicationDbContext db,
+        IEnumerable<Guid> contentIds, CancellationToken cancellation)
+    {
+        var payloads = new Dictionary<Guid, string?>();
+        // A curriculum may contain many lessons; bounded batches avoid one SQL request per
+        // lesson and keep each IN filter well below SQL Server's parameter limit.
+        foreach (var batch in contentIds.Distinct().Chunk(500))
+        {
+            var rows = await db.LessonAiContents.AsNoTracking()
+                .Where(x => batch.Contains(x.Id))
+                .Select(x => new { x.Id, x.PayloadJson }).ToArrayAsync(cancellation);
+            foreach (var row in rows) payloads.Add(row.Id, row.PayloadJson);
+        }
+        return payloads;
+    }
+
+    private static IEnumerable<Guid> RequiredAiContentIds(IEnumerable<Guid> lessonIds,
+        Dictionary<Guid, string> workflows, Dictionary<Guid, Guid> approvedAi) =>
+        lessonIds.Where(id => workflows.TryGetValue(id, out var workflow) &&
+            ReadEnabledStages(workflow).Any(stage => stage != "shadowing") &&
+            approvedAi.ContainsKey(id)).Select(id => approvedAi[id]);
 
     private static async Task<Dictionary<Guid, string>> WorkflowSnapshots(ApplicationDbContext db,
         Guid[] lessonVersionIds, CancellationToken cancellation)
