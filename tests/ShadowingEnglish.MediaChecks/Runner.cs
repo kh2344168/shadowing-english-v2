@@ -96,6 +96,11 @@ internal static class Runner
         if (args.Length == 3 && args[0] == "--processor-republish-load" &&
             int.TryParse(args[2], out var students) && students is >= 1 and <= 3000)
             return await ProcessorRealE2EChecks.RunAsync(args[1], Check, () => failures, students);
+        if (args.Length == 4 && args[0] == "--processor-republish-load" &&
+            int.TryParse(args[2], out var studentsWithAttempts) && studentsWithAttempts is >= 1 and <= 3000 &&
+            int.TryParse(args[3], out var attemptsPerStudent) && attemptsPerStudent is >= 1 and <= 20)
+            return await ProcessorRealE2EChecks.RunAsync(args[1], Check, () => failures,
+                studentCount: studentsWithAttempts, republishAttempts: attemptsPerStudent);
         if (args.Length == 4 && args[0] == "--processor-student-load" &&
             int.TryParse(args[2], out var loadStudents) && loadStudents is >= 1 and <= 3000 &&
             int.TryParse(args[3], out var concurrency) && concurrency >= 1 && concurrency <= loadStudents)

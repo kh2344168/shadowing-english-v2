@@ -113,19 +113,45 @@ public static class ApprovedLessonPublisher
                 CompletedSegments = x.CompletedSegments, IsComplete = x.IsComplete,
                 UpdatedAtUtc = x.UpdatedAtUtc
             }));
-            var attempts = await db.StudentPracticeAttempts.AsNoTracking()
-                .Where(x => x.PublishedCurriculumVersionId == previous.Id && oldIds.Contains(x.SlotId))
-                .ToArrayAsync(cancellation);
-            db.StudentPracticeAttempts.AddRange(attempts.Where(x => Carry(x.SlotId, x.StageKey))
-                .Select(x => new StudentPracticeAttempt
-                {
-                    Id = Guid.NewGuid(), StudentId = x.StudentId,
-                    PublishedCurriculumVersionId = next.Id, SlotId = nextSlots[x.SlotId].Id,
-                    StageKey = x.StageKey, Position = x.Position, Answer = x.Answer,
-                    FeedbackJson = x.FeedbackJson, CreatedAtUtc = x.CreatedAtUtc
-                }));
             pointer.PublishedCurriculumVersionId = next.Id;
-            await db.SaveChangesAsync(cancellation);
+            if (db.Database.IsSqlServer())
+            {
+                // Persist the new snapshot inside this transaction before the FK-bound copy.
+                // INSERT...SELECT keeps large attempt histories out of the API heap and EF tracker.
+                await db.SaveChangesAsync(cancellation);
+                foreach (var oldSlot in oldSlots)
+                {
+                    var newSlotId = nextSlots[oldSlot.Id].Id;
+                    if (oldSlot.Id != target.Id)
+                    {
+                        await CopyAttemptsSqlAsync(db, previous.Id, oldSlot.Id, next.Id,
+                            newSlotId, null, cancellation);
+                        continue;
+                    }
+                    var allowedStages = unchangedStages.ToHashSet(StringComparer.Ordinal);
+                    if (allowedStages.Contains("conversation"))
+                        allowedStages.Add("conversation-result");
+                    foreach (var stageKey in allowedStages)
+                        await CopyAttemptsSqlAsync(db, previous.Id, oldSlot.Id, next.Id,
+                            newSlotId, stageKey, cancellation);
+                }
+            }
+            else
+            {
+                // SQLite remains a small, portable path for the in-memory contract tests.
+                var attempts = await db.StudentPracticeAttempts.AsNoTracking()
+                    .Where(x => x.PublishedCurriculumVersionId == previous.Id && oldIds.Contains(x.SlotId))
+                    .ToArrayAsync(cancellation);
+                db.StudentPracticeAttempts.AddRange(attempts.Where(x => Carry(x.SlotId, x.StageKey))
+                    .Select(x => new StudentPracticeAttempt
+                    {
+                        Id = Guid.NewGuid(), StudentId = x.StudentId,
+                        PublishedCurriculumVersionId = next.Id, SlotId = nextSlots[x.SlotId].Id,
+                        StageKey = x.StageKey, Position = x.Position, Answer = x.Answer,
+                        FeedbackJson = x.FeedbackJson, CreatedAtUtc = x.CreatedAtUtc
+                    }));
+                await db.SaveChangesAsync(cancellation);
+            }
             await tx.CommitAsync(cancellation);
             published++;
             log.LogInformation("Admin.Lesson.AutoPublish GroupId={GroupId} LessonVersionId={LessonVersionId} VersionId={VersionId}",
@@ -133,6 +159,29 @@ public static class ApprovedLessonPublisher
         }
         return published;
     }
+
+    private static Task<int> CopyAttemptsSqlAsync(ApplicationDbContext db, Guid oldVersionId,
+        Guid oldSlotId, Guid newVersionId, Guid newSlotId, string? stageKey,
+        CancellationToken cancellation) => stageKey is null
+        ? db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO [StudentPracticeAttempts]
+                ([Id], [StudentId], [PublishedCurriculumVersionId], [SlotId], [StageKey],
+                 [Position], [Answer], [FeedbackJson], [CreatedAtUtc])
+            SELECT NEWID(), [StudentId], {newVersionId}, {newSlotId}, [StageKey],
+                   [Position], [Answer], [FeedbackJson], [CreatedAtUtc]
+            FROM [StudentPracticeAttempts]
+            WHERE [PublishedCurriculumVersionId] = {oldVersionId} AND [SlotId] = {oldSlotId}
+            """, cancellation)
+        : db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO [StudentPracticeAttempts]
+                ([Id], [StudentId], [PublishedCurriculumVersionId], [SlotId], [StageKey],
+                 [Position], [Answer], [FeedbackJson], [CreatedAtUtc])
+            SELECT NEWID(), [StudentId], {newVersionId}, {newSlotId}, [StageKey],
+                   [Position], [Answer], [FeedbackJson], [CreatedAtUtc]
+            FROM [StudentPracticeAttempts]
+            WHERE [PublishedCurriculumVersionId] = {oldVersionId} AND [SlotId] = {oldSlotId}
+                AND [StageKey] = {stageKey}
+            """, cancellation);
 
     private static AdminLessonWorkflowEndpoints.WorkflowStage[] ReadStages(string? json)
     {

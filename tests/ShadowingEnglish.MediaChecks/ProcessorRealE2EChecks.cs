@@ -31,7 +31,8 @@ internal static class ProcessorRealE2EChecks
     { if (!condition) throw new InvalidOperationException(reason); }
 
     public static async Task<int> RunAsync(string manifestPath, Func<string, Func<Task>, Task> check,
-        Func<int> failures, int studentCount = 0, int concurrentStudents = 0, int maxConcurrency = 0)
+        Func<int> failures, int studentCount = 0, int concurrentStudents = 0, int maxConcurrency = 0,
+        int republishAttempts = 1)
     {
         var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
         var manifestFile = Path.GetFullPath(manifestPath);
@@ -141,7 +142,8 @@ internal static class ProcessorRealE2EChecks
         });
         if (studentCount > 0)
             await RepublishLoadAsync(app, admin, studentCount, curriculumId, versionId,
-                publishedId, publishedSlotId, draftRevision, assignmentRevision, check);
+                publishedId, publishedSlotId, draftRevision, assignmentRevision,
+                republishAttempts, check);
         if (concurrentStudents > 0)
             await StudentLoadAsync(app, concurrentStudents, maxConcurrency, publishedSlotId, wave, check);
         return failures() == 0 ? 0 : 1;
@@ -273,7 +275,8 @@ internal static class ProcessorRealE2EChecks
 
     private static async Task RepublishLoadAsync(SqlProcessorApp app, HttpClient admin, int studentCount,
         Guid curriculumId, Guid lessonVersionId, Guid firstPublicationId, Guid firstSlotId,
-        Guid draftRevision, Guid assignmentRevision, Func<string, Func<Task>, Task> check)
+        Guid draftRevision, Guid assignmentRevision, int attemptsPerStudent,
+        Func<string, Func<Task>, Task> check)
     {
         await check($"Seed {studentCount} isolated students with published progress", async () =>
         {
@@ -345,7 +348,8 @@ internal static class ProcessorRealE2EChecks
             Console.WriteLine($"ManualRepublish Students={studentCount} DurationMs={clock.ElapsedMilliseconds}");
         });
 
-        await check($"Auto republish carries {studentCount} progress and attempt rows", async () =>
+        await check($"Auto republish carries {studentCount} progress and " +
+            $"{studentCount * attemptsPerStudent} attempt rows", async () =>
         {
             Assert(manualVersionId != Guid.Empty, "manual_publish_missing");
             using var scope = app.Services.CreateScope();
@@ -358,13 +362,21 @@ internal static class ProcessorRealE2EChecks
             var users = await db.StudentStageProgress.Where(x =>
                 x.PublishedCurriculumVersionId == manualVersionId)
                 .Select(x => x.StudentId).ToArrayAsync();
-            db.StudentPracticeAttempts.AddRange(users.Select(userId => new StudentPracticeAttempt
+            db.StudentPracticeAttempts.AddRange(users.SelectMany(userId =>
+                Enumerable.Range(1, attemptsPerStudent).Select(position => new StudentPracticeAttempt
             {
                 Id = Guid.NewGuid(), StudentId = userId,
                 PublishedCurriculumVersionId = manualVersionId, SlotId = manualSlotId,
-                StageKey = "shadowing", Position = 1, Answer = "done",
+                StageKey = "shadowing", Position = position, Answer = "done",
                 FeedbackJson = "{}", CreatedAtUtc = DateTimeOffset.UtcNow
-            }));
+            })));
+            db.StudentPracticeAttempts.Add(new StudentPracticeAttempt
+            {
+                Id = Guid.NewGuid(), StudentId = users[0],
+                PublishedCurriculumVersionId = manualVersionId, SlotId = manualSlotId,
+                StageKey = "vocabulary", Position = 1, Answer = "stale-stage",
+                FeedbackJson = "{}", CreatedAtUtc = DateTimeOffset.UtcNow
+            });
             var now = DateTimeOffset.UtcNow.AddSeconds(1);
             db.LessonAiContents.Add(new LessonAiContent
             {
@@ -376,6 +388,7 @@ internal static class ProcessorRealE2EChecks
             });
             await db.SaveChangesAsync();
             db.ChangeTracker.Clear();
+            var workingSetBefore = Process.GetCurrentProcess().WorkingSet64;
             var clock = Stopwatch.StartNew();
             var published = await ApprovedLessonPublisher.SyncAsync(db, lessonVersionId,
                 NullLogger.Instance, CancellationToken.None);
@@ -386,9 +399,23 @@ internal static class ProcessorRealE2EChecks
             Assert(await db.StudentStageProgress.CountAsync(x =>
                 x.PublishedCurriculumVersionId == latestId) == studentCount &&
                 await db.StudentPracticeAttempts.CountAsync(x =>
-                    x.PublishedCurriculumVersionId == latestId) == studentCount,
+                    x.PublishedCurriculumVersionId == latestId) == studentCount * attemptsPerStudent,
                 "auto_publish_lost_progress_or_attempts");
-            Console.WriteLine($"AutoRepublish Students={studentCount} DurationMs={clock.ElapsedMilliseconds}");
+            var copied = await db.StudentPracticeAttempts.AsNoTracking()
+                .Where(x => x.PublishedCurriculumVersionId == latestId &&
+                    x.StudentId == users[0]).OrderBy(x => x.Position)
+                .Select(x => new { x.StageKey, x.Position, x.Answer, x.FeedbackJson })
+                .ToArrayAsync();
+            Assert(copied.Length == attemptsPerStudent && copied.All(x =>
+                x.StageKey == "shadowing" && x.Answer == "done" && x.FeedbackJson == "{}") &&
+                copied.Select(x => x.Position).SequenceEqual(Enumerable.Range(1, attemptsPerStudent)) &&
+                await db.StudentPracticeAttempts.AnyAsync(x =>
+                    x.PublishedCurriculumVersionId == manualVersionId && x.StudentId == users[0] &&
+                    x.StageKey == "vocabulary"), "auto_publish_copied_stale_stage_or_changed_history");
+            var peak = Process.GetCurrentProcess().PeakWorkingSet64;
+            Console.WriteLine($"AutoRepublish Students={studentCount} " +
+                $"AttemptsPerStudent={attemptsPerStudent} DurationMs={clock.ElapsedMilliseconds} " +
+                $"WorkingSetBeforeMb={workingSetBefore / 1_048_576} PeakWorkingSetMb={peak / 1_048_576}");
         });
     }
 
