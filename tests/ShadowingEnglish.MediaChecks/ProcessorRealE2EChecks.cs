@@ -194,7 +194,8 @@ internal static class ProcessorRealE2EChecks
             {
                 await MeasureAsync("Login", count, concurrency, async index =>
                 {
-                    clients[index] = await app.LoginAsAsync(accounts[index].Email!, password);
+                    clients[index] = await app.LoginAsAsync(accounts[index].Email!, password,
+                        refreshCsrfAfterLogin: false);
                 });
             });
             if (clients.Any(x => x is null)) return;
@@ -208,6 +209,20 @@ internal static class ProcessorRealE2EChecks
                     var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
                     Assert(payload.GetProperty("items").GetArrayLength() == 1,
                         "curriculum_lesson_missing");
+                });
+            });
+            await check($"Lesson overview reads for {count} students at concurrency {concurrency}", async () =>
+            {
+                await MeasureAsync("Overview", count, concurrency, async index =>
+                {
+                    using var response = await clients[index]!.GetAsync(
+                        $"/api/student/learning/slots/{slotId}");
+                    Assert(response.StatusCode == HttpStatusCode.OK,
+                        "overview_status_" + (int)response.StatusCode);
+                    var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+                    Assert(payload.GetProperty("slotId").GetGuid() == slotId &&
+                        payload.GetProperty("totalStages").GetInt32() >= 1,
+                        "overview_wrong_lesson");
                 });
             });
             await check($"Lesson audio reads for {count} students at concurrency {concurrency}", async () =>
@@ -431,7 +446,8 @@ internal static class ProcessorRealE2EChecks
             return await LoginAsAsync(role + "-" + suffix, password);
         }
 
-        public async Task<HttpClient> LoginAsAsync(string email, string accountPassword)
+        public async Task<HttpClient> LoginAsAsync(string email, string accountPassword,
+            bool refreshCsrfAfterLogin = true)
         {
             var client = CreateClient(new WebApplicationFactoryClientOptions
             { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
@@ -442,7 +458,7 @@ internal static class ProcessorRealE2EChecks
                     new { email, password = accountPassword });
                 Assert(login.StatusCode == HttpStatusCode.OK,
                     "sql_test_login_status_" + (int)login.StatusCode);
-                await RefreshCsrfAsync(client);
+                if (refreshCsrfAfterLogin) await RefreshCsrfAsync(client);
                 return client;
             }
             catch { client.Dispose(); throw; }
