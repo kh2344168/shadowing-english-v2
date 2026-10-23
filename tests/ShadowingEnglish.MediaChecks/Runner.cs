@@ -56,6 +56,50 @@ internal static class Runner
 
     public static async Task<int> Main(string[] args)
     {
+        if (args.SequenceEqual(new[] { "--security-check" }))
+        {
+            var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
+            using var securityLogs = new SafeLogs();
+            using var app = new MediaApp(apiRoot, new DisabledShadowingMediaStore(), securityLogs);
+            await app.SetupAsync();
+            using var anonymous = app.Client();
+            using var admin = await app.LoginAsync("admin");
+            using var student = await app.LoginAsync("student");
+            await Check("Admin and student endpoints reject anonymous and wrong roles", async () =>
+            {
+                foreach (var (path, authorized, wrongRole) in new[]
+                {
+                    ("/api/admin/accounts/me", admin, student),
+                    ("/api/admin/shadowing/curriculums", admin, student),
+                    ("/api/student/learning/curriculum", student, admin)
+                })
+                {
+                    using var unauthenticated = await anonymous.GetAsync(path);
+                    using var forbidden = await wrongRole.GetAsync(path);
+                    Assert(unauthenticated.StatusCode == HttpStatusCode.Unauthorized,
+                        "anonymous_endpoint_allowed_" + path);
+                    Assert(forbidden.StatusCode == HttpStatusCode.Forbidden,
+                        "wrong_role_endpoint_allowed_" + path);
+                }
+            });
+            await Check("Cookie-authenticated writes require CSRF on both roles", async () =>
+            {
+                var before = await app.FingerprintAsync();
+                admin.DefaultRequestHeaders.Remove("X-XSRF-TOKEN");
+                student.DefaultRequestHeaders.Remove("X-XSRF-TOKEN");
+                using var adminWrite = await admin.PostAsJsonAsync("/api/admin/shadowing/curriculums",
+                    new { requestId = Guid.NewGuid(), name = "CSRF probe", description = "" });
+                using var studentWrite = await student.PutAsJsonAsync(
+                    $"/api/student/learning/slots/{Guid.NewGuid()}/progress",
+                    new { completedSegments = 1 });
+                Assert(adminWrite.StatusCode == HttpStatusCode.BadRequest,
+                    "admin_write_without_csrf_" + adminWrite.StatusCode);
+                Assert(studentWrite.StatusCode == HttpStatusCode.BadRequest,
+                    "student_write_without_csrf_" + studentWrite.StatusCode);
+                Assert(before == await app.FingerprintAsync(), "csrf_probe_mutated_database");
+            });
+            return failures == 0 ? 0 : 1;
+        }
         if (args.SequenceEqual(new[] { "--voice-budget-check" }))
         {
             await Check("Daily voice budget persists and rejects requests beyond the limit",
