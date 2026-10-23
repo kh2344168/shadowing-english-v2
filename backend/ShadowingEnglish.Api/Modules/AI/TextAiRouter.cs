@@ -16,6 +16,9 @@ public sealed class TextAiRouter(IHttpClientFactory clients, IConfiguration conf
     // Structured lesson stages can take longer than short chat replies on free-tier providers.
     // Keep each provider bounded so the worker can still try the remaining fallbacks.
     public const int ProviderTimeoutSeconds = 40;
+    public const int InteractiveProviderTimeoutSeconds = 12;
+    public const int InteractiveTotalTimeoutSeconds = 30;
+    public const int BackgroundTotalTimeoutSeconds = 120;
     private sealed record Provider(string Name, string Url, string Model);
     private static readonly (string Name, string Url, string Model)[] Catalog =
     [
@@ -32,8 +35,25 @@ public sealed class TextAiRouter(IHttpClientFactory clients, IConfiguration conf
         Func<string, T?> validate, CancellationToken cancellation,
         Action<string>? reportFailure = null) where T : class
     {
+        var interactive = maxTokens <= 650;
+        static int BoundedSeconds(string? value, int fallback)
+            => int.TryParse(value, out var parsed) ? Math.Clamp(parsed, 1, fallback) : fallback;
+        var perProviderSeconds = interactive
+            ? BoundedSeconds(config["AiText:InteractiveProviderTimeoutSeconds"], InteractiveProviderTimeoutSeconds)
+            : ProviderTimeoutSeconds;
+        var totalSeconds = interactive
+            ? BoundedSeconds(config["AiText:InteractiveTotalTimeoutSeconds"], InteractiveTotalTimeoutSeconds)
+            : BackgroundTotalTimeoutSeconds;
+        using var total = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        total.CancelAfter(TimeSpan.FromSeconds(totalSeconds));
         foreach (var entry in Catalog)
         {
+            if (total.IsCancellationRequested)
+            {
+                if (cancellation.IsCancellationRequested) cancellation.ThrowIfCancellationRequested();
+                reportFailure?.Invoke("provider_timeout");
+                break;
+            }
             var provider = Resolve(entry);
             if (provider is null) continue;
             var started = Stopwatch.GetTimestamp();
@@ -47,8 +67,8 @@ public sealed class TextAiRouter(IHttpClientFactory clients, IConfiguration conf
                     model = provider.Model, messages = messages.Select(x => new { role = x.Role, content = x.Content }),
                     max_tokens = maxTokens, stream = false
                 }), Encoding.UTF8, "application/json");
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-                timeout.CancelAfter(TimeSpan.FromSeconds(ProviderTimeoutSeconds));
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(total.Token);
+                timeout.CancelAfter(TimeSpan.FromSeconds(perProviderSeconds));
                 using var response = await clients.CreateClient(nameof(TextAiRouter)).SendAsync(
                     request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
                 if (!response.IsSuccessStatusCode)
@@ -89,6 +109,13 @@ public sealed class TextAiRouter(IHttpClientFactory clients, IConfiguration conf
                 return new AiResult<T>(result, provider.Name);
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
+            catch (OperationCanceledException) when (total.IsCancellationRequested)
+            {
+                reportFailure?.Invoke("provider_timeout");
+                logger.LogWarning("Ai.Provider.Failed Provider={Provider} ErrorType=TotalTimeout DurationMs={DurationMs}",
+                    provider.Name, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                break;
+            }
             catch (OperationCanceledException)
             {
                 reportFailure?.Invoke("provider_timeout");

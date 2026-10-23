@@ -423,6 +423,69 @@ internal static class AiTextChecks
                 100, LessonMaterialRules.ParseFeedback, CancellationToken.None, code => failure = code);
             Assert(result is null && failure == "provider_auth_rejected", "provider_rejection_not_identified");
         });
+        await check("Interactive AI times out a stalled provider and uses the next one", async () =>
+        {
+            var settings = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AiText:Providers:Groq:ApiKey"] = "synthetic-groq-key",
+                ["AiText:Providers:Cloudflare:ApiKey"] = "synthetic-cloudflare-key",
+                ["AiText:Providers:Cloudflare:AccountId"] = new string('a', 32),
+                ["AiText:InteractiveProviderTimeoutSeconds"] = "1",
+                ["AiText:InteractiveTotalTimeoutSeconds"] = "3"
+            }).Build();
+            var destinations = new List<string>();
+            using var handler = new AsyncStubAiHandler(async (request, cancel) =>
+            {
+                destinations.Add(request.RequestUri!.Host);
+                if (destinations.Count == 1)
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancel);
+                    throw new InvalidOperationException("stalled_provider_returned");
+                }
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(new { choices = new[] { new { message = new
+                    {
+                        content = "{\"reply\":\"Hello!\",\"correction\":\"Hello.\",\"betterAnswer\":\"Hello friend.\",\"grammarTip\":\"Use a greeting.\"}"
+                    } } } }), Encoding.UTF8, "application/json")
+                };
+            });
+            using var client = new HttpClient(handler);
+            var router = new TextAiRouter(new StubAiClientFactory(client), settings,
+                NullLogger<TextAiRouter>.Instance);
+            var failures = new List<string>();
+            var result = await router.CompleteAsync([new AiMessage("user", "Hello")],
+                350, LessonMaterialRules.ParseFeedback, CancellationToken.None, failures.Add);
+            Assert(result?.Provider == "Cloudflare" && result.Value.Reply == "Hello!" &&
+                destinations.SequenceEqual(["api.groq.com", "api.cloudflare.com"]) &&
+                failures.SequenceEqual(["provider_timeout"]), "stalled_provider_blocked_fallback");
+        });
+        await check("Interactive AI stops the provider chain at its total deadline", async () =>
+        {
+            var settings = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AiText:Providers:Groq:ApiKey"] = "synthetic-groq-key",
+                ["AiText:Providers:Cloudflare:ApiKey"] = "synthetic-cloudflare-key",
+                ["AiText:Providers:Cloudflare:AccountId"] = new string('a', 32),
+                ["AiText:InteractiveProviderTimeoutSeconds"] = "2",
+                ["AiText:InteractiveTotalTimeoutSeconds"] = "1"
+            }).Build();
+            var calls = 0;
+            using var handler = new AsyncStubAiHandler(async (_, cancel) =>
+            {
+                calls++;
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancel);
+                throw new InvalidOperationException("deadline_ignored");
+            });
+            using var client = new HttpClient(handler);
+            var router = new TextAiRouter(new StubAiClientFactory(client), settings,
+                NullLogger<TextAiRouter>.Instance);
+            var failures = new List<string>();
+            var result = await router.CompleteAsync([new AiMessage("user", "Hello")],
+                350, LessonMaterialRules.ParseFeedback, CancellationToken.None, failures.Add);
+            Assert(result is null && calls == 1 && failures.SequenceEqual(["provider_timeout"]),
+                "total_deadline_allowed_another_provider");
+        });
         using (var scope = app.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -1157,5 +1220,11 @@ internal static class AiTextChecks
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellation) =>
             Task.FromResult(response(request));
+    }
+    private sealed class AsyncStubAiHandler(Func<HttpRequestMessage, CancellationToken,
+        Task<HttpResponseMessage>> response) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellation) =>
+            response(request, cancellation);
     }
 }
