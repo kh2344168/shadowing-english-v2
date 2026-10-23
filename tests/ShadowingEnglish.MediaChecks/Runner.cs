@@ -109,6 +109,23 @@ internal static class Runner
                 Assert(response.StatusCode == HttpStatusCode.RequestEntityTooLarge,
                     "large_recording_not_rejected_early");
             });
+            await Check("Chunked student uploads without Content-Length stop at the body limit", async () =>
+            {
+                using var client = await uploadApp.LoginAsync("student");
+                using var form = new MultipartFormDataContent();
+                var recording = new ByteArrayContent(new byte[8 * 1024 * 1024 + 128 * 1024 + 1]);
+                recording.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/webm");
+                form.Add(recording, "recording", "large.webm");
+                using var request = new HttpRequestMessage(HttpMethod.Post,
+                    $"/api/student/learning/slots/{Guid.NewGuid()}/shadowing/completion")
+                { Content = form };
+                request.Headers.TransferEncodingChunked = true;
+                request.Content.Headers.ContentLength = null;
+                Assert(request.Content.Headers.ContentLength is null, "chunked_upload_has_content_length");
+                using var response = await client.SendAsync(request);
+                Assert(response.StatusCode == HttpStatusCode.RequestEntityTooLarge,
+                    "chunked_upload_limit_status_" + response.StatusCode);
+            });
             using var demo = new MediaApp(apiRoot, new DisabledShadowingMediaStore(), authLogs,
                 environment: "Demo");
             await demo.SetupAsync();

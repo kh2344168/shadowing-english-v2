@@ -44,7 +44,10 @@ public static class StudentShadowingReportingEndpoints
             if (http.Request.ContentLength > MaxRequestBytes)
                 return Results.Json(new { error = "recording_too_large" }, statusCode: StatusCodes.Status413PayloadTooLarge);
             var bodyLimit = http.Features.Get<IHttpMaxRequestBodySizeFeature>();
-            if (bodyLimit is { IsReadOnly: false }) bodyLimit.MaxRequestBodySize = MaxRequestBytes;
+            // Leave parser headroom so a chunked oversized file receives our JSON 413
+            // instead of the host closing the upload stream mid-response.
+            if (bodyLimit is { IsReadOnly: false })
+                bodyLimit.MaxRequestBodySize = MaxRequestBytes + 128 * 1024;
 
             try { await antiforgery.ValidateRequestAsync(http); }
             catch (AntiforgeryValidationException)
@@ -62,14 +65,22 @@ public static class StudentShadowingReportingEndpoints
             if (user is null || !await users.IsInRoleAsync(user, "Student")) return Results.Forbid();
             if (!http.Request.HasFormContentType) return Reject(log, started, slotId, "multipart_required");
 
+            // Kestrel enforces the whole-request limit even for chunked bodies. Also limit
+            // each multipart section while parsing for hosts/test servers without that feature.
+            http.Features.Set<IFormFeature>(new FormFeature(http.Request,
+                new FormOptions { MultipartBodyLengthLimit = MaxRecordingBytes }));
+
             IFormCollection form;
             try { form = await http.Request.ReadFormAsync(http.RequestAborted); }
             catch (BadHttpRequestException)
             {
                 return Results.Json(new { error = "recording_too_large" }, statusCode: StatusCodes.Status413PayloadTooLarge);
             }
-            catch (InvalidDataException)
+            catch (InvalidDataException ex)
             {
+                if (ex.Message.Contains("Multipart body length limit", StringComparison.OrdinalIgnoreCase))
+                    return Results.Json(new { error = "recording_too_large" },
+                        statusCode: StatusCodes.Status413PayloadTooLarge);
                 return Results.Json(new { error = "invalid_form" }, statusCode: StatusCodes.Status400BadRequest);
             }
             if (!Guid.TryParse(form["requestId"].ToString(), out var requestId) ||
