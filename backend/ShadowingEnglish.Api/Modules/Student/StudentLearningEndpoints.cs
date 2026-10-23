@@ -6,13 +6,11 @@ using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
 using ShadowingEnglish.Core.Learning;
 using ShadowingEnglish.Infrastructure.Database;
-using ShadowingEnglish.Infrastructure.Identity;
 using ShadowingEnglish.Api.Modules.Media;
 using ShadowingEnglish.Api.Modules.AI;
 
@@ -26,12 +24,12 @@ public static class StudentLearningEndpoints
             .RequireAuthorization(new AuthorizeAttribute { Roles = "Student" });
 
         group.MapGet("/curriculum", async (int? page, int? pageSize, Guid? expectedPublishedVersionId, HttpContext http,
-            ApplicationDbContext db, UserManager<ApplicationUser> users, ILoggerFactory loggers) =>
+            ApplicationDbContext db, ILoggerFactory loggers) =>
         {
             var clock = Stopwatch.GetTimestamp();
             var log = loggers.CreateLogger("Student.Learning");
             log.LogInformation("Student.Curriculum.Start TraceId={TraceId}", http.TraceIdentifier);
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Denied(log, clock);
             if (page is < 1 or > 10000 || pageSize is < 1 or > 50)
                 return Reject(log, clock, "invalid_page");
@@ -100,11 +98,11 @@ public static class StudentLearningEndpoints
         });
 
         group.MapGet("/slots/{slotId:guid}", async (Guid slotId, HttpContext http, ApplicationDbContext db,
-            UserManager<ApplicationUser> users, ILoggerFactory loggers) =>
+            ILoggerFactory loggers) =>
         {
             var clock = Stopwatch.GetTimestamp(); var log = loggers.CreateLogger("Student.Learning");
             log.LogInformation("Student.Overview.Start SlotId={SlotId} TraceId={TraceId}", slotId, http.TraceIdentifier);
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Denied(log, clock);
             try
             {
@@ -139,11 +137,11 @@ public static class StudentLearningEndpoints
         });
 
         group.MapGet("/slots/{slotId:guid}/segments/{position:int}", async (Guid slotId, int position,
-            HttpContext http, ApplicationDbContext db, UserManager<ApplicationUser> users, ILoggerFactory loggers) =>
+            HttpContext http, ApplicationDbContext db, ILoggerFactory loggers) =>
         {
             var clock = Stopwatch.GetTimestamp(); var log = loggers.CreateLogger("Student.Learning");
             log.LogInformation("Student.Segment.Start SlotId={SlotId} Position={Position} TraceId={TraceId}", slotId, position, http.TraceIdentifier);
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Denied(log, clock);
             if (position < 1) return Reject(log, clock, "invalid_position");
             try
@@ -163,12 +161,12 @@ public static class StudentLearningEndpoints
         });
 
         group.MapGet("/slots/{slotId:guid}/segments/{position:int}/audio", async (Guid slotId,
-            int position, HttpContext http, ApplicationDbContext db, UserManager<ApplicationUser> users,
+            int position, HttpContext http, ApplicationDbContext db,
             IShadowingMediaStore media, ILoggerFactory loggers) =>
         {
             var clock = Stopwatch.GetTimestamp(); var log = loggers.CreateLogger("Student.Learning");
             log.LogInformation("Student.Audio.Start SlotId={SlotId} Position={Position} TraceId={TraceId}", slotId, position, http.TraceIdentifier);
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Denied(log, clock);
             if (position < 1) return Reject(log, clock, "invalid_position");
             try
@@ -200,13 +198,13 @@ public static class StudentLearningEndpoints
 
         group.MapPut("/slots/{slotId:guid}/progress", async (Guid slotId, SaveProgressRequest request,
             HttpContext http, IAntiforgery antiforgery, ApplicationDbContext db,
-            UserManager<ApplicationUser> users, ILoggerFactory loggers) =>
+            ILoggerFactory loggers) =>
         {
             var clock = Stopwatch.GetTimestamp(); var log = loggers.CreateLogger("Student.Learning");
             log.LogInformation("Student.Progress.Save.Start SlotId={SlotId} TraceId={TraceId}", slotId, http.TraceIdentifier);
             try { await antiforgery.ValidateRequestAsync(http); }
             catch (AntiforgeryValidationException) { return Reject(log, clock, "invalid_csrf"); }
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Denied(log, clock);
             if (request.CompletedSegments < 1) return Reject(log, clock, "invalid_progress");
             try
@@ -271,12 +269,17 @@ public static class StudentLearningEndpoints
         return app;
     }
 
-    private static async Task<Guid?> StudentId(HttpContext http, UserManager<ApplicationUser> users)
+    private static async Task<Guid?> StudentId(HttpContext http, ApplicationDbContext db)
     {
         var raw = http.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(raw, out var id)) return null;
-        var user = await users.FindByIdAsync(raw!);
-        return user is not null && await users.IsInRoleAsync(user, "Student") ? id : null;
+        // Check the live role in one query so a removed role takes effect immediately.
+        var activeStudent = await (from user in db.Users.AsNoTracking()
+            join membership in db.UserRoles.AsNoTracking() on user.Id equals membership.UserId
+            join role in db.Roles.AsNoTracking() on membership.RoleId equals role.Id
+            where user.Id == id && role.NormalizedName == "STUDENT"
+            select user.Id).AnyAsync(http.RequestAborted);
+        return activeStudent ? id : null;
     }
 
     private static async Task<ScopedLesson?> ScopedSlot(ApplicationDbContext db, Guid studentId, Guid slotId)

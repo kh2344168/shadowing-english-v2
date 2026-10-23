@@ -233,6 +233,18 @@ internal static class Runner
                     "student_write_without_csrf_" + studentWrite.StatusCode);
                 Assert(before == await app.FingerprintAsync(), "csrf_probe_mutated_database");
             });
+            await Check("Removing a student's live role blocks an existing cookie immediately", async () =>
+            {
+                using var scope = app.Services.CreateScope();
+                var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+                var account = await users.FindByEmailAsync("student@v2-test.invalid");
+                Assert(account is not null &&
+                    (await users.RemoveFromRoleAsync(account, "Student")).Succeeded,
+                    "student_role_revocation_failed");
+                using var response = await student.GetAsync("/api/student/learning/curriculum");
+                Assert(response.StatusCode == HttpStatusCode.Forbidden,
+                    "removed_student_role_still_reads_curriculum");
+            });
             return failures == 0 ? 0 : 1;
         }
         if (args.SequenceEqual(new[] { "--voice-budget-check" }))
