@@ -41,6 +41,8 @@ public static class ApprovedLessonPublisher
         foreach (var groupId in groupIds)
         {
             await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellation);
+            var pointerWasTracked = db.ChangeTracker.Entries<GroupCurriculumAssignment>()
+                .Any(entry => entry.Entity.GroupId == groupId);
             var pointer = await db.GroupCurriculumAssignments
                 .SingleOrDefaultAsync(x => x.GroupId == groupId, cancellation);
             if (pointer is null) continue;
@@ -105,15 +107,17 @@ public static class ApprovedLessonPublisher
             bool Carry(Guid slotId, string stageKey) => slotId != target.Id ||
                 unchangedStages.Contains(stageKey) ||
                 stageKey == "conversation-result" && unchangedStages.Contains("conversation");
-            var carry = progress.Where(x => Carry(x.SlotId, x.StageKey));
-            db.StudentStageProgress.AddRange(carry.Select(x => new StudentStageProgress
+            var carriedProgress = progress.Where(x => Carry(x.SlotId, x.StageKey))
+                .Select(x => new StudentStageProgress
             {
                 StudentId = x.StudentId, PublishedCurriculumVersionId = next.Id,
                 SlotId = nextSlots[x.SlotId].Id, StageKey = x.StageKey,
                 CompletedSegments = x.CompletedSegments, IsComplete = x.IsComplete,
                 UpdatedAtUtc = x.UpdatedAtUtc
-            }));
+            }).ToArray();
+            db.StudentStageProgress.AddRange(carriedProgress);
             pointer.PublishedCurriculumVersionId = next.Id;
+            StudentPracticeAttempt[] carriedAttempts = [];
             if (db.Database.IsSqlServer())
             {
                 // Persist the new snapshot inside this transaction before the FK-bound copy.
@@ -142,17 +146,25 @@ public static class ApprovedLessonPublisher
                 var attempts = await db.StudentPracticeAttempts.AsNoTracking()
                     .Where(x => x.PublishedCurriculumVersionId == previous.Id && oldIds.Contains(x.SlotId))
                     .ToArrayAsync(cancellation);
-                db.StudentPracticeAttempts.AddRange(attempts.Where(x => Carry(x.SlotId, x.StageKey))
+                carriedAttempts = attempts.Where(x => Carry(x.SlotId, x.StageKey))
                     .Select(x => new StudentPracticeAttempt
                     {
                         Id = Guid.NewGuid(), StudentId = x.StudentId,
                         PublishedCurriculumVersionId = next.Id, SlotId = nextSlots[x.SlotId].Id,
                         StageKey = x.StageKey, Position = x.Position, Answer = x.Answer,
                         FeedbackJson = x.FeedbackJson, CreatedAtUtc = x.CreatedAtUtc
-                    }));
+                    }).ToArray();
+                db.StudentPracticeAttempts.AddRange(carriedAttempts);
                 await db.SaveChangesAsync(cancellation);
             }
             await tx.CommitAsync(cancellation);
+            // Keep the caller's pre-existing tracked entities, but do not retain every
+            // generated snapshot in this DbContext while advancing many groups.
+            foreach (var attempt in carriedAttempts) db.Entry(attempt).State = EntityState.Detached;
+            foreach (var row in carriedProgress) db.Entry(row).State = EntityState.Detached;
+            foreach (var slot in nextSlots.Values) db.Entry(slot).State = EntityState.Detached;
+            db.Entry(next).State = EntityState.Detached;
+            if (!pointerWasTracked) db.Entry(pointer).State = EntityState.Detached;
             published++;
             log.LogInformation("Admin.Lesson.AutoPublish GroupId={GroupId} LessonVersionId={LessonVersionId} VersionId={VersionId}",
                 groupId, lessonVersionId, next.Id);
