@@ -426,6 +426,62 @@ internal static class AiTextChecks
         using var other = await app.LoginAsync("other");
         using var adminClient = await app.LoginAsync("admin");
         var path = $"/api/student/learning/slots/{slotId}";
+        await check("Shadowing reports stop at three per student and stage without changing saved reports", async () =>
+        {
+            static MultipartFormDataContent Report(Guid requestId)
+            {
+                var form = new MultipartFormDataContent();
+                form.Add(new StringContent(requestId.ToString()), "requestId");
+                form.Add(new StringContent("false"), "reviewMode");
+                form.Add(new StringContent("1"), "repetitions");
+                form.Add(new StringContent("10"), "trainingSeconds");
+                form.Add(new StringContent("false"), "speechRecognitionSupported");
+                return form;
+            }
+            var ids = Enumerable.Range(0, 3).Select(_ => Guid.NewGuid()).ToArray();
+            Guid firstAttemptId = Guid.Empty;
+            foreach (var id in ids)
+            {
+                using var form = Report(id);
+                using var response = await studentClient.PostAsync(path + "/shadowing/completion", form);
+                Assert(response.StatusCode == HttpStatusCode.OK, "completion_report_not_saved");
+                var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+                if (id == ids[0]) firstAttemptId = result.GetProperty("attemptId").GetGuid();
+            }
+            using (var form = Report(ids[0]))
+            using (var retry = await studentClient.PostAsync(path + "/shadowing/completion", form))
+            {
+                var result = await retry.Content.ReadFromJsonAsync<JsonElement>();
+                Assert(retry.StatusCode == HttpStatusCode.OK &&
+                    result.GetProperty("attemptId").GetGuid() == firstAttemptId,
+                    "completion_report_retry_consumed_quota");
+            }
+            using (var form = Report(Guid.NewGuid()))
+            using (var blocked = await studentClient.PostAsync(path + "/shadowing/completion", form))
+            {
+                var result = await blocked.Content.ReadFromJsonAsync<JsonElement>();
+                Assert(blocked.StatusCode == HttpStatusCode.Conflict &&
+                    result.GetProperty("error").GetString() == "completion_report_limit" &&
+                    result.GetProperty("limit").GetInt32() == 3,
+                    "fourth_completion_report_not_blocked");
+            }
+            using (var form = Report(Guid.NewGuid()))
+            {
+                var recording = new ByteArrayContent([1, 2, 3]);
+                recording.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/webm");
+                form.Add(recording, "recording", "sample.webm");
+                using var blocked = await studentClient.PostAsync(path + "/shadowing/completion", form);
+                Assert(blocked.StatusCode == HttpStatusCode.Conflict,
+                    "recording_was_processed_after_report_limit");
+            }
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var studentId = await db.Users.Where(x => x.Email == "student@v2-test.invalid")
+                .Select(x => x.Id).SingleAsync();
+            Assert(await db.StudentPracticeAttempts.CountAsync(x => x.StudentId == studentId &&
+                x.SlotId == slotId && x.StageKey == "shadowing-summary") == 3,
+                "completion_report_limit_changed_saved_history");
+        });
         await check("Interrupted AI turns release only their owner's expired daily reservations", async () =>
         {
             var day = DateOnly.FromDateTime(DateTime.UtcNow);

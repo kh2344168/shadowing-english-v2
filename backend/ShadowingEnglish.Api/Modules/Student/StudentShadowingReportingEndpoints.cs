@@ -20,6 +20,7 @@ public static class StudentShadowingReportingEndpoints
 {
     private const long MaxRecordingBytes = 8 * 1024 * 1024;
     private const long MaxRequestBytes = MaxRecordingBytes + 128 * 1024;
+    private const int MaxCompletionReportsPerStage = 3;
 
     public static IEndpointRouteBuilder MapStudentShadowingReportingEndpoints(this IEndpointRouteBuilder app)
     {
@@ -121,6 +122,27 @@ public static class StudentShadowingReportingEndpoints
                 return Results.Ok(new { saved = true, attemptId = existing.Id, recordedAtUtc = existing.CreatedAtUtc, recordingSaved = existingMeta.Key is not null });
             }
 
+            // Serialize each student's reports for this published stage before writing media.
+            // A bounded report count limits storage without deleting an existing recording.
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable,
+                http.RequestAborted);
+            var racedExisting = await db.StudentPracticeAttempts.AsNoTracking().FirstOrDefaultAsync(x =>
+                x.StudentId == studentId && x.PublishedCurriculumVersionId == scoped.VersionId &&
+                x.SlotId == slotId && x.StageKey == summaryStage && x.Answer == requestIdText,
+                http.RequestAborted);
+            if (racedExisting is not null)
+            {
+                var racedMeta = ParseRecording(racedExisting.FeedbackJson);
+                return Results.Ok(new { saved = true, attemptId = racedExisting.Id,
+                    recordedAtUtc = racedExisting.CreatedAtUtc, recordingSaved = racedMeta.Key is not null });
+            }
+            var savedReports = await db.StudentPracticeAttempts.CountAsync(x =>
+                x.StudentId == studentId && x.PublishedCurriculumVersionId == scoped.VersionId &&
+                x.SlotId == slotId && x.StageKey == summaryStage, http.RequestAborted);
+            if (savedReports >= MaxCompletionReportsPerStage)
+                return Results.Conflict(new { error = "completion_report_limit",
+                    limit = MaxCompletionReportsPerStage });
+
             var file = form.Files.GetFile("recording");
             string? recordingKey = null;
             string? recordingContentType = null;
@@ -164,31 +186,6 @@ public static class StudentShadowingReportingEndpoints
                         ? "Text captured by browser speech recognition; not an accent or pronunciation score."
                         : "Speech text-match was unavailable for this completion."
                 });
-
-                // A browser retry can race with the original request. Re-check under
-                // SERIALIZABLE isolation so one logical completion request produces one row.
-                await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, http.RequestAborted);
-                var racedExisting = await db.StudentPracticeAttempts.AsNoTracking().FirstOrDefaultAsync(x =>
-                    x.StudentId == studentId && x.PublishedCurriculumVersionId == scoped.VersionId &&
-                    x.SlotId == slotId && x.StageKey == summaryStage && x.Answer == requestIdText,
-                    http.RequestAborted);
-                if (racedExisting is not null)
-                {
-                    await tx.CommitAsync(http.RequestAborted);
-                    if (recordingKey is not null)
-                    {
-                        try { await media.DeleteAsync(recordingKey, http.RequestAborted); }
-                        catch (Exception cleanupError)
-                        {
-                            log.LogWarning("Student.Shadowing.Completion.RaceCleanupFailed AssetKey={AssetKey} ErrorType={ErrorType}",
-                                recordingKey, cleanupError.GetType().Name);
-                        }
-                    }
-                    var racedMeta = ParseRecording(racedExisting.FeedbackJson);
-                    log.LogInformation("Student.Shadowing.Completion.IdempotentRace StudentId={StudentId} SlotId={SlotId} AttemptId={AttemptId} DurationMs={DurationMs}",
-                        studentId, slotId, racedExisting.Id, Ms(started));
-                    return Results.Ok(new { saved = true, attemptId = racedExisting.Id, recordedAtUtc = racedExisting.CreatedAtUtc, recordingSaved = racedMeta.Key is not null });
-                }
 
                 var attempt = new StudentPracticeAttempt
                 {

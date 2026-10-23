@@ -1124,8 +1124,12 @@
         @if (!completionReportSaving && completionReportSaved) { <span>تم حفظ تفاصيل التدريب بنجاح.</span> }
         @if (!completionReportSaving && completionReportError) {
         <div class="completion-sync__error flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between">
+          @if (completionReportError === 'completion_report_limit') {
+          <span>وصلت للحد الأقصى لحفظ تفاصيل هذه المرحلة على الموقع. تقدر تواصل التدريب والتسجيل على جهازك.</span>
+          } @else {
           <span>تم حفظ تقدمك، لكن تعذرت مزامنة تفاصيل التدريب الآن. يمكنك إعادة المحاولة.</span>
           <button type="button" class="completion-sync__retry rounded-xl border border-amber-700/20 bg-white px-3 py-2 text-xs font-bold" (click)="retryCompletionReport()">إعادة المحاولة</button>
+          }
         </div>
         }
       </div>

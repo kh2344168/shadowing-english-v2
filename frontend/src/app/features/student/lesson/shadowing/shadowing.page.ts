@@ -1484,10 +1484,13 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
         durationMs: this.elapsed(started),
       });
     } catch (error) {
-      const status = (error as { status?: number }).status ?? null;
+      const response = error as { status?: number; error?: { error?: string } };
+      const status = response.status ?? null;
       if (status === 400) this.csrfReady = false;
       this.completionReportSaved = false;
-      this.completionReportError = 'completion_sync_failed';
+      this.completionReportError = status === 409 && response.error?.error === 'completion_report_limit'
+        ? 'completion_report_limit'
+        : 'completion_sync_failed';
       this.logError('CompletionReport.Save.Failed', error, {
         slotId: this.slotId,
         reviewMode: this.reviewMode,
