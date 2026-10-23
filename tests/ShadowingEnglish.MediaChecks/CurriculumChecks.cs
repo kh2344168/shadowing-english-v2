@@ -71,8 +71,11 @@ internal static class CurriculumChecks
         {
             firstLesson = await SaveLesson(admin, wave, "First saved lesson");
             secondLesson = await SaveLesson(admin, wave, "Second saved lesson");
-            Assert((await Read<JsonElement>(student, "/api/student/learning/curriculum")).GetProperty("items").GetArrayLength() == 0,
-                "saved_lesson_visible_without_publish");
+            var unpublished = await Read<JsonElement>(student, "/api/student/learning/curriculum");
+            Assert(unpublished.GetProperty("items").GetArrayLength() == 0 &&
+                unpublished.GetProperty("groupName").GetString() == "Isolated group" &&
+                unpublished.GetProperty("publishedVersionId").ValueKind == JsonValueKind.Null,
+                "saved_lesson_visible_without_publish_or_group_missing");
         });
         await check("A new legacy lesson-to-group request cannot publish even before curriculum assignment", async () =>
         {
@@ -154,6 +157,8 @@ internal static class CurriculumChecks
                 group.Lessons[0].LessonVersionId == secondLesson, "published_snapshot_incomplete");
             var visible = await Read<JsonElement>(student, "/api/student/learning/curriculum");
             Assert(visible.GetProperty("items").GetArrayLength() == 2 &&
+                visible.GetProperty("groupName").GetString() == "Isolated group" &&
+                visible.GetProperty("publishedVersionId").GetGuid() == firstVersion.VersionId &&
                 (await Read<JsonElement>(other, "/api/student/learning/curriculum")).GetProperty("items").GetArrayLength() == 0,
                 "group_snapshot_visibility_invalid");
             using var scope = app.Services.CreateScope();

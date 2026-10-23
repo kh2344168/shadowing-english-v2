@@ -38,25 +38,35 @@ public static class StudentLearningEndpoints
             try
             {
                 var now = DateTimeOffset.UtcNow;
+                // Keep the group name when a student has no published curriculum, while
+                // loading the current assignment in the same database round trip.
                 var groupInfo = await (from member in db.StudentGroupMemberships.AsNoTracking()
                     join g in db.StudyGroups.AsNoTracking() on member.GroupId equals g.Id
-                    where member.StudentId == student.Value && member.EndedAtUtc == null
-                    select new { g.Id, g.Name }).SingleOrDefaultAsync();
-                var assigned = groupInfo is null ? null : await (from assignment in db.GroupCurriculumAssignments.AsNoTracking()
+                    join assignment in db.GroupCurriculumAssignments.AsNoTracking()
+                        on g.Id equals assignment.GroupId into assignments
+                    from assignment in assignments.DefaultIfEmpty()
                     join version in db.PublishedCurriculumVersions.AsNoTracking()
-                        on assignment.PublishedCurriculumVersionId equals version.Id
-                    where assignment.GroupId == groupInfo.Id && version.GroupId == groupInfo.Id &&
-                        version.PublishedAtUtc <= now && version.AvailableAtUtc <= now
-                    select new { version.Id, version.Title }).SingleOrDefaultAsync();
+                        on assignment.PublishedCurriculumVersionId equals version.Id into versions
+                    from version in versions.DefaultIfEmpty()
+                    where member.StudentId == student.Value && member.EndedAtUtc == null
+                    select new { GroupId = g.Id, g.Name, VersionId = (Guid?)version.Id,
+                        VersionGroupId = (Guid?)version.GroupId, version.Title,
+                        PublishedAtUtc = (DateTimeOffset?)version.PublishedAtUtc,
+                        AvailableAtUtc = (DateTimeOffset?)version.AvailableAtUtc })
+                    .SingleOrDefaultAsync(http.RequestAborted);
+                var assignedVersionId = groupInfo is not null &&
+                    groupInfo.VersionGroupId == groupInfo.GroupId &&
+                    groupInfo.PublishedAtUtc <= now && groupInfo.AvailableAtUtc <= now
+                        ? groupInfo.VersionId : null;
                 if (expectedPublishedVersionId is Guid expectedVersionId &&
-                    (assigned is null || assigned.Id != expectedVersionId))
+                    assignedVersionId != expectedVersionId)
                 {
                     http.Response.Headers.CacheControl = "no-store";
                     log.LogWarning("Student.Curriculum.VersionChanged StudentId={StudentId} ExpectedVersionId={ExpectedVersionId} CurrentVersionId={CurrentVersionId} DurationMs={DurationMs}",
-                        student, expectedVersionId, assigned?.Id, Ms(clock));
+                        student, expectedVersionId, assignedVersionId, Ms(clock));
                     return Results.Conflict(new { error = "curriculum_version_changed" });
                 }
-                if (assigned is null)
+                if (assignedVersionId is not Guid currentVersionId)
                 {
                     http.Response.Headers.CacheControl = "no-store";
                     log.LogInformation("Student.Curriculum.Empty StudentId={StudentId} DurationMs={DurationMs}", student, Ms(clock));
@@ -65,14 +75,14 @@ public static class StudentLearningEndpoints
                 var limit = pageSize ?? 20;
                 var visible = await (from slot in db.PublishedLessonSlots.AsNoTracking()
                     join lesson in db.LessonVersions.AsNoTracking() on slot.LessonVersionId equals lesson.Id
-                    where slot.PublishedCurriculumVersionId == assigned.Id && slot.AvailableAtUtc <= now
+                    where slot.PublishedCurriculumVersionId == currentVersionId && slot.AvailableAtUtc <= now
                     orderby slot.WeekNumber, slot.DayNumber, slot.SortOrder, slot.Id
                     select new { slot.Id, slot.LessonVersionId, slot.WorkflowStagesJson, slot.WeekNumber,
                         slot.DayNumber, slot.SortOrder, lesson.Title })
                     .Skip(((page ?? 1) - 1) * limit).Take(limit + 1).ToListAsync();
                 var ids = visible.Take(limit).Select(x => x.Id).ToArray();
                 var progress = await db.StudentStageProgress.AsNoTracking()
-                    .Where(x => x.StudentId == student.Value && x.PublishedCurriculumVersionId == assigned.Id &&
+                    .Where(x => x.StudentId == student.Value && x.PublishedCurriculumVersionId == currentVersionId &&
                         ids.Contains(x.SlotId))
                     .Select(x => new { x.SlotId, x.StageKey, x.CompletedSegments, x.IsComplete }).ToListAsync();
                 var progressBySlot = progress.ToLookup(x => x.SlotId);
@@ -91,8 +101,8 @@ public static class StudentLearningEndpoints
                 }).ToArray();
                 http.Response.Headers.CacheControl = "no-store";
                 log.LogInformation("Student.Curriculum.Success StudentId={StudentId} VersionId={VersionId} Count={Count} DurationMs={DurationMs}",
-                    student, assigned.Id, cards.Length, Ms(clock));
-                return Results.Ok(new CurriculumDto(groupInfo!.Name, assigned.Id, assigned.Title, cards, visible.Count > limit));
+                    student, currentVersionId, cards.Length, Ms(clock));
+                return Results.Ok(new CurriculumDto(groupInfo!.Name, currentVersionId, groupInfo.Title, cards, visible.Count > limit));
             }
             catch (Exception ex) { return Fail(log, ex, "Curriculum", student.Value, clock); }
         });
