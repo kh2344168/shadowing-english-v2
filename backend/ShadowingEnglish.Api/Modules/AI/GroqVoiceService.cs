@@ -39,9 +39,10 @@ public sealed class GroqVoiceService(HttpClient http, IConfiguration config, IMe
 
     public async Task<string?> TranscribeAsync(Stream audio, string contentType, CancellationToken cancellation)
     {
-        if (!IsConfigured) return null;
+        var apiKey = await ResolveApiKeyAsync(cancellation);
+        if (apiKey is null) return null;
         using var request = new HttpRequestMessage(HttpMethod.Post, TranscriptionUrl);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", ApiKey!.Trim());
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         using var form = new MultipartFormDataContent();
         form.Add(new StringContent("whisper-large-v3-turbo"), "model");
         form.Add(new StringContent("en"), "language");

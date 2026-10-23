@@ -624,13 +624,8 @@ public static class StudentAiLearningEndpoints
                 x.SlotId == slotId && x.StageKey == "conversation" && x.FeedbackJson != "",
                 http.RequestAborted) >= 100)
                 return Results.Conflict(new { error = "conversation_attempt_limit" });
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
-            var used = await db.StudentAiDailyUsages.AsNoTracking()
-                .Where(x => x.StudentId == student && x.DayUtc == today)
-                .Select(x => (int?)x.UsedRequests).SingleOrDefaultAsync(http.RequestAborted) ?? 0;
-            if (used >= Math.Clamp(config.GetValue<int?>("AiText:StudentDailyLimit") ?? 10, 1, 20))
-                return Results.Json(new { error = "daily_ai_limit" }, statusCode: 429);
-            if (!voice.IsConfigured) return Results.Json(new { error = "voice_not_configured" }, statusCode: 503);
+            if (!await voice.IsConfiguredAsync(http.RequestAborted))
+                return Results.Json(new { error = "voice_not_configured" }, statusCode: 503);
             if (http.Request.ContentLength is > 2_500_000 || !http.Request.HasFormContentType)
                 return Invalid("invalid_audio");
             var bodyLimit = http.Features.Get<IHttpMaxRequestBodySizeFeature>();
@@ -642,6 +637,9 @@ public static class StudentAiLearningEndpoints
             var contentType = file.ContentType.Split(';', 2)[0].Trim().ToLowerInvariant();
             if (contentType is not ("audio/webm" or "audio/ogg" or "audio/mp4" or "audio/wav"))
                 return Invalid("invalid_audio");
+            if (!await VoiceUsageBudget.TryReserveTranscriptionAsync(db, config, student.Value,
+                http.RequestAborted))
+                return Results.Json(new { error = "daily_voice_limit" }, statusCode: 429);
             await using var stream = file.OpenReadStream();
             var text = await voice.TranscribeAsync(stream, contentType, http.RequestAborted);
             if (text is null) return Results.Json(new { error = "transcription_unavailable" }, statusCode: 503);
@@ -651,7 +649,7 @@ public static class StudentAiLearningEndpoints
 
         group.MapGet("/vocabulary/audio", async (Guid slotId, int position, string? part, HttpContext http,
             ApplicationDbContext db, UserManager<ApplicationUser> users,
-            GroqVoiceService groqVoice, GeminiSpeechService geminiVoice) =>
+            GroqVoiceService groqVoice, GeminiSpeechService geminiVoice, IConfiguration config) =>
         {
             var student = await StudentId(http, users);
             if (student is null) return Results.Forbid();
@@ -666,6 +664,9 @@ public static class StudentAiLearningEndpoints
             if (string.IsNullOrWhiteSpace(text) || text.Length > 200) return Results.BadRequest();
             if (!geminiVoice.IsConfigured && !await groqVoice.IsConfiguredAsync(http.RequestAborted))
                 return Results.Json(new { error = "voice_not_configured" }, statusCode: 503);
+            if (!await VoiceUsageBudget.TryReserveSynthesisAsync(db, config, student.Value,
+                text.Length, admin: false, http.RequestAborted))
+                return Results.Json(new { error = "daily_speech_limit" }, statusCode: 429);
             var audio = await geminiVoice.SpeakAsync(text, "Kore", http.RequestAborted) ??
                 await groqVoice.SpeakAsync(text, "Kore", http.RequestAborted);
             if (audio is null) return Results.Json(new { error = "speech_unavailable" }, statusCode: 503);
@@ -675,7 +676,7 @@ public static class StudentAiLearningEndpoints
 
         group.MapGet("/conversation/audio", async (Guid slotId, Guid? turnId, string? voice, HttpContext http,
             ApplicationDbContext db, UserManager<ApplicationUser> users,
-            GroqVoiceService groqVoice, GeminiSpeechService geminiVoice) =>
+            GroqVoiceService groqVoice, GeminiSpeechService geminiVoice, IConfiguration config) =>
         {
             var student = await StudentId(http, users);
             if (student is null) return Results.Forbid();
@@ -699,6 +700,9 @@ public static class StudentAiLearningEndpoints
             else text = data.Material.OpeningMessage;
             if (string.IsNullOrWhiteSpace(text)) return Results.NotFound();
             var selectedVoice = GeminiSpeechService.NormalizeVoice(voice);
+            if (!await VoiceUsageBudget.TryReserveSynthesisAsync(db, config, student.Value,
+                text.Length, admin: false, http.RequestAborted))
+                return Results.Json(new { error = "daily_speech_limit" }, statusCode: 429);
             var audio = await geminiVoice.SpeakAsync(text, selectedVoice, http.RequestAborted) ??
                 await groqVoice.SpeakAsync(text, selectedVoice, http.RequestAborted);
             if (audio is null) return Results.Json(new { error = "speech_unavailable" }, statusCode: 503);

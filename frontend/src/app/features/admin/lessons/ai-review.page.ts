@@ -872,6 +872,8 @@ export class AdminLessonStageEditorPage implements OnInit, OnDestroy {
         this.error.set(
           'مفتاح الصوت محفوظ، لكن Groq يتطلب قبول شروط نموذج Orpheus من مالك الحساب قبل تشغيل النطق.',
         );
+      } else if ((error as { status?: number }).status === 429) {
+        this.error.set('انتهت حصة معاينة الصوت اليوم. جرّب غدًا أو راجع حد الصوت في إعدادات الخادم.');
       } else {
         this.error.set('تعذر تشغيل الصوت الطبيعي الآن. راجع إعدادات مزود الصوت أو حاول مرة أخرى.');
       }

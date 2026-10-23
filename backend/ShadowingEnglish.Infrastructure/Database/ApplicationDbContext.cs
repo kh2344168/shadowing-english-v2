@@ -26,6 +26,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<LessonWorkflow> LessonWorkflows => Set<LessonWorkflow>();
     public DbSet<StudentPracticeAttempt> StudentPracticeAttempts => Set<StudentPracticeAttempt>();
     public DbSet<StudentAiDailyUsage> StudentAiDailyUsages => Set<StudentAiDailyUsage>();
+    public DbSet<VoiceDailyUsage> VoiceDailyUsages => Set<VoiceDailyUsage>();
     public DbSet<AiProviderConfiguration> AiProviderConfigurations => Set<AiProviderConfiguration>();
     public DbSet<AiProviderAuditEntry> AiProviderAuditEntries => Set<AiProviderAuditEntry>();
 
@@ -217,6 +218,15 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.ToTable("StudentAiDailyUsages", table => table.HasCheckConstraint("CK_StudentAiDailyUsages_Used", "[UsedRequests] >= 0"));
             entity.HasKey(x => new { x.StudentId, x.DayUtc });
             entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<VoiceDailyUsage>(entity =>
+        {
+            entity.ToTable("VoiceDailyUsages", table => table.HasCheckConstraint(
+                "CK_VoiceDailyUsages_Nonnegative", "[TranscriptionRequests] >= 0 AND [SynthesisCharacters] >= 0"));
+            entity.HasKey(x => new { x.UserId, x.DayUtc });
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<StudentPracticeAttempt>(entity =>

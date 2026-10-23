@@ -448,7 +448,8 @@ describe('AdminLessonStageEditorPage', () => {
     page.voiceConfigured.set(true);
     const speaking = page.speak('Hello');
     http
-      .expectOne((request) => request.url === `${base}/ai/voice`)
+      .expectOne((request) => request.url === `${base}/ai/voice` && request.method === 'POST' &&
+        request.body.text === 'Hello')
       .flush(
         new Blob([JSON.stringify({ error: 'voice_terms_required' })], { type: 'application/json' }),
         { status: 503, statusText: 'Service Unavailable' },

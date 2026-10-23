@@ -29,21 +29,27 @@ public static class AdminLessonAiEndpoints
                     await groqVoice.IsConfiguredAsync(http.RequestAborted) });
         });
 
-        group.MapGet("/{versionId:guid}/ai/voice", async (Guid versionId, string text,
-            string? voice, ApplicationDbContext db, GeminiSpeechService geminiVoice,
-            GroqVoiceService groqVoice, HttpContext http) =>
+        group.MapPost("/{versionId:guid}/ai/voice", async (Guid versionId, VoicePreviewRequest request,
+            ApplicationDbContext db, GeminiSpeechService geminiVoice,
+            GroqVoiceService groqVoice, IConfiguration config, IAntiforgery csrf, HttpContext http) =>
         {
+            if (!await ValidCsrf(csrf, http)) return Results.BadRequest(new { error = "invalid_csrf" });
+            if (!Guid.TryParse(http.User.FindFirstValue(ClaimTypes.NameIdentifier), out var adminId))
+                return Results.Forbid();
             if (!await db.LessonVersions.AnyAsync(x => x.Id == versionId, http.RequestAborted))
                 return Results.NotFound(new { error = "lesson_not_found" });
-            if (string.IsNullOrWhiteSpace(text) || text.Length > 200)
+            if (string.IsNullOrWhiteSpace(request.Text) || request.Text.Length > 200)
                 return Results.BadRequest(new { error = "invalid_voice_text" });
             if (!geminiVoice.IsConfigured && !await groqVoice.IsConfiguredAsync(http.RequestAborted))
                 return Results.Json(new { error = "voice_not_configured" }, statusCode: 503);
-            var selectedVoice = GeminiSpeechService.NormalizeVoice(voice);
-            var audio = await geminiVoice.SpeakAsync(text, selectedVoice, http.RequestAborted);
+            if (!await VoiceUsageBudget.TryReserveSynthesisAsync(db, config, adminId,
+                request.Text.Length, admin: true, http.RequestAborted))
+                return Results.Json(new { error = "daily_speech_limit" }, statusCode: 429);
+            var selectedVoice = GeminiSpeechService.NormalizeVoice(request.Voice);
+            var audio = await geminiVoice.SpeakAsync(request.Text, selectedVoice, http.RequestAborted);
             if (audio is null)
             {
-                var result = await groqVoice.SpeakDetailedAsync(text, selectedVoice, http.RequestAborted);
+                var result = await groqVoice.SpeakDetailedAsync(request.Text, selectedVoice, http.RequestAborted);
                 if (result.Audio is null)
                     return Results.Json(new
                     {
@@ -475,4 +481,5 @@ public static class AdminLessonAiEndpoints
     public sealed record UpdateAiRequest(Guid ExpectedRevision, LessonMaterial Material);
     public sealed record ApproveAiRequest(Guid ExpectedRevision);
     public sealed record VocabularyImageRequest(Guid ExpectedRevision, int CardIndex, int Page = 1);
+    public sealed record VoicePreviewRequest(string Text, string? Voice);
 }

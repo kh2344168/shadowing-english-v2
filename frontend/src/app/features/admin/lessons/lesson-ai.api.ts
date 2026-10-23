@@ -118,8 +118,7 @@ export class LessonAiApi {
     }>(`${this.base}/ai-providers`);
   }
   voice(versionId: string, text: string, voice: string) {
-    return this.http.get(`${this.base}/${encodeURIComponent(versionId)}/ai/voice`, {
-      params: { text, voice },
+    return this.http.post(`${this.base}/${encodeURIComponent(versionId)}/ai/voice`, { text, voice }, {
       responseType: 'blob',
     });
   }

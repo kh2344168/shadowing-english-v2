@@ -129,10 +129,12 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
       this.activeAudioUrl = url;
       audio.onended = () => this.stopSpeech();
       await audio.play();
-    } catch {
+      } catch (error) {
       if (request !== this.speechRequest) return;
       this.stopSpeech();
-      this.error.set('الصوت الطبيعي غير متاح الآن. أبلغ المدرّس لتفعيل مزود الصوت أو حاول لاحقًا.');
+        this.error.set((error as { status?: number }).status === 429
+          ? 'انتهت حصة الصوت اليومية. يمكنك متابعة الكلمات بالنص وتجربة الصوت غدًا.'
+          : 'الصوت الطبيعي غير متاح الآن. أبلغ المدرّس لتفعيل مزود الصوت أو حاول لاحقًا.');
     }
   }
 

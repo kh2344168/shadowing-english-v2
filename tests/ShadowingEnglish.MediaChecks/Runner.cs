@@ -56,6 +56,12 @@ internal static class Runner
 
     public static async Task<int> Main(string[] args)
     {
+        if (args.SequenceEqual(new[] { "--voice-budget-check" }))
+        {
+            await Check("Daily voice budget persists and rejects requests beyond the limit",
+                VoiceBudgetChecks.RunAsync);
+            return failures == 0 ? 0 : 1;
+        }
         if (args.SequenceEqual(new[] { "--auth-rate-check" }))
         {
             var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));

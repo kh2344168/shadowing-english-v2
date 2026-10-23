@@ -370,14 +370,14 @@ namespace ShadowingEnglish.Infrastructure.Database.Migrations
                     b.Property<Guid>("Revision")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("StageType")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("nvarchar(16)");
-
-                    b.Property<string>("StageType")
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
 
                     b.Property<DateTimeOffset>("UpdatedAtUtc")
                         .HasColumnType("datetimeoffset");
@@ -462,6 +462,9 @@ namespace ShadowingEnglish.Infrastructure.Database.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<Guid>("LessonDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("LessonType")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -471,9 +474,6 @@ namespace ShadowingEnglish.Infrastructure.Database.Migrations
                         .IsRequired()
                         .HasMaxLength(2)
                         .HasColumnType("nvarchar(2)");
-
-                    b.Property<Guid>("LessonDefinitionId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -707,6 +707,28 @@ namespace ShadowingEnglish.Infrastructure.Database.Migrations
                     b.ToTable("StudentStageProgress", null, t =>
                         {
                             t.HasCheckConstraint("CK_StudentStageProgress_Count", "[CompletedSegments] >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.VoiceDailyUsage", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly>("DayUtc")
+                        .HasColumnType("date");
+
+                    b.Property<int>("SynthesisCharacters")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TranscriptionRequests")
+                        .HasColumnType("int");
+
+                    b.HasKey("UserId", "DayUtc");
+
+                    b.ToTable("VoiceDailyUsages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_VoiceDailyUsages_Nonnegative", "[TranscriptionRequests] >= 0 AND [SynthesisCharacters] >= 0");
                         });
                 });
 
@@ -1159,6 +1181,15 @@ namespace ShadowingEnglish.Infrastructure.Database.Migrations
                         .WithMany()
                         .HasForeignKey("SlotId", "PublishedCurriculumVersionId")
                         .HasPrincipalKey("Id", "PublishedCurriculumVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ShadowingEnglish.Core.Learning.VoiceDailyUsage", b =>
+                {
+                    b.HasOne("ShadowingEnglish.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
