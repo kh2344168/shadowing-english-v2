@@ -96,6 +96,11 @@ internal static class Runner
         if (args.Length == 3 && args[0] == "--processor-republish-load" &&
             int.TryParse(args[2], out var students) && students is >= 1 and <= 3000)
             return await ProcessorRealE2EChecks.RunAsync(args[1], Check, () => failures, students);
+        if (args.Length == 4 && args[0] == "--processor-student-load" &&
+            int.TryParse(args[2], out var loadStudents) && loadStudents is >= 1 and <= 3000 &&
+            int.TryParse(args[3], out var concurrency) && concurrency >= 1 && concurrency <= loadStudents)
+            return await ProcessorRealE2EChecks.RunAsync(args[1], Check, () => failures,
+                concurrentStudents: loadStudents, maxConcurrency: concurrency);
         if (args.SequenceEqual(new[] { "--health-check" }))
         {
             var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));

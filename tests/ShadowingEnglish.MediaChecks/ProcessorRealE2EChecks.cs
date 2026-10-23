@@ -31,7 +31,7 @@ internal static class ProcessorRealE2EChecks
     { if (!condition) throw new InvalidOperationException(reason); }
 
     public static async Task<int> RunAsync(string manifestPath, Func<string, Func<Task>, Task> check,
-        Func<int> failures, int studentCount = 0)
+        Func<int> failures, int studentCount = 0, int concurrentStudents = 0, int maxConcurrency = 0)
     {
         var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
         var manifestFile = Path.GetFullPath(manifestPath);
@@ -142,7 +142,118 @@ internal static class ProcessorRealE2EChecks
         if (studentCount > 0)
             await RepublishLoadAsync(app, admin, studentCount, curriculumId, versionId,
                 publishedId, publishedSlotId, draftRevision, assignmentRevision, check);
+        if (concurrentStudents > 0)
+            await StudentLoadAsync(app, concurrentStudents, maxConcurrency, publishedSlotId, wave, check);
         return failures() == 0 ? 0 : 1;
+    }
+
+    private static async Task StudentLoadAsync(SqlProcessorApp app, int count, int concurrency,
+        Guid slotId, byte[] wave, Func<string, Func<Task>, Task> check)
+    {
+        var accounts = Array.Empty<ApplicationUser>();
+        var password = "Load!9" + Guid.NewGuid().ToString("N");
+        await check($"Seed {count} distinct isolated student identities", async () =>
+        {
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var group = await db.StudyGroups.AsNoTracking().SingleAsync(x => x.Id == app.GroupId);
+            var studentRoleId = await db.Roles.Where(x => x.NormalizedName == "STUDENT")
+                .Select(x => x.Id).SingleAsync();
+            var now = DateTimeOffset.UtcNow;
+            accounts = Enumerable.Range(0, count).Select(_ =>
+            {
+                var email = "load-" + Guid.NewGuid().ToString("N") + "@processor-e2e.invalid";
+                return new ApplicationUser { Id = Guid.NewGuid(), Email = email, UserName = email,
+                    NormalizedEmail = email.ToUpperInvariant(), NormalizedUserName = email.ToUpperInvariant(),
+                    EmailConfirmed = true, SecurityStamp = Guid.NewGuid().ToString("N") };
+            }).ToArray();
+            // A shared *test-only* hash avoids spending the setup time on thousands of hashes.
+            // Each login still verifies a real ASP.NET Identity password hash.
+            var hash = new PasswordHasher<ApplicationUser>().HashPassword(accounts[0], password);
+            foreach (var user in accounts) user.PasswordHash = hash;
+            db.Users.AddRange(accounts);
+            db.Set<IdentityUserRole<Guid>>().AddRange(accounts.Select(user => new IdentityUserRole<Guid>
+                { UserId = user.Id, RoleId = studentRoleId }));
+            db.StudentGroupMemberships.AddRange(accounts.Select(user => new StudentGroupMembership
+            {
+                Id = Guid.NewGuid(), StudentId = user.Id, GroupId = app.GroupId,
+                StartedAtUtc = now, AssignedByAdminId = group.CreatedByAdminId
+            }));
+            await db.SaveChangesAsync();
+            var accountIds = accounts.Select(user => user.Id).ToArray();
+            Assert(await db.StudentGroupMemberships.CountAsync(x => x.GroupId == app.GroupId &&
+                accountIds.Contains(x.StudentId)) == count,
+                "concurrent_student_seed_incomplete");
+        });
+        if (accounts.Length != count) return;
+
+        var clients = new HttpClient?[count];
+        try
+        {
+            await check($"Login flow for {count} distinct students at concurrency {concurrency}", async () =>
+            {
+                await MeasureAsync("Login", count, concurrency, async index =>
+                {
+                    clients[index] = await app.LoginAsAsync(accounts[index].Email!, password);
+                });
+            });
+            if (clients.Any(x => x is null)) return;
+            await check($"Curriculum reads for {count} students at concurrency {concurrency}", async () =>
+            {
+                await MeasureAsync("Curriculum", count, concurrency, async index =>
+                {
+                    using var response = await clients[index]!.GetAsync("/api/student/learning/curriculum");
+                    Assert(response.StatusCode == HttpStatusCode.OK,
+                        "curriculum_status_" + (int)response.StatusCode);
+                    var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+                    Assert(payload.GetProperty("items").GetArrayLength() == 1,
+                        "curriculum_lesson_missing");
+                });
+            });
+            await check($"Lesson audio reads for {count} students at concurrency {concurrency}", async () =>
+            {
+                await MeasureAsync("Audio", count, concurrency, async index =>
+                {
+                    using var response = await clients[index]!.GetAsync(
+                        $"/api/student/learning/slots/{slotId}/segments/1/audio");
+                    Assert(response.StatusCode == HttpStatusCode.OK &&
+                        (await response.Content.ReadAsByteArrayAsync()).AsSpan().SequenceEqual(wave),
+                        "student_audio_not_scoped_or_mismatched");
+                });
+            });
+        }
+        finally
+        {
+            foreach (var client in clients) client?.Dispose();
+        }
+    }
+
+    private static async Task MeasureAsync(string name, int count, int concurrency, Func<int, Task> operation)
+    {
+        using var permits = new SemaphoreSlim(concurrency);
+        var durations = new long[count];
+        var errors = new string?[count];
+        var total = Stopwatch.StartNew();
+        await Task.WhenAll(Enumerable.Range(0, count).Select(async index =>
+        {
+            await permits.WaitAsync();
+            var clock = Stopwatch.StartNew();
+            try { await operation(index); }
+            catch (Exception ex) { errors[index] = ex is InvalidOperationException ? ex.Message : ex.GetType().Name; }
+            finally
+            {
+                durations[index] = clock.ElapsedMilliseconds;
+                permits.Release();
+            }
+        }));
+        total.Stop();
+        Array.Sort(durations);
+        var failures = errors.Count(x => x is not null);
+        Console.WriteLine($"StudentLoad Stage={name} Students={count} Concurrency={concurrency} " +
+            $"WallMs={total.ElapsedMilliseconds} P50Ms={durations[count / 2]} " +
+            $"P95Ms={durations[Math.Min(count - 1, (int)Math.Ceiling(count * .95) - 1)]} " +
+            $"P99Ms={durations[Math.Min(count - 1, (int)Math.Ceiling(count * .99) - 1)]} Failures={failures}");
+        Assert(failures == 0, "load_failures_" + name + "_" + errors.FirstOrDefault(x => x is not null));
     }
 
     private static async Task RepublishLoadAsync(SqlProcessorApp app, HttpClient admin, int studentCount,
@@ -317,14 +428,24 @@ internal static class ProcessorRealE2EChecks
 
         public async Task<HttpClient> LoginAsync(string role)
         {
+            return await LoginAsAsync(role + "-" + suffix, password);
+        }
+
+        public async Task<HttpClient> LoginAsAsync(string email, string accountPassword)
+        {
             var client = CreateClient(new WebApplicationFactoryClientOptions
             { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
-            await RefreshCsrfAsync(client);
-            using var login = await client.PostAsJsonAsync("/api/auth/login",
-                new { email = role + "-" + suffix, password });
-            Assert(login.StatusCode == HttpStatusCode.OK, "sql_test_login_failed");
-            await RefreshCsrfAsync(client);
-            return client;
+            try
+            {
+                await RefreshCsrfAsync(client);
+                using var login = await client.PostAsJsonAsync("/api/auth/login",
+                    new { email, password = accountPassword });
+                Assert(login.StatusCode == HttpStatusCode.OK,
+                    "sql_test_login_status_" + (int)login.StatusCode);
+                await RefreshCsrfAsync(client);
+                return client;
+            }
+            catch { client.Dispose(); throw; }
         }
 
         private static async Task RefreshCsrfAsync(HttpClient client)
