@@ -56,6 +56,41 @@ internal static class Runner
 
     public static async Task<int> Main(string[] args)
     {
+        if (args.SequenceEqual(new[] { "--traffic-check" }))
+        {
+            var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
+            using var trafficLogs = new SafeLogs();
+            using var app = new MediaApp(apiRoot, new DisabledShadowingMediaStore(), trafficLogs);
+            await app.SetupAsync();
+            using var anonymous = app.Client();
+            using var student = await app.LoginAsync("student");
+            using var admin = await app.LoginAsync("admin");
+            await Check("Trial traffic records route templates and protects its report", async () =>
+            {
+                using var live = await anonymous.GetAsync("/health/live");
+                using var missing = await anonymous.GetAsync("/api/unknown/" + Guid.NewGuid());
+                using var lesson = await student.GetAsync("/api/student/learning/curriculum");
+                using var blocked = await anonymous.GetAsync("/api/admin/diagnostics/traffic");
+                using var forbidden = await student.GetAsync("/api/admin/diagnostics/traffic");
+                using var report = await admin.GetAsync("/api/admin/diagnostics/traffic");
+                Assert(live.StatusCode == HttpStatusCode.OK && missing.StatusCode == HttpStatusCode.NotFound &&
+                    lesson.StatusCode == HttpStatusCode.OK && blocked.StatusCode == HttpStatusCode.Unauthorized &&
+                    forbidden.StatusCode == HttpStatusCode.Forbidden && report.StatusCode == HttpStatusCode.OK,
+                    "traffic_report_roles_or_probe_failed");
+                Assert(report.Headers.CacheControl?.NoStore == true, "traffic_report_cacheable");
+                var payload = await report.Content.ReadFromJsonAsync<JsonElement>();
+                var routes = payload.GetProperty("traffic").GetProperty("routes");
+                Assert(payload.GetProperty("traffic").GetProperty("capturedRequests").GetInt32() >= 5 &&
+                    routes.EnumerateArray().Any(row => row.GetProperty("route").GetString() == "/health/live") &&
+                    routes.EnumerateArray().Any(row => row.GetProperty("route").GetString() ==
+                        "/api/{**unmatched}" && row.GetProperty("clientErrors").GetInt32() >= 1) &&
+                    payload.GetProperty("dailyUsageUtc").GetProperty("aiRequests").GetInt32() == 0,
+                    "traffic_report_missing_measurements");
+                Assert(!(await report.Content.ReadAsStringAsync()).Contains(missing.RequestMessage!.RequestUri!.ToString(),
+                    StringComparison.Ordinal), "traffic_report_leaked_request_url");
+            });
+            return failures == 0 ? 0 : 1;
+        }
         if (args.Length == 2 && args[0] == "--processor-real-e2e")
             return await ProcessorRealE2EChecks.RunAsync(args[1], Check, () => failures);
         if (args.SequenceEqual(new[] { "--health-check" }))

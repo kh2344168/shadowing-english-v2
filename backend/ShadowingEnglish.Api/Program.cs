@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Net;
@@ -108,6 +109,7 @@ builder.Services.AddHttpClient<PexelsImageService>()
 builder.Services.AddMemoryCache(options => options.SizeLimit = 30_000_000);
 builder.Services.AddSingleton<HealthReadinessState>();
 builder.Services.AddSingleton<LoginFailureLimiter>();
+builder.Services.AddSingleton<TrialTrafficMetrics>();
 builder.Services.AddHttpClient<GroqVoiceService>()
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient<GeminiSpeechService>()
@@ -224,6 +226,25 @@ if (args.Contains("--provision-day2-fixture", StringComparer.Ordinal))
 }
 
 app.UseMiddleware<SafeExceptionMiddleware>();
+var trialTraffic = app.Services.GetRequiredService<TrialTrafficMetrics>();
+app.Use(async (context, next) =>
+{
+    var started = System.Diagnostics.Stopwatch.GetTimestamp();
+    var status = StatusCodes.Status500InternalServerError;
+    try
+    {
+        await next(context);
+        status = context.Response.StatusCode;
+    }
+    finally
+    {
+        var route = (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ??
+            (context.Request.Path.StartsWithSegments("/api") ? "/api/unmatched" : "static");
+        trialTraffic.Record(route, status,
+            System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+            context.Request.ContentLength, context.Response.ContentLength);
+    }
+});
 app.Use(async (context, next) =>
 {
     var headers = context.Response.Headers;
@@ -277,6 +298,24 @@ app.MapAdminLessonWorkflowEndpoints();
 app.MapStudentLearningEndpoints();
 app.MapStudentShadowingReportingEndpoints();
 app.MapStudentAiLearningEndpoints();
+
+app.MapGet("/api/admin/diagnostics/traffic", async (HttpContext http,
+    ApplicationDbContext db, TrialTrafficMetrics traffic) =>
+{
+    http.Response.Headers.CacheControl = "no-store";
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+    var aiRequests = await db.StudentAiDailyUsages.AsNoTracking()
+        .Where(row => row.DayUtc == today).SumAsync(row => (int?)row.UsedRequests) ?? 0;
+    var voiceTranscriptions = await db.VoiceDailyUsages.AsNoTracking()
+        .Where(row => row.DayUtc == today).SumAsync(row => (int?)row.TranscriptionRequests) ?? 0;
+    var voiceCharacters = await db.VoiceDailyUsages.AsNoTracking()
+        .Where(row => row.DayUtc == today).SumAsync(row => (int?)row.SynthesisCharacters) ?? 0;
+    return Results.Ok(new
+    {
+        traffic = traffic.Snapshot(),
+        dailyUsageUtc = new { day = today, aiRequests, voiceTranscriptions, voiceCharacters }
+    });
+}).RequireAuthorization(new AuthorizeAttribute { Roles = "Admin" });
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok" }));
 
