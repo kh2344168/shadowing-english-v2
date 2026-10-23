@@ -56,6 +56,8 @@ internal static class Runner
 
     public static async Task<int> Main(string[] args)
     {
+        if (args.Length == 2 && args[0] == "--processor-real-e2e")
+            return await ProcessorRealE2EChecks.RunAsync(args[1], Check, () => failures);
         if (args.SequenceEqual(new[] { "--health-check" }))
         {
             var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
