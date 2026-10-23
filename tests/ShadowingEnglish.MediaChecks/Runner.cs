@@ -84,6 +84,56 @@ internal static class Runner
                 Assert(limited.StatusCode == HttpStatusCode.TooManyRequests,
                     "unknown_account_attempts_not_limited");
             });
+            await Check("API responses have browser security and private cache headers", async () =>
+            {
+                using var client = app.Client();
+                using var response = await client.GetAsync("/api/auth/session");
+                Assert(response.Headers.TryGetValues("X-Content-Type-Options", out var nosniff) &&
+                    nosniff.Single() == "nosniff", "missing_nosniff");
+                Assert(response.Headers.TryGetValues("X-Frame-Options", out var frame) &&
+                    frame.Single() == "DENY", "missing_frame_protection");
+                Assert(response.Headers.TryGetValues("Content-Security-Policy", out var csp) &&
+                    csp.Single().Contains("frame-ancestors 'none'"), "missing_frame_csp");
+                Assert(response.Headers.CacheControl?.NoStore == true, "private_api_response_cached");
+            });
+            using var uploadApp = new MediaApp(apiRoot, new DisabledShadowingMediaStore(), authLogs);
+            await uploadApp.SetupAsync();
+            await Check("Oversized student recordings are rejected before form parsing", async () =>
+            {
+                using var client = await uploadApp.LoginAsync("student");
+                using var request = new HttpRequestMessage(HttpMethod.Post,
+                    $"/api/student/learning/slots/{Guid.NewGuid()}/shadowing/completion");
+                request.Content = new ByteArrayContent([]);
+                request.Content.Headers.ContentLength = 8 * 1024 * 1024 + 128 * 1024 + 1;
+                using var response = await client.SendAsync(request);
+                Assert(response.StatusCode == HttpStatusCode.RequestEntityTooLarge,
+                    "large_recording_not_rejected_early");
+            });
+            using var demo = new MediaApp(apiRoot, new DisabledShadowingMediaStore(), authLogs,
+                environment: "Demo");
+            await demo.SetupAsync();
+            await Check("Demo login limiter separates trusted tunnel visitor addresses", async () =>
+            {
+                using var client = demo.Client();
+                await demo.RefreshCsrfAsync(client);
+                async Task<HttpStatusCode> LoginFrom(string visitorIp)
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/login");
+                    request.Headers.Add("CF-Connecting-IP", visitorIp);
+                    request.Headers.Add("X-Forwarded-Proto", "https");
+                    request.Content = JsonContent.Create(new
+                    { email = "absent@v2-test.invalid", password = demo.Password });
+                    using var response = await client.SendAsync(request);
+                    return response.StatusCode;
+                }
+                for (var attempt = 0; attempt < 20; attempt++)
+                    Assert(await LoginFrom("203.0.113.10") == HttpStatusCode.Unauthorized,
+                        "visitor_limited_too_early");
+                Assert(await LoginFrom("203.0.113.10") == HttpStatusCode.TooManyRequests,
+                    "first_visitor_not_limited");
+                Assert(await LoginFrom("203.0.113.11") == HttpStatusCode.Unauthorized,
+                    "independent_visitor_shared_limit");
+            });
             return failures == 0 ? 0 : 1;
         }
         if (args.SequenceEqual(new[] { "--curriculum-migrations" }))
@@ -325,6 +375,10 @@ internal static class Runner
                 Assert(cards.GetArrayLength() == 1,
                     "published_lesson_invisible");
                 slotId = cards[0].GetProperty("slotId").GetGuid();
+                using var overview = await student.GetAsync($"/api/student/learning/slots/{slotId}");
+                var overviewData = await overview.Content.ReadFromJsonAsync<JsonElement>();
+                Assert(overviewData.GetProperty("studentId").GetGuid() != Guid.Empty,
+                    "recording_owner_missing_from_overview");
                 using var segment = await student.GetAsync($"/api/student/learning/slots/{slotId}/segments/1");
                 Assert(segment.StatusCode == HttpStatusCode.OK, "published_segment_invisible");
                 using var adminCurriculum = await admin.GetAsync($"/api/admin/shadowing/groups/{app.GroupId}/curriculum");
@@ -334,14 +388,14 @@ internal static class Runner
                     current.GetProperty("lessons")[0].GetProperty("lessonVersionId").GetGuid() == versionId,
                     "admin_curriculum_not_current_publication");
             });
-            await Check("Authorized audio returns exact Range, private ETag and 304 without body download", async () =>
+            await Check("Authorized audio remains scoped and cannot be reused from the browser cache", async () =>
             {
                 var url = $"/api/student/learning/slots/{slotId}/segments/1/audio";
                 var before = await app.FingerprintAsync(); var assets = await BlobFingerprint(container);
                 using var full = await student.GetAsync(url);
                 Assert(full.StatusCode == HttpStatusCode.OK && (await full.Content.ReadAsByteArrayAsync()).SequenceEqual(wave),
                     "full_audio_invalid");
-                Assert(full.Headers.CacheControl?.Private == true && full.Headers.CacheControl.NoCache, "audio_cache_not_private");
+                Assert(full.Headers.CacheControl?.NoStore == true, "student_audio_cacheable_after_account_change");
                 reads.Reads.Clear();
                 using var request = new HttpRequestMessage(HttpMethod.Get, url); request.Headers.Range = new(0, 43);
                 using var range = await student.SendAsync(request);
@@ -503,7 +557,7 @@ internal sealed class BlobTraffic : DelegatingHandler
 }
 
 internal sealed class MediaApp(string contentRoot, IShadowingMediaStore store, SafeLogs logs,
-    SaveChangesInterceptor? interceptor = null) : WebApplicationFactory<global::Program>
+    SaveChangesInterceptor? interceptor = null, string environment = "Production") : WebApplicationFactory<global::Program>
 {
     private readonly SqliteConnection connection = new("Data Source=:memory:");
     public readonly Guid GroupId = Guid.NewGuid();
@@ -512,7 +566,7 @@ internal sealed class MediaApp(string contentRoot, IShadowingMediaStore store, S
     { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment("Production").UseContentRoot(contentRoot);
+        builder.UseEnvironment(environment).UseContentRoot(contentRoot);
         builder.UseSetting("ConnectionStrings:DefaultConnection", "Server=127.0.0.1;Database=UnusedMediaCheck;Integrated Security=true;");
         builder.ConfigureLogging(logging => logging.ClearProviders().SetMinimumLevel(LogLevel.Information)
             .AddFilter("Microsoft", LogLevel.Warning).AddProvider(logs));

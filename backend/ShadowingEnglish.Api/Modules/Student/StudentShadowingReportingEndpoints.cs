@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using ShadowingEnglish.Api.Modules.Media;
@@ -18,6 +19,7 @@ namespace ShadowingEnglish.Api.Modules.Student;
 public static class StudentShadowingReportingEndpoints
 {
     private const long MaxRecordingBytes = 8 * 1024 * 1024;
+    private const long MaxRequestBytes = MaxRecordingBytes + 128 * 1024;
 
     public static IEndpointRouteBuilder MapStudentShadowingReportingEndpoints(this IEndpointRouteBuilder app)
     {
@@ -38,10 +40,19 @@ public static class StudentShadowingReportingEndpoints
             log.LogInformation("Student.Shadowing.Completion.Start SlotId={SlotId} TraceId={TraceId}",
                 slotId, http.TraceIdentifier);
 
+            if (http.Request.ContentLength > MaxRequestBytes)
+                return Results.Json(new { error = "recording_too_large" }, statusCode: StatusCodes.Status413PayloadTooLarge);
+            var bodyLimit = http.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (bodyLimit is { IsReadOnly: false }) bodyLimit.MaxRequestBodySize = MaxRequestBytes;
+
             try { await antiforgery.ValidateRequestAsync(http); }
             catch (AntiforgeryValidationException)
             {
                 return Reject(log, started, slotId, "invalid_csrf");
+            }
+            catch (BadHttpRequestException)
+            {
+                return Results.Json(new { error = "recording_too_large" }, statusCode: StatusCodes.Status413PayloadTooLarge);
             }
 
             var rawUserId = http.User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -50,7 +61,16 @@ public static class StudentShadowingReportingEndpoints
             if (user is null || !await users.IsInRoleAsync(user, "Student")) return Results.Forbid();
             if (!http.Request.HasFormContentType) return Reject(log, started, slotId, "multipart_required");
 
-            var form = await http.Request.ReadFormAsync(http.RequestAborted);
+            IFormCollection form;
+            try { form = await http.Request.ReadFormAsync(http.RequestAborted); }
+            catch (BadHttpRequestException)
+            {
+                return Results.Json(new { error = "recording_too_large" }, statusCode: StatusCodes.Status413PayloadTooLarge);
+            }
+            catch (InvalidDataException)
+            {
+                return Results.Json(new { error = "invalid_form" }, statusCode: StatusCodes.Status400BadRequest);
+            }
             if (!Guid.TryParse(form["requestId"].ToString(), out var requestId) ||
                 !bool.TryParse(form["reviewMode"].ToString(), out var reviewMode) ||
                 !int.TryParse(form["repetitions"].ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var repetitions) ||

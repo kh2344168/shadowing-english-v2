@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
-import { vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import { AuthService } from '../../../../core/auth/auth.service';
 import { StudentLearningApi } from '../../learning.api';
 import { StudentConversationPage } from './conversation.page';
@@ -24,6 +24,60 @@ const material = {
 const emptyHistory = { turns: [], completedTurns: 0, turnTarget: 3, remainingToday: 3 };
 
 describe('StudentConversationPage', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function mockMicrophone() {
+    const stopTrack = vi.fn();
+    const stream = { getTracks: () => [{ stop: stopTrack }] } as unknown as MediaStream;
+    const getUserMedia = vi.fn().mockResolvedValue(stream);
+    vi.stubGlobal('navigator', { userAgent: navigator.userAgent, mediaDevices: { getUserMedia } });
+    class Recorder {
+      static isTypeSupported = () => true;
+      static last: Recorder;
+      state = 'inactive';
+      mimeType = 'audio/webm';
+      ondataavailable?: (event: { data: Blob }) => void;
+      onstop?: () => void;
+      onerror?: () => void;
+      constructor() {
+        Recorder.last = this;
+      }
+      start() {
+        this.state = 'recording';
+      }
+      stop() {
+        this.state = 'inactive';
+        this.ondataavailable?.({ data: new Blob(['x'.repeat(200)], { type: this.mimeType }) });
+        this.onstop?.();
+      }
+    }
+    vi.stubGlobal('MediaRecorder', Recorder);
+    vi.stubGlobal(
+      'AudioContext',
+      class {
+        createAnalyser() {
+          return {
+            fftSize: 256,
+            getByteTimeDomainData: (samples: Uint8Array) => samples.fill(160),
+          };
+        }
+        createMediaStreamSource() {
+          return { connect: vi.fn() };
+        }
+        resume() {
+          return Promise.resolve();
+        }
+        close() {
+          return Promise.resolve();
+        }
+      },
+    );
+    return { getUserMedia, stream, stopTrack, Recorder };
+  }
+
   async function setup(aiMaterial: object = material, history: object = emptyHistory) {
     await TestBed.configureTestingModule({
       imports: [StudentConversationPage],
@@ -48,6 +102,100 @@ describe('StudentConversationPage', () => {
     fixture.detectChanges();
     return { http, fixture, page: fixture.componentInstance };
   }
+
+  it('captures voice, shows a real level meter, stops and transcribes without sending automatically', async () => {
+    const { stopTrack } = mockMicrophone();
+    const { http, fixture, page } = await setup();
+    await page.toggleRecording();
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    fixture.detectChanges();
+    expect(page.recording()).toBe(true);
+    expect(page.microphoneLevel()).toBeGreaterThan(0);
+    expect(fixture.nativeElement.querySelector('[role="meter"]')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.conversation-mic').textContent).toContain('stop');
+    await page.toggleRecording();
+    await Promise.resolve();
+    const request = http.expectOne('/api/student/learning/slots/s1/conversation/transcribe');
+    expect(request.request.body.get('audio').size).toBe(200);
+    request.flush({ text: 'Good morning' });
+    await fixture.whenStable();
+    expect(page.message).toBe('Good morning');
+    expect(page.recording()).toBe(false);
+    expect(page.transcribing()).toBe(false);
+    expect(stopTrack).toHaveBeenCalledOnce();
+    http.verify();
+  });
+
+  it('prevents duplicate microphone requests and releases late permission after leaving', async () => {
+    const { getUserMedia, stream, stopTrack } = mockMicrophone();
+    let grant!: (stream: MediaStream) => void;
+    getUserMedia.mockReturnValue(
+      new Promise<MediaStream>((resolve) => {
+        grant = resolve;
+      }),
+    );
+    const { http, fixture, page } = await setup();
+    const pending = page.toggleRecording();
+    await page.toggleRecording();
+    expect(getUserMedia).toHaveBeenCalledOnce();
+    expect(page.requestingMicrophone()).toBe(true);
+    fixture.destroy();
+    grant(stream);
+    await pending;
+    expect(stopTrack).toHaveBeenCalledOnce();
+    expect(page.recording()).toBe(false);
+    http.verify();
+  });
+
+  it('cancels recording without uploading and reports recorder failure', async () => {
+    const { Recorder } = mockMicrophone();
+    const { http, page } = await setup();
+    page.message = 'Keep my draft';
+    await page.toggleRecording();
+    page.cancelRecording();
+    expect(page.message).toBe('Keep my draft');
+    expect(page.recording()).toBe(false);
+    await page.toggleRecording();
+    Recorder.last.onerror?.();
+    expect(page.recording()).toBe(false);
+    expect(page.voiceNotice()).toContain('توقف التسجيل');
+    http.verify();
+  });
+
+  it('explains denied permission and keeps text entry available', async () => {
+    const { getUserMedia } = mockMicrophone();
+    getUserMedia.mockRejectedValue({ name: 'NotAllowedError' });
+    const { http, fixture, page } = await setup();
+    await page.toggleRecording();
+    fixture.detectChanges();
+    expect(page.requestingMicrophone()).toBe(false);
+    expect(page.voiceNotice()).toContain('السماح بالميكروفون مرفوض');
+    expect(fixture.nativeElement.querySelector('#student-message').disabled).toBe(false);
+    http.verify();
+  });
+
+  it('preserves typed text when transcription is not configured or rate limited', async () => {
+    mockMicrophone();
+    const { http, page } = await setup();
+    page.message = 'My draft';
+    for (const status of [503, 429]) {
+      await page.toggleRecording();
+      await page.toggleRecording();
+      await Promise.resolve();
+      http
+        .expectOne('/api/student/learning/slots/s1/conversation/transcribe')
+        .flush(
+          { error: status === 503 ? 'voice_not_configured' : 'rate_limit' },
+          { status, statusText: 'Unavailable' },
+        );
+      await Promise.resolve();
+      expect(page.message).toBe('My draft');
+      expect(page.transcribing()).toBe(false);
+      expect(page.dailyLimitReached()).toBe(false);
+      expect(page.voiceNotice()).toContain(status === 503 ? 'غير مفعّلة' : 'طلبات الصوت');
+    }
+    http.verify();
+  });
 
   it('offers goal-based finish or extra practice and restores the final report', async () => {
     const configured = {
@@ -131,6 +279,62 @@ describe('StudentConversationPage', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('ما نجحت فيه');
     expect(fixture.nativeElement.querySelector('#student-message')).toBeNull();
+    http.verify();
+  });
+
+  it('opens the saved report, groups issues from the whole chat, and leaves the transcript readable', async () => {
+    const issue = (kind: string, original: string, suggested: string) => ({
+      kind,
+      original,
+      suggested,
+      reason: 'راجع هذا الجزء',
+    });
+    const { http, fixture, page } = await setup(material, {
+      ...emptyHistory,
+      minTurns: 1,
+      turns: [
+        {
+          id: 'one',
+          message: 'I goed',
+          feedback: {
+            reply: 'What next?',
+            focusMet: true,
+            issues: [issue('grammar', 'I goed', 'I went')],
+          },
+        },
+        {
+          id: 'two',
+          message: 'I wnet home',
+          feedback: { reply: 'Okay', focusMet: true, issues: [issue('spelling', 'wnet', 'went')] },
+        },
+      ],
+      report: {
+        goalMet: true,
+        replyCount: 2,
+        relevantReplies: 2,
+        metSteps: ['أجاب عن السؤال'],
+        missingSteps: [],
+        issues: [issue('grammar', 'I goed', 'I went')],
+        endedEarly: false,
+        outcome: 'goal-met',
+      },
+    });
+    expect(page.reportOpen()).toBe(true);
+    expect(page.reportIssues()).toHaveLength(2);
+    const dialog = fixture.nativeElement.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dialog.textContent).toContain('القواعد');
+    expect(dialog.textContent).toContain('الكتابة والإملاء');
+    expect(dialog.textContent).toContain('I went');
+    expect(dialog.textContent).toContain('wnet');
+    page.closeReport();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('.conversation-bubble--student')).toHaveLength(2);
+    (
+      fixture.nativeElement.querySelector('.conversation-finish__report') as HTMLButtonElement
+    ).click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="dialog"]')).toBeTruthy();
     http.verify();
   });
 
@@ -309,7 +513,7 @@ describe('StudentConversationPage', () => {
     expect(
       fixture.nativeElement.querySelector('.conversation-question__text').textContent,
     ).toContain('How is your friend?');
-    expect(fixture.nativeElement.querySelector('.conversation-history')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.conversation-thread')).toBeTruthy();
     expect(fixture.nativeElement.querySelector('#student-message')).toBeTruthy();
     page.history.update((history) => ({ ...history!, completedTurns: 2 }));
     fixture.detectChanges();
@@ -318,10 +522,97 @@ describe('StudentConversationPage', () => {
     http.verify();
   });
 
+  it('shows the complete conversation as visible chat bubbles without opening a history panel', async () => {
+    const { http, fixture, page } = await setup(material, {
+      turns: [
+        {
+          id: 't1',
+          message: 'Good',
+          feedback: {
+            reply: 'What do you like?',
+            correction: '',
+            betterAnswer: '',
+            grammarTip: '',
+            focusMet: true,
+          },
+        },
+        {
+          id: 't2',
+          message: 'Football',
+          feedback: {
+            reply: 'Who do you play with?',
+            correction: '',
+            betterAnswer: '',
+            grammarTip: '',
+            focusMet: true,
+          },
+        },
+      ],
+      completedTurns: 2,
+      turnTarget: 3,
+      remainingToday: 1,
+    });
+    const thread = fixture.nativeElement.querySelector('.conversation-thread') as HTMLElement;
+    expect(thread).toBeTruthy();
+    expect(thread.querySelector('details')).toBeNull();
+    expect(
+      Array.from(thread.querySelectorAll('.conversation-bubble--student')).map((bubble) =>
+        bubble.textContent?.trim(),
+      ),
+    ).toEqual(['Good', 'Football']);
+    expect(
+      Array.from(thread.querySelectorAll('.conversation-bubble--tutor p')).map((bubble) =>
+        bubble.textContent?.trim(),
+      ),
+    ).toEqual(['Hi! How are you?', 'What do you like?', 'Who do you play with?']);
+    expect(thread.querySelector('.conversation-question__text')?.textContent).toContain(
+      'Who do you play with?',
+    );
+
+    const trigger = fixture.nativeElement.querySelector(
+      '.conversation-voice-trigger',
+    ) as HTMLButtonElement;
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    trigger.click();
+    fixture.detectChanges();
+    expect(page.voicePickerOpen()).toBe(true);
+    (
+      fixture.nativeElement.querySelectorAll(
+        '.conversation-voice-picker button',
+      )[1] as HTMLButtonElement
+    ).click();
+    expect(page.selectedVoice()).toBe('Puck');
+    expect(page.voicePickerOpen()).toBe(false);
+    http.verify();
+  });
+
   it('shows the daily limit and never offers a composer when quota is spent', async () => {
     const { http, fixture } = await setup(material, { ...emptyHistory, remainingToday: 0 });
     expect(fixture.nativeElement.querySelector('#student-message')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('وصلت للحد اليومي');
+    http.verify();
+  });
+
+  it('lets a student resume an unfinished conversation after a long break', async () => {
+    const { http, fixture, page } = await setup(material, {
+      ...emptyHistory,
+      turns: [{ id: 'old', message: 'Yes', feedback: { reply: 'What else?', focusMet: true } }],
+      completedTurns: 1,
+      timedOut: true, // Older API responses may still contain the retired flag.
+    });
+    expect(fixture.nativeElement.querySelector('#student-message')).toBeTruthy();
+    expect(fixture.nativeElement.textContent).not.toContain('توقفت المحادثة بعد فترة خمول');
+    page.message = 'I used my phone';
+    void page.send();
+    await Promise.resolve();
+    const turn = http.expectOne('/api/student/learning/slots/s1/conversation/turns');
+    expect(turn.request.method).toBe('POST');
+    turn.flush({ reply: 'Great.' });
+    await Promise.resolve();
+    http
+      .expectOne('/api/student/learning/slots/s1/conversation/turns')
+      .flush({ ...emptyHistory, completedTurns: 2 });
+    await fixture.whenStable();
     http.verify();
   });
 

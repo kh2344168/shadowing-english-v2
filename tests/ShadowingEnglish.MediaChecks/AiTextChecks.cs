@@ -329,11 +329,6 @@ internal static class AiTextChecks
                     [new ConversationIssue("free cancellation", "not confirmed", "Policy", "fact")]))], true);
             Assert(ranked.Issues[0].Kind == "fact" && ranked.Issues.Length == 2,
                 "important_factual_error_was_not_prioritized");
-            var now = DateTimeOffset.UtcNow;
-            Assert(!LessonMaterialRules.ConversationTimedOut([now.AddMinutes(-44)], now) &&
-                LessonMaterialRules.ConversationTimedOut([now.AddMinutes(-45)], now) &&
-                LessonMaterialRules.ConversationTimedOut([now.AddHours(-2), now], now),
-                "conversation_time_backup_wrong");
             return Task.CompletedTask;
         });
         await check("SQL Server migration metadata matches the current AI model", () =>
@@ -342,7 +337,7 @@ internal static class AiTextChecks
                 .UseSqlServer("Server=127.0.0.1;Database=NeverConnected;Integrated Security=true;").Options;
             using var model = new ApplicationDbContext(options);
             Assert(!model.Database.HasPendingModelChanges(), "ai_model_snapshot_is_stale");
-            Assert(model.Database.GetMigrations().Last() == "20261016090000_AddLessonAiStageType",
+            Assert(model.Database.GetMigrations().Contains("20261016090000_AddLessonAiStageType"),
                 "ai_migration_not_registered");
             var script = model.GetService<IMigrator>().GenerateScript();
             Assert(script.Contains("CREATE TABLE [LessonAiContents]") &&

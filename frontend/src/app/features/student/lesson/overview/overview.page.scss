@@ -241,9 +241,11 @@
 .mastery-path__wire {
   position: absolute;
   z-index: 0;
-  inset: 0;
+  inset: 0 auto 0 50%;
   width: 100%;
+  max-width: 448px;
   height: 100%;
+  transform: translateX(-50%);
   pointer-events: none;
 }
 .mastery-path__wire path {
@@ -483,7 +485,6 @@
   .lesson-summary-card__action { font-size: 12px; }
   .mastery-path { margin-top: 34px; }
   .mastery-path__track { gap: 32px; }
-  .mastery-path__wire { left: 50%; width: 82%; transform: translateX(-50%); }
   .lesson-stage,
   .lesson-stage--reverse {
     padding: 0 8px;

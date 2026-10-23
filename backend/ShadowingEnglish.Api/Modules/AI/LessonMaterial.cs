@@ -59,10 +59,6 @@ public static class LessonMaterialRules
     public static bool StructuredConversation(LessonMaterial material) =>
         material.ConversationMinTurns is not null && material.ConversationMaxTurns is not null &&
         material.ConversationSuccessSteps is { Length: > 0 };
-    public static bool ConversationTimedOut(IReadOnlyList<DateTimeOffset> replyTimes, DateTimeOffset now) =>
-        replyTimes.Count > 0 &&
-        (now - replyTimes[0] >= TimeSpan.FromHours(2) ||
-            now - replyTimes[^1] >= TimeSpan.FromMinutes(45));
     public static int ConversationMaximum(LessonMaterial material) =>
         StructuredConversation(material) ? material.ConversationMaxTurns!.Value : ConversationTurns(material);
     public static string[] MetConversationSteps(LessonMaterial material, IEnumerable<ChatFeedback> feedback) =>

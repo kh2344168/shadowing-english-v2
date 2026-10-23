@@ -1,4 +1,9 @@
-<section class="conversation-page" dir="rtl" aria-labelledby="conversation-title">
+<section
+  class="conversation-page"
+  dir="rtl"
+  aria-labelledby="conversation-title"
+  [style.--conversation-viewport-height.px]="viewportHeight()"
+>
   <header class="conversation-context">
     <div class="conversation-context__identity">
       <a
@@ -10,14 +15,19 @@
       </a>
       <div>
         <h1 id="conversation-title">{{ currentStage()?.title || 'محادثة الدرس' }}</h1>
-        <p>تدرّب على موقف واحد، خطوة بخطوة</p>
+        <p>
+          {{ currentStage()?.position ? 'المرحلة ' + currentStage()?.position : 'تدرّب خطوة بخطوة'
+          }}
+        </p>
       </div>
     </div>
     @if (history()) {
     <div class="conversation-context__progress" aria-label="الردود المقبولة في المحادثة">
       <span
-        ><strong>{{ completedReplies() }}</strong> من {{ turnTarget() }} ردود الطالب {{ structured()
-        ? '' : 'المقبولة' }}</span
+        ><bdi dir="ltr"><strong>{{ completedReplies() }}</strong> / {{ turnTarget() }}</bdi>
+        <span class="conversation-context__progress-label"
+          >ردود الطالب {{ structured() ? '' : 'المقبولة' }}</span
+        ></span
       >
       <div
         class="conversation-context__meter"
@@ -39,14 +49,45 @@
     <div class="conversation-contact">
       <div class="conversation-contact__identity">
         <span class="conversation-contact__avatar material-symbols-outlined" aria-hidden="true"
-          >record_voice_over</span
+          >smart_toy</span
         >
         <div>
           <strong>{{ data.aiRole || 'المعلّم' }}</strong>
-          <small>محادثة تدريبية باللغة الإنجليزية</small>
+          <small>{{ data.conversationScenario || 'محادثة تدريبية باللغة الإنجليزية' }}</small>
         </div>
       </div>
-      <div class="conversation-voice-picker" role="group" aria-label="اختر صوت المعلم">
+      <div class="conversation-contact__tools">
+        <span class="conversation-contact__badge">AI Tutor</span>
+        <button
+          type="button"
+          class="conversation-voice-trigger"
+          [attr.aria-expanded]="voicePickerOpen()"
+          aria-controls="conversation-voice-picker"
+          aria-label="تغيير صوت المعلّم"
+          (click)="voicePickerOpen.set(!voicePickerOpen())"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">record_voice_over</span>
+        </button>
+      </div>
+      @if (data.conversationHelpAr && !report() && completedReplies() < turnTarget() &&
+      log.remainingToday > 0 && !dailyLimitReached()) {
+      <button
+        type="button"
+        class="conversation-contact__translate"
+        [attr.aria-pressed]="showHelp()"
+        (click)="toggleHelp()"
+        aria-label="إظهار أو إخفاء المساعدة العربية"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">translate</span>
+      </button>
+      }
+      <div
+        id="conversation-voice-picker"
+        class="conversation-voice-picker"
+        [class.is-open]="voicePickerOpen()"
+        role="group"
+        aria-label="اختر صوت المعلم"
+      >
         @for (voice of voices; track voice.id) {
         <button
           type="button"
@@ -60,118 +101,157 @@
       </div>
     </div>
 
-    <div class="conversation-learning-focus">
-      @if (data.conversationScenario) {
-      <p><span>الموقف</span> {{ data.conversationScenario }}</p>
-      } @if (data.conversationLearningOutcome || data.conversationGoals?.length) {
-      <p>
-        <span>الهدف</span> {{ data.conversationLearningOutcome || data.conversationGoals?.[0] }}
-      </p>
-      } @if (supportMode() === 'independent' && data.studentRole) {
-      <p><span>دورك</span> {{ data.studentRole }}</p>
-      } @if (supportMode() !== 'first-steps' && focusTenseLabel()) {
-      <p class="conversation-learning-focus__tense" dir="ltr">{{ focusTenseLabel() }}</p>
-      } @if (structured() && data.conversationSuccessSteps?.length) {
-      <div class="conversation-goal-steps">
-        <strong>خطوات مهمتك</strong>
-        @for (step of data.conversationSuccessSteps; track step) {
-        <span [class.done]="log.metSteps?.includes(step)"
-          >{{ log.metSteps?.includes(step) ? '✓' : '○' }} {{ step }}</span
-        >
+    <div
+      class="conversation-thread"
+      #thread
+      dir="ltr"
+      role="region"
+      tabindex="0"
+      aria-label="سجل المحادثة"
+    >
+      <div class="conversation-learning-focus" dir="rtl">
+        @if (data.conversationLearningOutcome || data.conversationGoals?.length) {
+        <p>
+          <span>الهدف</span> {{ data.conversationLearningOutcome || data.conversationGoals?.[0] }}
+        </p>
+        } @if (supportMode() === 'independent' && data.studentRole) {
+        <p><span>دورك</span> {{ data.studentRole }}</p>
+        } @if (supportMode() !== 'first-steps' && focusTenseLabel()) {
+        <p class="conversation-learning-focus__tense" dir="ltr">{{ focusTenseLabel() }}</p>
+        } @if (structured() && data.conversationSuccessSteps?.length) {
+        <div class="conversation-goal-steps">
+          <strong>خطوات مهمتك</strong>
+          @for (step of data.conversationSuccessSteps; track step) {
+          <span [class.done]="log.metSteps?.includes(step)"
+            >{{ log.metSteps?.includes(step) ? '✓' : '○' }} {{ step }}</span
+          >
+          }
+        </div>
         }
       </div>
-      }
-    </div>
 
-    <section class="conversation-question" aria-labelledby="current-question-title">
-      <div class="conversation-question__top">
-        <span id="current-question-title">سؤال المعلّم الحالي</span>
-        @if (currentQuestion()) {
-        <button
-          type="button"
-          class="conversation-speak"
-          (click)="playReply(currentQuestionTurnId())"
-          aria-label="استمع إلى سؤال المعلّم"
-        >
-          <span class="material-symbols-outlined" aria-hidden="true">volume_up</span>
-        </button>
-        }
+      @if (data.openingMessage) {
+      <div class="conversation-row conversation-row--tutor conversation-row--opening">
+        <div class="conversation-bubble conversation-bubble--tutor">
+          <p [class.conversation-question__text]="!log.turns.length" lang="en" dir="ltr">
+            {{ data.openingMessage }}
+          </p>
+          @if (!log.turns.length) {
+          <button
+            type="button"
+            class="conversation-speak"
+            [disabled]="recording() || requestingMicrophone()"
+            (click)="playReply()"
+            aria-label="استمع إلى سؤال المعلّم"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">volume_up</span>
+          </button>
+          }
+        </div>
       </div>
-      @if (currentQuestion()) {
-      <p class="conversation-question__text" lang="en" dir="ltr">{{ currentQuestion() }}</p>
-      } @else {
-      <p class="conversation-question__fallback">
+      } @else if (!log.turns.length) {
+      <p class="conversation-question__fallback" dir="rtl">
         ابدأ بردّ بسيط مرتبط بموقف الدرس، وسيواصل المعلّم الحديث معك.
       </p>
-      } @if (supportMode() === 'first-steps') {
-      <p class="conversation-question__guide">
+      } @if (!log.turns.length) { @if (supportMode() === 'first-steps') {
+      <p class="conversation-question__guide" dir="rtl">
         كلمة واحدة أو عبارة قصيرة تكفي. مش لازم جملة كاملة.
       </p>
       } @else if (supportMode() === 'guided') {
-      <p class="conversation-question__guide">سؤال واحد في كل مرة. رد قصير وواضح يكفي.</p>
+      <p class="conversation-question__guide" dir="rtl">سؤال واحد في كل مرة. رد قصير وواضح يكفي.</p>
       } @else if (supportMode() === 'independent') {
-      <p class="conversation-question__guide">
+      <p class="conversation-question__guide" dir="rtl">
         تخيّل موقف الدرس وردّ بطريقتك، من غير تفاصيل شخصية غير لازمة.
       </p>
-      }
-    </section>
-
-    @if (latestTurn(); as turn) {
-    <section class="conversation-latest" aria-label="نتيجة ردك الأخير">
-      <div class="conversation-latest__answer">
-        <span>ردك الأخير</span>
-        <strong lang="en" dir="ltr">{{ turn.message }}</strong>
+      } } @for (turn of log.turns; track turn.id || $index; let last = $last) {
+      <div class="conversation-row conversation-row--student">
+        <div class="conversation-bubble conversation-bubble--student" lang="en" dir="ltr">
+          {{ turn.message }}
+        </div>
       </div>
-      @if (!structured() && turn.feedback.focusMet === true) {
-      <p class="conversation-latest__status conversation-latest__status--accepted" role="status">
-        <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>
-        رد مناسب؛ اتضاف لتقدمك.
-      </p>
-      } @else if (!structured() && turn.feedback.focusMet === false) {
-      <p class="conversation-latest__status" role="status">
-        ردك لم يرتبط بالسؤال بعد. شوف سؤال المعلّم وحاول برد بسيط مناسب للموقف.
-      </p>
-      } @if (turn.feedback.criticalFactError || (!structured() && (turn.feedback.correction ||
-      turn.feedback.betterAnswer || turn.feedback.grammarTip))) {
-      <div class="conversation-latest__notes">
-        @if (turn.feedback.correction) {
-        <p>
-          <span>تصحيح مرتبط بالدرس</span> <b lang="en" dir="ltr">{{ turn.feedback.correction }}</b>
+      @if ((!structured() && turn.feedback.focusMet !== null && turn.feedback.focusMet !==
+      undefined) || turn.feedback.criticalFactError || turn.feedback.correction ||
+      turn.feedback.betterAnswer || turn.feedback.grammarTip) {
+      <section
+        class="conversation-latest"
+        [attr.aria-label]="last ? 'نتيجة ردك الأخير' : 'ملاحظة على ردك'"
+        dir="rtl"
+      >
+        @if (!structured() && turn.feedback.focusMet === true) {
+        <p class="conversation-latest__status conversation-latest__status--accepted" role="status">
+          <span class="material-symbols-outlined" aria-hidden="true">check_circle</span> رد مناسب؛
+          اتضاف لتقدمك.
         </p>
-        } @if (turn.feedback.betterAnswer) {
-        <p>
-          <span>اقتراح تحسين، مش خطأ</span>
-          <b lang="en" dir="ltr">{{ turn.feedback.betterAnswer }}</b>
+        } @else if (!structured() && turn.feedback.focusMet === false) {
+        <p class="conversation-latest__status" role="status">
+          ردك لم يرتبط بالسؤال بعد. شوف سؤال المعلّم وحاول برد بسيط مناسب للموقف.
         </p>
-        } @if (turn.feedback.grammarTip) {
-        <p><span>ملاحظة صغيرة</span> {{ turn.feedback.grammarTip }}</p>
+        } @if (turn.feedback.criticalFactError || (!structured() && (turn.feedback.correction ||
+        turn.feedback.betterAnswer || turn.feedback.grammarTip))) {
+        <div class="conversation-latest__notes">
+          @if (turn.feedback.correction) {
+          <p>
+            <span>تصحيح مرتبط بالدرس</span>
+            <b lang="en" dir="ltr">{{ turn.feedback.correction }}</b>
+          </p>
+          } @if (turn.feedback.betterAnswer) {
+          <p>
+            <span>اقتراح تحسين، مش خطأ</span>
+            <b lang="en" dir="ltr">{{ turn.feedback.betterAnswer }}</b>
+          </p>
+          } @if (turn.feedback.grammarTip) {
+          <p><span>ملاحظة صغيرة</span> {{ turn.feedback.grammarTip }}</p>
+          }
+        </div>
         }
+      </section>
+      } @if (turn.feedback.reply) {
+      <div class="conversation-row conversation-row--tutor">
+        <div class="conversation-bubble conversation-bubble--tutor">
+          <p [class.conversation-question__text]="last" lang="en" dir="ltr">
+            {{ turn.feedback.reply }}
+          </p>
+          <button
+            type="button"
+            class="conversation-speak"
+            [disabled]="recording() || requestingMicrophone()"
+            (click)="playReply(turn.id)"
+            aria-label="استمع إلى رد المعلّم"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">volume_up</span>
+          </button>
+        </div>
       </div>
+      } } @if (speechNotice()) {
+      <p class="conversation-speech-notice" role="status">{{ speechNotice() }}</p>
+      } @if (structured() && !report() && log.canFinish) {
+      <div class="conversation-decision" role="status">
+        <strong>أنجزت هدف الدرس!</strong>
+        <p>تقدر تنهي المحادثة وتشوف تقييمك، أو تتمرّن أكثر لحد {{ log.maxTurns }} ردود.</p>
+        <button
+          type="button"
+          [disabled]="busy() || recording() || requestingMicrophone() || transcribing()"
+          (click)="finish()"
+        >
+          إنهاء وعرض التقييم
+        </button>
+      </div>
+      } @else if (structured() && !report() && completedReplies() >= (log.minTurns || 0) &&
+      missingSteps().length) {
+      <p class="conversation-next-step">اقتربت من الهدف. الخطوة التالية: {{ missingSteps()[0] }}</p>
+      } @if (structured() && !report() && !log.canFinish && completedReplies() < turnTarget()) {
+      <button
+        type="button"
+        class="conversation-end-early"
+        [disabled]="busy() || syncNeeded() || recording() || requestingMicrophone() || transcribing()"
+        (click)="finish()"
+      >
+        إنهاء الآن وعرض التقييم
+      </button>
       }
-    </section>
-    } @if (speechNotice()) {
-    <p class="conversation-speech-notice" role="status">{{ speechNotice() }}</p>
-    } @if (structured() && !report() && log.canFinish) {
-    <div class="conversation-decision" role="status">
-      <strong>أنجزت هدف الدرس!</strong>
-      <p>تقدر تنهي المحادثة وتشوف تقييمك، أو تتمرّن أكثر لحد {{ log.maxTurns }} ردود.</p>
-      <button type="button" [disabled]="busy()" (click)="finish()">إنهاء وعرض التقييم</button>
     </div>
-    } @else if (structured() && !report() && completedReplies() >= (log.minTurns || 0) &&
-    missingSteps().length) {
-    <p class="conversation-next-step">اقتربت من الهدف. الخطوة التالية: {{ missingSteps()[0] }}</p>
-    } @if (structured() && !report() && !log.timedOut && !log.canFinish && completedReplies() <
-    turnTarget()) {
-    <button
-      type="button"
-      class="conversation-end-early"
-      [disabled]="busy() || syncNeeded()"
-      (click)="finish()"
-    >
-      إنهاء الآن وعرض التقييم
-    </button>
-    } @if (!report() && !log.timedOut && completedReplies() < turnTarget() && log.remainingToday > 0
-    && !dailyLimitReached()) {
+    @if (!report() && completedReplies() < turnTarget() && log.remainingToday > 0 &&
+    !dailyLimitReached()) {
     <div class="conversation-practice">
       @if (data.conversationHelpAr || (supportMode() !== null && supportMode() !== 'independent' &&
       suggestions().length) || (data.conversationModelAnswer && log.turns.length === 0)) {
@@ -217,6 +297,39 @@
       }
 
       <form class="conversation-composer" (ngSubmit)="send()">
+        @if (requestingMicrophone()) {
+        <div class="conversation-recording" role="status">
+          <span>بانتظار السماح بالميكروفون…</span>
+          <button type="button" (click)="cancelRecording()">إلغاء</button>
+        </div>
+        } @else if (recording()) {
+        <div class="conversation-recording">
+          <span class="conversation-recording__dot" aria-hidden="true"></span>
+          <strong role="status">جارٍ التسجيل</strong>
+          <span dir="ltr"
+            >0:{{ recordingSeconds() < 10 ? '0' : '' }}{{ recordingSeconds() }} / 0:15</span
+          >
+          <button type="button" (click)="cancelRecording()">إلغاء</button>
+          @if (monitoringAudio()) {
+          <div
+            class="conversation-recording__meter"
+            role="meter"
+            aria-label="مستوى صوت الميكروفون"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            [attr.aria-valuenow]="microphoneLevel()"
+          >
+            <span [style.width.%]="microphoneLevel()"></span>
+          </div>
+          <small
+            >{{ microphoneLevel() > 5 ? 'صوتك بيتلقط — اضغط إيقاف لما تخلص' : 'اتكلم الآن — المؤشر
+            بيتحرك مع صوتك' }}</small
+          >
+          } @else {
+          <small>اتكلم الآن ثم اضغط إيقاف. قياس مستوى الصوت غير متاح في المتصفح.</small>
+          }
+        </div>
+        }
         <label for="student-message">ردك بالإنجليزي</label>
         <div class="conversation-composer__row">
           @if (supportMode() === 'independent') {
@@ -230,7 +343,7 @@
             rows="3"
             autocomplete="off"
             placeholder="Write your reply..."
-            [disabled]="busy() || syncNeeded() || transcribing()"
+            [disabled]="busy() || syncNeeded() || transcribing() || recording() || requestingMicrophone()"
           ></textarea>
           } @else {
           <input
@@ -243,7 +356,7 @@
             maxlength="400"
             autocomplete="off"
             [placeholder]="supportMode() === 'first-steps' ? 'Your short reply...' : 'Type your reply...'"
-            [disabled]="busy() || syncNeeded() || transcribing()"
+            [disabled]="busy() || syncNeeded() || transcribing() || recording() || requestingMicrophone()"
           />
           }
           <button
@@ -253,15 +366,17 @@
             [attr.aria-label]="recording() ? 'إيقاف التسجيل' : 'تسجيل رد صوتي'"
             [attr.aria-pressed]="recording()"
             [class.conversation-mic--recording]="recording()"
-            [disabled]="busy() || syncNeeded() || transcribing()"
+            [disabled]="busy() || syncNeeded() || transcribing() || requestingMicrophone()"
             [title]="recording() ? 'إيقاف التسجيل' : 'تسجيل رد صوتي'"
           >
-            <span class="material-symbols-outlined" aria-hidden="true">mic</span>
+            <span class="material-symbols-outlined" aria-hidden="true"
+              >{{ recording() ? 'stop' : 'mic' }}</span
+            >
           </button>
           <button
             type="submit"
             class="conversation-send"
-            [disabled]="busy() || syncNeeded() || recording() || transcribing() || !message.trim()"
+            [disabled]="busy() || syncNeeded() || recording() || requestingMicrophone() || transcribing() || !message.trim()"
             aria-label="إرسال الرد"
           >
             <span class="material-symbols-outlined" aria-hidden="true">send</span>
@@ -278,100 +393,167 @@
     } @else {
     <div class="conversation-finish" role="status">
       @if (report(); as result) {
-      <h2>{{ result.goalMet ? 'أنجزت هدف الدرس' : 'المحاولة انتهت — الهدف يحتاج تدريبًا' }}</h2>
-      <p>
-        عدد ردودك: {{ result.replyCount }} · ردود مرتبطة بالمهمة: {{ result.relevantReplies ?? '—'
-        }}
-      </p>
-      <div class="conversation-result-steps">
-        <strong>ما نجحت فيه</strong> @for (step of result.metSteps; track step) {
-        <p>✓ {{ step }}</p>
-        } @if (!result.metSteps.length) {
-        <p>ابدأ من الخطوة الأولى في المحاولة القادمة.</p>
-        } @if (result.missingSteps.length) { <strong>ما يحتاج مراجعة</strong> @for (step of
-        result.missingSteps; track step) {
-        <p>○ {{ step }}</p>
-        } }
+      <div class="conversation-finish__summary">
+        <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
+        <div>
+          <strong>{{ result.goalMet ? 'أنجزت هدف المحادثة' : 'انتهت المحاولة' }}</strong>
+          <small
+            >ردودك: {{ result.replyCount }} · {{ reportIssues().length }} ملاحظات للمراجعة</small
+          >
+        </div>
       </div>
-      @if (result.issues.length) {
-      <div class="conversation-result-issues">
-        <strong>أهم ملاحظات الدرس</strong>
-        @for (issue of result.issues; track $index) {
-        <p>
-          <span dir="ltr">{{ issue.original }}</span> ← <b dir="ltr">{{ issue.suggested }}</b
-          ><small>{{ issue.reason }}</small>
-        </p>
-        }
-      </div>
-      } @if (result.retrySentence) {
-      <div class="conversation-retry">
-        <label for="conversation-retry-input">جرّب كتابة جملة مصححة واحدة</label>
-        <input
-          id="conversation-retry-input"
-          type="text"
-          dir="ltr"
-          lang="en"
-          [(ngModel)]="retrySentence"
-          placeholder="اكتب محاولتك هنا"
-          maxlength="300"
-        />
-        <button
-          type="button"
-          [disabled]="!retrySentence.trim()"
-          (click)="retryComparisonVisible.set(true)"
-        >
-          قارن باقتراح التصحيح
-        </button>
-        @if (retryComparisonVisible()) {
-        <p role="status">الاقتراح: <span lang="en" dir="ltr">{{ result.retrySentence }}</span></p>
-        }
-      </div>
-      } } @else { @if (log.timedOut) {
-      <p>توقفت المحادثة بعد فترة خمول. اعرض تقييم المحاولة الحالية.</p>
-      <button type="button" [disabled]="busy()" (click)="finish()">إنهاء وعرض التقييم</button> } @if
-      (!log.timedOut) {
+      <button type="button" class="conversation-finish__report" (click)="openReport()">
+        عرض تقرير المحادثة
+        <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+      </button>
+      } @else {
       <p>
         {{ completedReplies() >= turnTarget() ? 'أحسنت، أنهيت مرحلة المحادثة.' : 'وصلت للحد اليومي.
         تقدر تكمل يومًا آخر.' }}
       </p>
-      } @if (structured() && completedReplies() >= turnTarget()) {
-      <button type="button" (click)="load()">تحميل التقييم</button> } } @if ((report() ||
-      completedReplies() >= turnTarget()) && nextStage(); as next) {
+      @if (structured() && completedReplies() >= turnTarget()) {
+      <button type="button" (click)="load()">تحميل التقييم</button>
+      } } @if ((report() || completedReplies() >= turnTarget()) && nextStage(); as next) {
       <a [routerLink]="next.route">ابدأ {{ next.title }} ←</a>
       } @else {
       <a [routerLink]="['/student/lessons', slotId, 'overview']">العودة لنظرة الدرس</a>
       }
     </div>
-    } @if (log.turns.length > 1) {
-    <details class="conversation-history">
-      <summary>عرض الرسائل السابقة ({{ log.turns.length }})</summary>
-      <div class="conversation-thread" #thread dir="ltr" aria-label="سجل المحادثة">
-        @for (turn of log.turns; track turn.id || $index; let last = $last) {
-        <div class="conversation-row conversation-row--student">
-          <div class="conversation-bubble conversation-bubble--student" lang="en">
-            {{ turn.message }}
-          </div>
-        </div>
-        @if (!last) {
-        <div class="conversation-row conversation-row--tutor">
-          <div class="conversation-bubble conversation-bubble--tutor" lang="en">
-            {{ turn.feedback.reply }}
-            <button
-              type="button"
-              class="conversation-speak"
-              (click)="playReply(turn.id)"
-              aria-label="استمع إلى رد المعلم السابق"
-            >
-              <span class="material-symbols-outlined" aria-hidden="true">volume_up</span>
-            </button>
-          </div>
-        </div>
-        } }
-      </div>
-    </details>
     }
   </main>
-  } } @if (error()) {
+  } } @if (reportOpen() && report(); as result) {
+  <div class="conversation-report-backdrop">
+    <section
+      class="conversation-report"
+      #reportDialog
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="conversation-report-title"
+      aria-describedby="conversation-report-intro"
+      tabindex="-1"
+    >
+      <header class="conversation-report__header">
+        <div class="conversation-report__icon">
+          <span class="material-symbols-outlined" aria-hidden="true">auto_awesome</span>
+        </div>
+        <div>
+          <p>ملخص التدريب</p>
+          <h2 id="conversation-report-title">تقرير محادثتك</h2>
+        </div>
+        <button
+          type="button"
+          class="conversation-report__close"
+          (click)="closeReport()"
+          aria-label="إغلاق التقرير"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">close</span>
+        </button>
+      </header>
+      <div class="conversation-report__body">
+        <p id="conversation-report-intro" class="conversation-report__lead">
+          {{ result.goalMet ? 'أحسنت! حققت هدف المحادثة.' : 'دي مراجعتك؛ شوف اللي نجحت فيه وما يحتاج
+          تدريبًا.' }}
+        </p>
+        <div class="conversation-report__stats">
+          <div><strong>{{ result.replyCount }}</strong><span>ردودك</span></div>
+          <div>
+            <strong>{{ result.relevantReplies ?? '—' }}</strong><span>ردود مرتبطة بالهدف</span>
+          </div>
+          <div><strong>{{ result.metSteps.length }}</strong><span>خطوات أنجزتها</span></div>
+        </div>
+        <section class="conversation-report__section">
+          <h3>ما نجحت فيه</h3>
+          @if (result.metSteps.length) {
+          <ul>
+            @for (step of result.metSteps; track step) {
+            <li><span aria-hidden="true">✓</span> {{ step }}</li>
+            }
+          </ul>
+          } @else {
+          <p>لم تُسجّل خطوات مكتملة بعد؛ تقدر تراجع المحادثة وتتمرن عليها.</p>
+          } @if (result.missingSteps.length) {
+          <h4>خطوات تحتاج تدريبًا</h4>
+          <ul>
+            @for (step of result.missingSteps; track step) {
+            <li>{{ step }}</li>
+            }
+          </ul>
+          }
+        </section>
+        <section class="conversation-report__section">
+          <h3>القواعد</h3>
+          @if (grammarIssues().length) { @for (issue of grammarIssues(); track $index) {
+          <div class="conversation-report__issue">
+            <span lang="en" dir="ltr">{{ issue.original }}</span><span aria-hidden="true">←</span
+            ><strong lang="en" dir="ltr">{{ issue.suggested }}</strong
+            ><small>{{ issue.reason }}</small>
+          </div>
+          } } @else {
+          <p>لم يرصد التقييم ملاحظات قواعد في هذه المحادثة.</p>
+          }
+        </section>
+        <section class="conversation-report__section">
+          <h3>الكتابة والإملاء</h3>
+          @if (writingIssues().length) { @for (issue of writingIssues(); track $index) {
+          <div class="conversation-report__issue">
+            <span lang="en" dir="ltr">{{ issue.original }}</span><span aria-hidden="true">←</span
+            ><strong lang="en" dir="ltr">{{ issue.suggested }}</strong
+            ><small>{{ issue.reason }}</small>
+          </div>
+          } } @else {
+          <p>لم يرصد التقييم ملاحظات كتابة أو إملاء.</p>
+          }
+        </section>
+        @if (vocabularyIssues().length) {
+        <section class="conversation-report__section">
+          <h3>الكلمات والتعبيرات</h3>
+          @for (issue of vocabularyIssues(); track $index) {
+          <div class="conversation-report__issue">
+            <span lang="en" dir="ltr">{{ issue.original }}</span><span aria-hidden="true">←</span
+            ><strong lang="en" dir="ltr">{{ issue.suggested }}</strong
+            ><small>{{ issue.reason }}</small>
+          </div>
+          }
+        </section>
+        } @if (otherIssues().length) {
+        <section class="conversation-report__section">
+          <h3>ملاحظات أخرى</h3>
+          @for (issue of otherIssues(); track $index) {
+          <div class="conversation-report__issue">
+            <span lang="en" dir="ltr">{{ issue.original }}</span><span aria-hidden="true">←</span
+            ><strong lang="en" dir="ltr">{{ issue.suggested }}</strong
+            ><small>{{ issue.reason }}</small>
+          </div>
+          }
+        </section>
+        } @if (result.retrySentence) {
+        <div class="conversation-retry">
+          <label for="conversation-retry-input">جرّب كتابة جملة مصححة واحدة</label
+          ><input
+            id="conversation-retry-input"
+            dir="ltr"
+            lang="en"
+            [(ngModel)]="retrySentence"
+            maxlength="300"
+          /><button
+            type="button"
+            [disabled]="!retrySentence.trim()"
+            (click)="retryComparisonVisible.set(true)"
+          >
+            قارن باقتراح التصحيح</button
+          >@if (retryComparisonVisible()) {
+          <p role="status">الاقتراح: <span lang="en" dir="ltr">{{ result.retrySentence }}</span></p>
+          }
+        </div>
+        }
+      </div>
+      <footer class="conversation-report__footer">
+        <button type="button" (click)="closeReport()">العودة للمحادثة</button>@if (nextStage(); as
+        next) { <a [routerLink]="next.route">ابدأ {{ next.title }} ←</a> }
+      </footer>
+    </section>
+  </div>
+  } @if (error()) {
   <p role="alert" class="conversation-state conversation-state--error">
     {{ error() }} <button type="button" (click)="load()">تحديث السجل</button>
   </p>

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Net;
+using System.Text.RegularExpressions;
 using ShadowingEnglish.Api.Common;
 using ShadowingEnglish.Api.Modules.Admin;
 using ShadowingEnglish.Api.Modules.AI;
@@ -28,11 +29,12 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
 
-// The local demo accepts HTTPS scheme forwarding only from its loopback tunnel process.
+// Only the local cloudflared process can supply the visitor IP and HTTPS scheme.
 if (builder.Environment.IsEnvironment("Demo"))
     builder.Services.Configure<ForwardedHeadersOptions>(options =>
     {
-        options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.ForwardedForHeaderName = "CF-Connecting-IP";
         options.KnownProxies.Add(IPAddress.Loopback);
         options.KnownProxies.Add(IPAddress.IPv6Loopback);
         options.ForwardLimit = 1;
@@ -109,6 +111,7 @@ builder.Services.AddHttpClient<GroqVoiceService>()
 builder.Services.AddHttpClient<GeminiSpeechService>()
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHostedService<LessonAiWorker>();
+builder.Services.AddSingleton<LessonAiJobSignal>();
 builder.Services.AddHostedService<LessonMediaDeletionWorker>();
 
 // Bound sensitive authentication and write requests with built-in policies.
@@ -230,9 +233,41 @@ if (args.Contains("--provision-day2-fixture", StringComparer.Ordinal))
 }
 
 app.UseMiddleware<SafeExceptionMiddleware>();
+app.Use(async (context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers["X-Content-Type-Options"] = "nosniff";
+    headers["X-Frame-Options"] = "DENY";
+    headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    headers["Content-Security-Policy"] = "frame-ancestors 'none'; base-uri 'self'; object-src 'none'";
+    headers["Permissions-Policy"] = "camera=(), geolocation=(), microphone=(self)";
+    if (context.Request.IsHttps && !app.Environment.IsDevelopment())
+        headers["Strict-Transport-Security"] = "max-age=86400";
+    if (context.Request.Path.StartsWithSegments("/api"))
+        headers.CacheControl = "no-store";
+    else
+        context.Response.OnStarting(() =>
+        {
+            if (context.Response.ContentType?.StartsWith("text/html", StringComparison.OrdinalIgnoreCase) == true)
+                headers.CacheControl = "no-cache";
+            return Task.CompletedTask;
+        });
+    await next(context);
+});
 // The release workflow copies the Angular browser build into the published wwwroot.
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = context =>
+    {
+        var fileName = context.File.Name;
+        context.Context.Response.Headers.CacheControl = Regex.IsMatch(fileName,
+            @"[-.][A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|png|jpe?g|svg|webp|ico)$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+            ? "public,max-age=31536000,immutable"
+            : "no-cache";
+    }
+});
 app.UseRouting(); // Required before endpoint-specific rate-limiting policies.
 app.UseAuthentication();
 app.UseRateLimiter();

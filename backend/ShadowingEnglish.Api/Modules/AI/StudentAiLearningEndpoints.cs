@@ -311,8 +311,6 @@ public static class StudentAiLearningEndpoints
             var metSteps = LessonMaterialRules.MetConversationSteps(data.Material, feedback);
             var replies = rows.Length;
             var goalMet = structured && LessonMaterialRules.ConversationGoalMet(data.Material, feedback);
-            var timedOut = structured && summaryJson is null && LessonMaterialRules.ConversationTimedOut(
-                rows.Select(x => x.CreatedAtUtc).ToArray(), DateTimeOffset.UtcNow);
             var day = DateOnly.FromDateTime(DateTime.UtcNow);
             var used = await db.StudentAiDailyUsages.AsNoTracking().Where(x => x.StudentId == student && x.DayUtc == day)
                 .Select(x => (int?)x.UsedRequests).SingleOrDefaultAsync(http.RequestAborted) ?? 0;
@@ -327,7 +325,7 @@ public static class StudentAiLearningEndpoints
                 minTurns = structured ? data.Material.ConversationMinTurns : null,
                 maxTurns = structured ? data.Material.ConversationMaxTurns : null,
                 metSteps, missingSteps = structured ? data.Material.ConversationSuccessSteps!.Except(metSteps) : [],
-                goalMet, timedOut,
+                goalMet, timedOut = false,
                 canFinish = structured && replies >= data.Material.ConversationMinTurns && goalMet,
                 report = summaryJson is null ? null : JsonSerializer.Deserialize<ConversationResult>(summaryJson,
                     LessonMaterialRules.Json),
@@ -368,16 +366,6 @@ public static class StudentAiLearningEndpoints
                     Results.Conflict(new { error = "answer_in_progress_or_conflict" });
                 if (Complete(progress, "conversation"))
                     return Results.Conflict(new { error = "conversation_complete" });
-                if (LessonMaterialRules.StructuredConversation(data.Material))
-                {
-                    var replyTimes = await db.StudentPracticeAttempts.AsNoTracking().Where(x =>
-                        x.StudentId == student && x.PublishedCurriculumVersionId == data.VersionId &&
-                        x.SlotId == slotId && x.StageKey == "conversation" && x.FeedbackJson != "")
-                        .OrderBy(x => x.CreatedAtUtc).Select(x => x.CreatedAtUtc)
-                        .ToArrayAsync(http.RequestAborted);
-                    if (LessonMaterialRules.ConversationTimedOut(replyTimes, DateTimeOffset.UtcNow))
-                        return Results.Conflict(new { error = "conversation_timed_out" });
-                }
                 if (ai.ConfiguredProviders().Length == 0)
                     return Results.Json(new { error = "ai_providers_not_configured" }, statusCode: 503);
                 var day = DateOnly.FromDateTime(DateTime.UtcNow);

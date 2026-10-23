@@ -4,8 +4,13 @@ using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using ShadowingEnglish.Api.Modules.AI;
 using ShadowingEnglish.Infrastructure.AIProviders;
+using ShadowingEnglish.Infrastructure.Database;
+using ShadowingEnglish.Infrastructure.Identity;
 
 namespace ShadowingEnglish.MediaChecks;
 
@@ -13,6 +18,43 @@ internal static class VoiceFallbackChecks
 {
     public static async Task<int> RunAsync(Func<string, Func<Task>, Task> check, Func<int> failures)
     {
+        await check("Student transcription uses the enabled encrypted voice key from the database", async () =>
+        {
+            await using var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection)
+                .ReplaceService<IModelCustomizer, UtcTestModelCustomizer>().Options;
+            await using var db = new ApplicationDbContext(options);
+            await db.Database.EnsureCreatedAsync();
+            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            { ["AiProviders:MasterKey"] = Convert.ToBase64String(new byte[32]) }).Build();
+            using var protector = new AiProviderCredentialProtector(config);
+            var admin = new ApplicationUser { Id = Guid.NewGuid(), UserName = "voice-test" };
+            db.Users.Add(admin);
+            var provider = new AiProviderConfiguration
+            {
+                Id = Guid.NewGuid(), Capability = AiProviderCatalog.Voice, ProviderKey = "groq",
+                Enabled = true, Priority = 1, UpdatedByAdminId = admin.Id,
+                EncryptedApiKey = protector.Protect("test-db-voice", AiProviderCatalog.Voice, "groq")
+            };
+            db.AiProviderConfigurations.Add(provider);
+            await db.SaveChangesAsync();
+            using var handler = new TranscriptionHandler();
+            using var http = new HttpClient(handler);
+            using var cache = new MemoryCache(new MemoryCacheOptions());
+            var voice = new GroqVoiceService(http, config, cache, NullLogger<GroqVoiceService>.Instance, db, protector);
+            if (!await voice.IsConfiguredAsync(CancellationToken.None))
+                throw new InvalidOperationException("database_voice_key_not_available");
+            using var audio = new MemoryStream(new byte[200]);
+            var text = await voice.TranscribeAsync(audio, "audio/webm", CancellationToken.None);
+            if (text != "Good morning" || handler.Calls != 1)
+                throw new InvalidOperationException("database_voice_key_not_used_for_transcription");
+            provider.Enabled = false;
+            await db.SaveChangesAsync();
+            if (await voice.IsConfiguredAsync(CancellationToken.None) ||
+                await voice.TranscribeAsync(audio, "audio/webm", CancellationToken.None) is not null || handler.Calls != 1)
+                throw new InvalidOperationException("disabled_voice_key_used_for_transcription");
+        });
         await check("Natural voice is a separately configurable Groq provider", () =>
         {
             var definition = AiProviderCatalog.Find(AiProviderCatalog.Voice, "groq");
@@ -85,6 +127,20 @@ internal static class VoiceFallbackChecks
                 throw new InvalidOperationException("voice_cache_not_isolated");
         });
         return failures() == 0 ? 0 : 1;
+    }
+
+    private sealed class TranscriptionHandler : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            if (request.RequestUri?.AbsolutePath != "/openai/v1/audio/transcriptions" ||
+                request.Headers.Authorization?.Parameter != "test-db-voice")
+                throw new InvalidOperationException("unexpected_transcription_credentials");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            { Content = new StringContent("{\"text\":\"Good morning\"}", Encoding.UTF8, "application/json") });
+        }
     }
 
     private sealed class FailingPrimaryHandler : HttpMessageHandler

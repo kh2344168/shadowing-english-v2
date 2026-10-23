@@ -6,7 +6,25 @@ using ShadowingEnglish.Infrastructure.Database;
 
 namespace ShadowingEnglish.Api.Modules.AI;
 
-public sealed class LessonAiWorker(IServiceScopeFactory scopes, ILogger<LessonAiWorker> logger) : BackgroundService
+public sealed class LessonAiJobSignal
+{
+    private readonly SemaphoreSlim pending = new(0, 1);
+
+    public void Notify()
+    {
+        if (pending.CurrentCount == 0)
+        {
+            try { pending.Release(); }
+            catch (SemaphoreFullException) { }
+        }
+    }
+
+    public Task<bool> WaitAsync(CancellationToken cancellation) =>
+        pending.WaitAsync(TimeSpan.FromSeconds(30), cancellation);
+}
+
+public sealed class LessonAiWorker(IServiceScopeFactory scopes, LessonAiJobSignal signal,
+    ILogger<LessonAiWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -40,7 +58,8 @@ public sealed class LessonAiWorker(IServiceScopeFactory scopes, ILogger<LessonAi
             {
                 logger.LogWarning("Ai.Job.PollFailed ErrorType={ErrorType}", ex.GetType().Name);
             }
-            await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
+            try { await signal.WaitAsync(stoppingToken); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
         }
     }
 

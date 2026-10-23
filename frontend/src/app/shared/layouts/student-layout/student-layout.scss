@@ -279,3 +279,24 @@
     color: #fff;
   }
 }
+
+// A conversation owns the viewport; only its message history should grow/scroll.
+.student-shell--conversation {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.student-shell--conversation > header {
+  flex: 0 0 auto;
+}
+.student-shell--conversation .student-shell__content {
+  flex: 1 1 0;
+  min-height: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+.student-shell--conversation .student-mobile-nav {
+  display: none;
+}

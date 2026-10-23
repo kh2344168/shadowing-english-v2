@@ -172,7 +172,7 @@ public static class AdminLessonAiEndpoints
 
         group.MapPost("/{versionId:guid}/ai/stages/{stageType}/generate", async (
             Guid versionId, string stageType, StartAiRequest request, HttpContext http,
-            IAntiforgery csrf, ApplicationDbContext db, TextAiRouter ai) =>
+            IAntiforgery csrf, ApplicationDbContext db, TextAiRouter ai, LessonAiJobSignal signal) =>
         {
             if (!await ValidCsrf(csrf, http)) return Results.BadRequest(new { error = "invalid_csrf" });
             if (!Guid.TryParse(http.User.FindFirstValue(ClaimTypes.NameIdentifier), out var adminId) ||
@@ -234,6 +234,7 @@ public static class AdminLessonAiEndpoints
             db.LessonAiContents.Add(job);
             try { await db.SaveChangesAsync(http.RequestAborted); }
             catch (DbUpdateException) { return Results.Conflict(new { error = "ai_job_changed" }); }
+            signal.Notify();
             return Results.Json(View(job), statusCode: 202);
         }).RequireRateLimiting("admin-lesson-write");
 
