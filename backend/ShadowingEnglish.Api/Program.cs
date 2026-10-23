@@ -251,7 +251,14 @@ app.Use(async (context, next) =>
     headers["X-Content-Type-Options"] = "nosniff";
     headers["X-Frame-Options"] = "DENY";
     headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
-    headers["Content-Security-Policy"] = "frame-ancestors 'none'; base-uri 'self'; object-src 'none'";
+    // The admin's installed processor talks to loopback. Keep that explicit while
+    // preventing injected inline scripts from reading its account-scoped link token.
+    headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; " +
+        "script-src 'self'; script-src-attr 'none'; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+        "font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; " +
+        "media-src 'self' blob: data:; worker-src 'self' blob:; " +
+        "connect-src 'self' http://127.0.0.1:43127; form-action 'self'";
     headers["Permissions-Policy"] = "camera=(), geolocation=(), microphone=(self)";
     if (context.Request.IsHttps && !app.Environment.IsDevelopment())
         headers["Strict-Transport-Security"] = "max-age=86400";

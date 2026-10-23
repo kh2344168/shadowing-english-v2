@@ -241,7 +241,11 @@ internal static class Runner
                 Assert(response.Headers.TryGetValues("X-Frame-Options", out var frame) &&
                     frame.Single() == "DENY", "missing_frame_protection");
                 Assert(response.Headers.TryGetValues("Content-Security-Policy", out var csp) &&
-                    csp.Single().Contains("frame-ancestors 'none'"), "missing_frame_csp");
+                    csp.Single().Contains("frame-ancestors 'none'") &&
+                    csp.Single().Contains("script-src 'self'") &&
+                    csp.Single().Contains("script-src-attr 'none'") &&
+                    csp.Single().Contains("connect-src 'self' http://127.0.0.1:43127") &&
+                    csp.Single().Contains("form-action 'self'"), "missing_script_or_connect_csp");
                 Assert(response.Headers.CacheControl?.NoStore == true, "private_api_response_cached");
             });
             using var uploadApp = new MediaApp(apiRoot, new DisabledShadowingMediaStore(), authLogs);
