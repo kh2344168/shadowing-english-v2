@@ -182,6 +182,16 @@ internal static class Runner
                 Assert(limited.StatusCode == HttpStatusCode.TooManyRequests,
                     "unknown_account_attempts_not_limited");
             });
+            await Check("Valid school logins remain available behind one public IP", async () =>
+            {
+                for (var attempt = 0; attempt < 25; attempt++)
+                {
+                    using var student = await app.LoginAsync("student");
+                    using var role = await student.GetAsync("/api/auth/check/student");
+                    Assert(role.StatusCode == HttpStatusCode.OK,
+                        "successful_school_login_limited_" + attempt);
+                }
+            });
             await Check("API responses have browser security and private cache headers", async () =>
             {
                 using var client = app.Client();

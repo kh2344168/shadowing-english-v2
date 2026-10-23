@@ -107,6 +107,7 @@ builder.Services.AddHttpClient<PexelsImageService>()
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddMemoryCache(options => options.SizeLimit = 30_000_000);
 builder.Services.AddSingleton<HealthReadinessState>();
+builder.Services.AddSingleton<LoginFailureLimiter>();
 builder.Services.AddHttpClient<GroqVoiceService>()
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient<GeminiSpeechService>()
@@ -118,17 +119,6 @@ builder.Services.AddHostedService<LessonMediaDeletionWorker>();
 // Bound sensitive authentication and write requests with built-in policies.
 builder.Services.AddRateLimiter(options =>
 {
-    // Identity lockout protects known accounts; also bound anonymous attempts for unknown emails.
-    options.AddPolicy("auth-login", context => RateLimitPartition.GetFixedWindowLimiter(
-        partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        factory: _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = 20,
-            Window = TimeSpan.FromMinutes(1),
-            QueueLimit = 0,
-            AutoReplenishment = true
-        }));
-
     options.AddPolicy("admin-create", context => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
         factory: _ => new FixedWindowRateLimiterOptions

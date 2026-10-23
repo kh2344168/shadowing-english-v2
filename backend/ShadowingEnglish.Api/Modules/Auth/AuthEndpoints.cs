@@ -2,7 +2,6 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.RateLimiting;
 using ShadowingEnglish.Infrastructure.Identity;
 
 namespace ShadowingEnglish.Api.Modules.Auth;
@@ -35,11 +34,16 @@ public static class AuthEndpoints
 
         auth.MapPost("/login", async (LoginRequest request, HttpContext context,
             IAntiforgery antiforgery, UserManager<ApplicationUser> users,
-            SignInManager<ApplicationUser> signIn, ILoggerFactory loggerFactory) =>
+            SignInManager<ApplicationUser> signIn, LoginFailureLimiter failures,
+            ILoggerFactory loggerFactory) =>
         {
             var started = Stopwatch.GetTimestamp();
             var logger = loggerFactory.CreateLogger("Auth.Login");
             logger.LogInformation("Auth.Login.Start");
+            IResult Reject(IResult ordinaryResult) =>
+                failures.RecordFailure(context.Connection.RemoteIpAddress)
+                    ? Results.StatusCode(StatusCodes.Status429TooManyRequests)
+                    : ordinaryResult;
             try
             {
                 await antiforgery.ValidateRequestAsync(context);
@@ -48,7 +52,7 @@ public static class AuthEndpoints
             {
                 logger.LogWarning("Auth.Login.Rejected Reason=InvalidCsrf DurationMs={DurationMs}",
                     Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-                return Results.BadRequest(new { error = "invalid_csrf" });
+                return Reject(Results.BadRequest(new { error = "invalid_csrf" }));
             }
 
             var email = request.Email?.Trim();
@@ -56,7 +60,7 @@ public static class AuthEndpoints
             {
                 logger.LogWarning("Auth.Login.Rejected Reason=InvalidInput DurationMs={DurationMs}",
                     Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-                return Results.BadRequest(new { error = "invalid_request" });
+                return Reject(Results.BadRequest(new { error = "invalid_request" }));
             }
 
             // Never log a password, an email address, or an antiforgery token.
@@ -65,7 +69,7 @@ public static class AuthEndpoints
             {
                 logger.LogWarning("Auth.Login.Failed Reason=InvalidCredentials DurationMs={DurationMs}",
                     Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-                return Results.Unauthorized();
+                return Reject(Results.Unauthorized());
             }
 
             var result = await signIn.PasswordSignInAsync(user, request.Password!,
@@ -74,7 +78,7 @@ public static class AuthEndpoints
             {
                 logger.LogWarning("Auth.Login.Failed Reason=Rejected DurationMs={DurationMs}",
                     Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-                return Results.Unauthorized();
+                return Reject(Results.Unauthorized());
             }
 
             var roles = await users.GetRolesAsync(user);
@@ -82,7 +86,7 @@ public static class AuthEndpoints
             logger.LogInformation("Auth.Login.Success UserId={UserId} DurationMs={DurationMs}",
                 user.Id, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             return Results.Ok(new { authenticated = true, userId = user.Id, roles });
-        }).AllowAnonymous().RequireRateLimiting("auth-login");
+        }).AllowAnonymous();
 
         auth.MapGet("/session", async (HttpContext context, UserManager<ApplicationUser> users,
             ILoggerFactory loggerFactory) =>
