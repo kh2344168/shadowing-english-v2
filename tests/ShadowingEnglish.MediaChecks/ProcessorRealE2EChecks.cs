@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Diagnostics;
 using System.Text.Json;
@@ -33,7 +34,7 @@ internal static class ProcessorRealE2EChecks
     public static async Task<int> RunAsync(string manifestPath, Func<string, Func<Task>, Task> check,
         Func<int> failures, int studentCount = 0, int concurrentStudents = 0, int maxConcurrency = 0,
         int republishAttempts = 1, int groupCount = 0, int groupStudents = 0, int groupAttempts = 0,
-        int groupLessons = 1)
+        int groupLessons = 1, bool probeReads = false)
     {
         var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
         var manifestFile = Path.GetFullPath(manifestPath);
@@ -149,16 +150,19 @@ internal static class ProcessorRealE2EChecks
             await StudentLoadAsync(app, concurrentStudents, maxConcurrency, publishedSlotId, wave, check);
         if (groupCount > 0)
             await GroupRepublishLoadAsync(app, curriculumId, versionId, publishedId,
-                publishedSlotId, groupCount, groupStudents, groupAttempts, groupLessons, check);
+                publishedSlotId, groupCount, groupStudents, groupAttempts, groupLessons,
+                probeReads, check);
         return failures() == 0 ? 0 : 1;
     }
 
     private static async Task GroupRepublishLoadAsync(SqlProcessorApp app, Guid curriculumId,
         Guid lessonVersionId, Guid firstVersionId, Guid firstSlotId, int groupCount,
-        int studentsPerGroup, int attemptsPerStudent, int lessonCount,
+        int studentsPerGroup, int attemptsPerStudent, int lessonCount, bool probeReads,
         Func<string, Func<Task>, Task> check)
     {
         var groups = new List<(Guid GroupId, Guid VersionId, Guid[] SlotIds)>();
+        var readers = new List<(Guid GroupId, string Email)>();
+        var readerPassword = "Read!9" + Guid.NewGuid().ToString("N");
         await check($"Seed {groupCount} isolated groups, {lessonCount} lessons and " +
             $"{groupCount * studentsPerGroup} students", async () =>
         {
@@ -172,6 +176,8 @@ internal static class ProcessorRealE2EChecks
                 .SingleAsync(x => x.LessonVersionId == lessonVersionId);
             var adminId = await db.StudyGroups.AsNoTracking().Where(x => x.Id == app.GroupId)
                 .Select(x => x.CreatedByAdminId).SingleAsync();
+            var studentRoleId = probeReads ? await db.Roles.AsNoTracking()
+                .Where(x => x.NormalizedName == "STUDENT").Select(x => x.Id).SingleAsync() : Guid.Empty;
             var now = DateTimeOffset.UtcNow;
             var lessonIds = new List<Guid> { lessonVersionId };
             var firstSlotIds = new Guid[lessonCount];
@@ -254,6 +260,17 @@ internal static class ProcessorRealE2EChecks
                     return new ApplicationUser { Id = Guid.NewGuid(), Email = email, UserName = email,
                         NormalizedEmail = email.ToUpperInvariant(), NormalizedUserName = email.ToUpperInvariant() };
                 }).ToArray();
+                if (probeReads)
+                {
+                    var reader = accounts[0];
+                    reader.EmailConfirmed = true;
+                    reader.SecurityStamp = Guid.NewGuid().ToString("N");
+                    reader.PasswordHash = new PasswordHasher<ApplicationUser>()
+                        .HashPassword(reader, readerPassword);
+                    db.Set<IdentityUserRole<Guid>>().Add(new IdentityUserRole<Guid>
+                        { UserId = reader.Id, RoleId = studentRoleId });
+                    readers.Add((groupId, reader.Email!));
+                }
                 db.Users.AddRange(accounts);
                 db.StudentGroupMemberships.AddRange(accounts.Select(user => new StudentGroupMembership
                 {
@@ -289,6 +306,17 @@ internal static class ProcessorRealE2EChecks
         });
         if (groups.Count != groupCount) return;
 
+        var readClients = new List<(Guid GroupId, HttpClient Client)>();
+        try
+        {
+        if (probeReads)
+            await check($"Login {groupCount} independent student readers", async () =>
+            {
+                foreach (var (groupId, email) in readers)
+                    readClients.Add((groupId, await app.LoginAsAsync(email, readerPassword,
+                        refreshCsrfAfterLogin: false)));
+            });
+
         await check($"Auto republish {groupCount} groups with {groupCount * studentsPerGroup} students", async () =>
         {
             using var scope = app.Services.CreateScope();
@@ -308,8 +336,43 @@ internal static class ProcessorRealE2EChecks
             db.ChangeTracker.Clear();
             var clock = Stopwatch.StartNew();
             var beforeMb = Process.GetCurrentProcess().WorkingSet64 / 1_048_576;
-            var published = await ApprovedLessonPublisher.SyncAsync(db, lessonVersionId,
-                NullLogger.Instance, CancellationToken.None);
+            var observed = new ConcurrentBag<(Guid GroupId, Guid VersionId, Guid[] SlotIds, long Ms)>();
+            using var readStop = new CancellationTokenSource();
+            var readerTasks = readClients.Select(async reader =>
+            {
+                while (!readStop.IsCancellationRequested)
+                {
+                    var readClock = Stopwatch.StartNew();
+                    try
+                    {
+                        using var response = await reader.Client.GetAsync(
+                            "/api/student/learning/curriculum?pageSize=20", readStop.Token);
+                        Assert(response.StatusCode == HttpStatusCode.OK,
+                            "republish_read_status_" + (int)response.StatusCode);
+                        var payload = await response.Content.ReadFromJsonAsync<JsonElement>(readStop.Token);
+                        var items = payload.GetProperty("items").EnumerateArray()
+                            .Select(x => x.GetProperty("slotId").GetGuid()).ToArray();
+                        Assert(items.Length == lessonCount && items.Distinct().Count() == lessonCount,
+                            "republish_read_incomplete_curriculum");
+                        observed.Add((reader.GroupId,
+                            payload.GetProperty("publishedVersionId").GetGuid(),
+                            items, readClock.ElapsedMilliseconds));
+                        await Task.Delay(25, readStop.Token);
+                    }
+                    catch (OperationCanceledException) when (readStop.IsCancellationRequested) { break; }
+                }
+            }).ToArray();
+            int published;
+            try
+            {
+                published = await ApprovedLessonPublisher.SyncAsync(db, lessonVersionId,
+                    NullLogger.Instance, CancellationToken.None);
+            }
+            finally
+            {
+                readStop.Cancel();
+                await Task.WhenAll(readerTasks);
+            }
             clock.Stop();
             var groupIds = groups.Select(x => x.GroupId).ToArray();
             var latestAssignments = await db.GroupCurriculumAssignments.AsNoTracking()
@@ -337,6 +400,41 @@ internal static class ProcessorRealE2EChecks
                         assignment.PublishedCurriculumVersionId)
                     .Select(x => new { x.Id, OriginalSlotId = original.SlotIds[x.SortOrder - 1] });
             }).ToDictionary(x => x.Id, x => x.OriginalSlotId.ToString("D"));
+            if (probeReads)
+            {
+                var oldByGroup = groups.ToDictionary(x => x.GroupId);
+                var newByGroup = latestAssignments.ToDictionary(x => x.GroupId,
+                    x => x.PublishedCurriculumVersionId);
+                var newSlotIds = newSlots.GroupBy(x => x.PublishedCurriculumVersionId)
+                    .ToDictionary(x => x.Key, x => x.Select(slot => slot.Id).ToHashSet());
+                Assert(observed.Count > 0 && observed.All(read =>
+                {
+                    var expected = read.VersionId == oldByGroup[read.GroupId].VersionId
+                        ? oldByGroup[read.GroupId].SlotIds.ToHashSet()
+                        : read.VersionId == newByGroup[read.GroupId]
+                            ? newSlotIds[read.VersionId] : null;
+                    return expected is not null && expected.SetEquals(read.SlotIds);
+                }), "republish_read_mixed_or_missing_snapshot");
+                await Task.WhenAll(readClients.Select(async reader =>
+                {
+                    using var response = await reader.Client.GetAsync(
+                        "/api/student/learning/curriculum?pageSize=20");
+                    Assert(response.StatusCode == HttpStatusCode.OK,
+                        "republish_final_read_status_" + (int)response.StatusCode);
+                    var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+                    var versionId = newByGroup[reader.GroupId];
+                    Assert(payload.GetProperty("publishedVersionId").GetGuid() == versionId &&
+                        newSlotIds[versionId].SetEquals(payload.GetProperty("items")
+                            .EnumerateArray().Select(x => x.GetProperty("slotId").GetGuid())),
+                        "republish_final_read_not_current_snapshot");
+                }));
+                var times = observed.Select(x => x.Ms).OrderBy(x => x).ToArray();
+                Console.WriteLine($"RepublishReads Groups={groupCount} Completed={times.Length} " +
+                    $"P95Ms={times[Math.Min(times.Length - 1,
+                        (int)Math.Ceiling(times.Length * .95) - 1)]} " +
+                    $"P99Ms={times[Math.Min(times.Length - 1,
+                        (int)Math.Ceiling(times.Length * .99) - 1)]} MaxMs={times[^1]}");
+            }
             Assert(published == groupCount && latest.Distinct().Count() == groupCount &&
                 !latest.Intersect(groups.Select(x => x.VersionId)).Any() &&
                 newSlots.Length == groupCount * lessonCount &&
@@ -360,6 +458,11 @@ internal static class ProcessorRealE2EChecks
                 $"PeakWorkingSetMb={Process.GetCurrentProcess().PeakWorkingSet64 / 1_048_576} " +
                 $"TrackedEntities={db.ChangeTracker.Entries().Count()}");
         });
+        }
+        finally
+        {
+            foreach (var (_, client) in readClients) client.Dispose();
+        }
     }
 
     private static async Task StudentLoadAsync(SqlProcessorApp app, int count, int concurrency,

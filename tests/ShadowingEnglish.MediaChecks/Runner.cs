@@ -116,6 +116,15 @@ internal static class Runner
             return await ProcessorRealE2EChecks.RunAsync(args[1], Check, () => failures,
                 groupCount: multiGroups, groupStudents: multiStudents,
                 groupAttempts: multiAttempts, groupLessons: multiLessons);
+        if (args.Length == 6 && args[0] == "--processor-group-read-probe" &&
+            int.TryParse(args[2], out var readGroups) && readGroups is >= 2 and <= 30 &&
+            int.TryParse(args[3], out var readStudents) && readStudents is >= 1 and <= 100 &&
+            int.TryParse(args[4], out var readAttempts) && readAttempts is >= 1 and <= 10 &&
+            int.TryParse(args[5], out var readLessons) && readLessons is >= 1 and <= 10 &&
+            readGroups * readStudents * readAttempts * readLessons <= 50_000)
+            return await ProcessorRealE2EChecks.RunAsync(args[1], Check, () => failures,
+                groupCount: readGroups, groupStudents: readStudents,
+                groupAttempts: readAttempts, groupLessons: readLessons, probeReads: true);
         if (args.Length == 4 && args[0] == "--processor-student-load" &&
             int.TryParse(args[2], out var loadStudents) && loadStudents is >= 1 and <= 3000 &&
             int.TryParse(args[3], out var concurrency) && concurrency >= 1 && concurrency <= loadStudents)
