@@ -48,6 +48,12 @@ public static class StudentShadowingReportingEndpoints
             // instead of the host closing the upload stream mid-response.
             if (bodyLimit is { IsReadOnly: false })
                 bodyLimit.MaxRequestBodySize = MaxRequestBytes + 128 * 1024;
+            if (!http.Request.HasFormContentType) return Reject(log, started, slotId, "multipart_required");
+            // TestServer and some reverse proxies do not expose a Kestrel body-size feature.
+            // Count the aggregate stream before antiforgery or multipart parsing can read it.
+            http.Request.Body = new CappedRequestStream(http.Request.Body, MaxRequestBytes);
+            http.Features.Set<IFormFeature>(new FormFeature(http.Request,
+                new FormOptions { MultipartBodyLengthLimit = MaxRecordingBytes }));
 
             try { await antiforgery.ValidateRequestAsync(http); }
             catch (AntiforgeryValidationException)
@@ -63,12 +69,6 @@ public static class StudentShadowingReportingEndpoints
             if (!Guid.TryParse(rawUserId, out var studentId)) return Results.Forbid();
             var user = await users.FindByIdAsync(rawUserId!);
             if (user is null || !await users.IsInRoleAsync(user, "Student")) return Results.Forbid();
-            if (!http.Request.HasFormContentType) return Reject(log, started, slotId, "multipart_required");
-
-            // Kestrel enforces the whole-request limit even for chunked bodies. Also limit
-            // each multipart section while parsing for hosts/test servers without that feature.
-            http.Features.Set<IFormFeature>(new FormFeature(http.Request,
-                new FormOptions { MultipartBodyLengthLimit = MaxRecordingBytes }));
 
             IFormCollection form;
             try { form = await http.Request.ReadFormAsync(http.RequestAborted); }
@@ -235,6 +235,58 @@ public static class StudentShadowingReportingEndpoints
         }).RequireRateLimiting("student-progress-write");
 
         return app;
+    }
+
+    private sealed class CappedRequestStream(Stream source, long maxBytes) : Stream
+    {
+        private long readBytes;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            var count = source.Read(buffer[..Allowed(buffer.Length)]);
+            return Count(count);
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count,
+            CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            var count = await source.ReadAsync(buffer[..Allowed(buffer.Length)], cancellationToken);
+            return Count(count);
+        }
+
+        private int Allowed(int requested) => requested == 0 ? 0 :
+            (int)Math.Min(requested, maxBytes - readBytes + 1);
+
+        private int Count(int count)
+        {
+            readBytes += count;
+            if (readBytes > maxBytes)
+                throw new BadHttpRequestException("recording_too_large",
+                    StatusCodes.Status413PayloadTooLarge);
+            return count;
+        }
+
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private static int? ParseOptionalScore(string raw)

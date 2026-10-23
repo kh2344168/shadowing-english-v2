@@ -312,6 +312,25 @@ internal static class Runner
                 Assert(response.StatusCode == HttpStatusCode.RequestEntityTooLarge,
                     "chunked_upload_limit_status_" + response.StatusCode);
             });
+            await Check("Several individually valid chunks cannot exceed the whole recording request limit", async () =>
+            {
+                using var client = await uploadApp.LoginAsync("student");
+                using var form = new MultipartFormDataContent();
+                for (var index = 0; index < 2; index++)
+                {
+                    var part = new ByteArrayContent(new byte[5 * 1024 * 1024]);
+                    part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/webm");
+                    form.Add(part, $"recording{index}", $"part{index}.webm");
+                }
+                using var request = new HttpRequestMessage(HttpMethod.Post,
+                    $"/api/student/learning/slots/{Guid.NewGuid()}/shadowing/completion")
+                { Content = form };
+                request.Headers.TransferEncodingChunked = true;
+                request.Content.Headers.ContentLength = null;
+                using var response = await client.SendAsync(request);
+                Assert(response.StatusCode == HttpStatusCode.RequestEntityTooLarge,
+                    "multipart_aggregate_limit_status_" + response.StatusCode);
+            });
             using var demo = new MediaApp(apiRoot, new DisabledShadowingMediaStore(), authLogs,
                 environment: "Demo");
             await demo.SetupAsync();
