@@ -34,7 +34,7 @@ internal static class ProcessorRealE2EChecks
     public static async Task<int> RunAsync(string manifestPath, Func<string, Func<Task>, Task> check,
         Func<int> failures, int studentCount = 0, int concurrentStudents = 0, int maxConcurrency = 0,
         int republishAttempts = 1, int groupCount = 0, int groupStudents = 0, int groupAttempts = 0,
-        int groupLessons = 1, bool probeReads = false)
+        int groupLessons = 1, bool probeReads = false, int readConcurrency = 0)
     {
         var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
         var manifestFile = Path.GetFullPath(manifestPath);
@@ -147,7 +147,9 @@ internal static class ProcessorRealE2EChecks
                 publishedId, publishedSlotId, draftRevision, assignmentRevision,
                 republishAttempts, check);
         if (concurrentStudents > 0)
-            await StudentLoadAsync(app, concurrentStudents, maxConcurrency, publishedSlotId, wave, check);
+            await StudentLoadAsync(app, concurrentStudents, maxConcurrency,
+                readConcurrency == 0 ? maxConcurrency : readConcurrency,
+                publishedSlotId, wave, check);
         if (groupCount > 0)
             await GroupRepublishLoadAsync(app, curriculumId, versionId, publishedId,
                 publishedSlotId, groupCount, groupStudents, groupAttempts, groupLessons,
@@ -465,7 +467,8 @@ internal static class ProcessorRealE2EChecks
         }
     }
 
-    private static async Task StudentLoadAsync(SqlProcessorApp app, int count, int concurrency,
+    private static async Task StudentLoadAsync(SqlProcessorApp app, int count, int loginConcurrency,
+        int readConcurrency,
         Guid slotId, byte[] wave, Func<string, Func<Task>, Task> check)
     {
         var accounts = Array.Empty<ApplicationUser>();
@@ -508,18 +511,18 @@ internal static class ProcessorRealE2EChecks
         var clients = new HttpClient?[count];
         try
         {
-            await check($"Login flow for {count} distinct students at concurrency {concurrency}", async () =>
+            await check($"Login flow for {count} distinct students at concurrency {loginConcurrency}", async () =>
             {
-                await MeasureAsync("Login", count, concurrency, async index =>
+                await MeasureAsync("Login", count, loginConcurrency, async index =>
                 {
                     clients[index] = await app.LoginAsAsync(accounts[index].Email!, password,
-                        refreshCsrfAfterLogin: false);
+                        refreshCsrfAfterLogin: false, requestTimeout: TimeSpan.FromSeconds(30));
                 });
             });
             if (clients.Any(x => x is null)) return;
-            await check($"Curriculum reads for {count} students at concurrency {concurrency}", async () =>
+            await check($"Curriculum reads for {count} students at concurrency {readConcurrency}", async () =>
             {
-                await MeasureAsync("Curriculum", count, concurrency, async index =>
+                await MeasureAsync("Curriculum", count, readConcurrency, async index =>
                 {
                     using var response = await clients[index]!.GetAsync("/api/student/learning/curriculum");
                     Assert(response.StatusCode == HttpStatusCode.OK,
@@ -529,9 +532,9 @@ internal static class ProcessorRealE2EChecks
                         "curriculum_lesson_missing");
                 });
             });
-            await check($"Lesson overview reads for {count} students at concurrency {concurrency}", async () =>
+            await check($"Lesson overview reads for {count} students at concurrency {readConcurrency}", async () =>
             {
-                await MeasureAsync("Overview", count, concurrency, async index =>
+                await MeasureAsync("Overview", count, readConcurrency, async index =>
                 {
                     using var response = await clients[index]!.GetAsync(
                         $"/api/student/learning/slots/{slotId}");
@@ -543,9 +546,9 @@ internal static class ProcessorRealE2EChecks
                         "overview_wrong_lesson");
                 });
             });
-            await check($"Lesson audio reads for {count} students at concurrency {concurrency}", async () =>
+            await check($"Lesson audio reads for {count} students at concurrency {readConcurrency}", async () =>
             {
-                await MeasureAsync("Audio", count, concurrency, async index =>
+                await MeasureAsync("Audio", count, readConcurrency, async index =>
                 {
                     using var response = await clients[index]!.GetAsync(
                         $"/api/student/learning/slots/{slotId}/segments/1/audio");
@@ -790,10 +793,11 @@ internal static class ProcessorRealE2EChecks
         }
 
         public async Task<HttpClient> LoginAsAsync(string email, string accountPassword,
-            bool refreshCsrfAfterLogin = true)
+            bool refreshCsrfAfterLogin = true, TimeSpan? requestTimeout = null)
         {
             var client = CreateClient(new WebApplicationFactoryClientOptions
             { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+            if (requestTimeout is not null) client.Timeout = requestTimeout.Value;
             try
             {
                 await RefreshCsrfAsync(client);

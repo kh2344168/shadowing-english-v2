@@ -130,6 +130,13 @@ internal static class Runner
             int.TryParse(args[3], out var concurrency) && concurrency >= 1 && concurrency <= loadStudents)
             return await ProcessorRealE2EChecks.RunAsync(args[1], Check, () => failures,
                 concurrentStudents: loadStudents, maxConcurrency: concurrency);
+        if (args.Length == 5 && args[0] == "--processor-student-read-load" &&
+            int.TryParse(args[2], out var distinctStudents) && distinctStudents is >= 1 and <= 3000 &&
+            int.TryParse(args[3], out var loginLimit) && loginLimit is >= 1 and <= 300 &&
+            int.TryParse(args[4], out var readLimit) && readLimit is >= 1 && readLimit <= distinctStudents)
+            return await ProcessorRealE2EChecks.RunAsync(args[1], Check, () => failures,
+                concurrentStudents: distinctStudents, maxConcurrency: loginLimit,
+                readConcurrency: readLimit);
         if (args.SequenceEqual(new[] { "--health-check" }))
         {
             var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
