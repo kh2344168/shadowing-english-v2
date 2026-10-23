@@ -669,7 +669,7 @@ public static class StudentAiLearningEndpoints
             var audio = await geminiVoice.SpeakAsync(text, "Kore", http.RequestAborted) ??
                 await groqVoice.SpeakAsync(text, "Kore", http.RequestAborted);
             if (audio is null) return Results.Json(new { error = "speech_unavailable" }, statusCode: 503);
-            http.Response.Headers.CacheControl = "private, max-age=3600";
+            http.Response.Headers.CacheControl = "no-store";
             return Results.File(audio, "audio/wav");
         }).RequireRateLimiting("student-voice");
 
@@ -702,7 +702,7 @@ public static class StudentAiLearningEndpoints
             var audio = await geminiVoice.SpeakAsync(text, selectedVoice, http.RequestAborted) ??
                 await groqVoice.SpeakAsync(text, selectedVoice, http.RequestAborted);
             if (audio is null) return Results.Json(new { error = "speech_unavailable" }, statusCode: 503);
-            http.Response.Headers.CacheControl = "private, max-age=3600";
+            http.Response.Headers.CacheControl = "no-store";
             return Results.File(audio, "audio/wav");
         }).RequireRateLimiting("student-voice");
 

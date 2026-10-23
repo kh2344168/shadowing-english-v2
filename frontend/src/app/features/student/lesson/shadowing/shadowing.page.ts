@@ -109,6 +109,7 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
 
   readonly slotId = this.route.snapshot.paramMap.get('slotId') ?? '';
   readonly reviewMode = (this.route.snapshot.routeConfig?.path ?? '').includes('shadowing-review');
+  private studentId = '';
 
   lesson: ShadowingLessonView | null = null;
   overview: LessonOverview | null = null;
@@ -270,6 +271,7 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
         throw new Error('shadowing_stage_locked');
       }
       this.overview = overview;
+      this.studentId = overview.studentId ?? '';
       this.completedSegments = overview.completedSegments;
       this.stageComplete = overview.isComplete;
 
@@ -900,7 +902,7 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
     this.recordings = this.recordings.filter((item) => item.meta.id !== recording.meta.id);
     this.refreshView();
     try {
-      await this.recordingStore.delete(recording.meta.id);
+      await this.recordingStore.delete(recording.meta.id, this.studentId);
     } catch (error) {
       this.logError('Recording.LocalDelete.Failed', error, { slotId: this.slotId, recordingId: recording.meta.id });
     }
@@ -2313,6 +2315,7 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
     try {
       await this.recordingStore.save({
         id: recording.meta.id,
+        studentId: this.studentId,
         slotId: this.slotId,
         reviewMode: this.reviewMode,
         repetition: recording.meta.repetitionFrom,
@@ -2337,7 +2340,7 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
 
   private async restoreLocalRecordings(): Promise<void> {
     try {
-      const rows = await this.recordingStore.list(this.slotId, this.reviewMode);
+      const rows = await this.recordingStore.list(this.studentId, this.slotId, this.reviewMode);
       for (const recording of this.recordings) {
         if (recording.url) URL.revokeObjectURL(recording.url);
       }

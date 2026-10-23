@@ -127,7 +127,7 @@ public static class StudentLearningEndpoints
                 http.Response.Headers.CacheControl = "no-store";
                 log.LogInformation("Student.Overview.Success StudentId={StudentId} SlotId={SlotId} StageCount={StageCount} DurationMs={DurationMs}",
                     student, slotId, stages.Length, Ms(clock));
-                return Results.Ok(new OverviewDto(slotId, slot.VersionId, slot.Title, slot.Description,
+                return Results.Ok(new OverviewDto(student.Value, slotId, slot.VersionId, slot.Title, slot.Description,
                     slot.WeekNumber, slot.DayNumber, slot.SortOrder, count,
                     shadowingProgress?.CompletedSegments ?? 0,
                     slot.WorkflowStagesJson is null ? shadowingProgress?.IsComplete ?? false :
@@ -154,7 +154,7 @@ public static class StudentLearningEndpoints
                     .Where(x => x.LessonVersionId == slot.LessonVersionId && x.Position == position)
                     .Select(x => new { x.Text }).SingleOrDefaultAsync();
                 if (segment is null) return Missing(log, clock, student.Value, slotId);
-                http.Response.Headers.CacheControl = "private, max-age=300";
+                http.Response.Headers.CacheControl = "no-store";
                 log.LogInformation("Student.Segment.Success StudentId={StudentId} SlotId={SlotId} Position={Position} DurationMs={DurationMs}", student, slotId, position, Ms(clock));
                 return Results.Ok(new SegmentDto(position, segment.Text,
                     $"/api/student/learning/slots/{slotId}/segments/{position}/audio"));
@@ -186,10 +186,8 @@ public static class StudentLearningEndpoints
                     return MediaUnavailable(log, student.Value, clock, "media_storage_not_configured");
                 var audio = await media.OpenAsync(key, http.RequestAborted);
                 if (audio is null) return MediaUnavailable(log, student.Value, clock, "lesson_audio_missing");
-                // Revalidate through authorization on each visit; a matching private ETag avoids retransmitting audio.
-                // Audio keys are immutable. A short private cache makes replay and the rolling
-                // next-sentence buffer local to this browser without exposing shared-cache data.
-                http.Response.Headers.CacheControl = "private, max-age=300";
+                // A shared browser must ask the API again after accounts change or access is revoked.
+                http.Response.Headers.CacheControl = "no-store";
                 var tag = new EntityTagHeaderValue(audio.ETag);
                 log.LogInformation("Student.Audio.Success StudentId={StudentId} SlotId={SlotId} Position={Position} DurationMs={DurationMs}", student, slotId, position, Ms(clock));
                 return Results.Stream(audio.Content, "audio/wav", lastModified: audio.LastModified,
@@ -414,7 +412,7 @@ public static class StudentLearningEndpoints
         int CompletedSegments, int CompletedStages, int TotalStages, bool IsComplete);
     private sealed record CurriculumDto(string? GroupName, Guid? PublishedVersionId, string? CurriculumTitle,
         LessonCard[] Items, bool HasMore);
-    private sealed record OverviewDto(Guid SlotId, Guid VersionId, string Title, string Description,
+    private sealed record OverviewDto(Guid StudentId, Guid SlotId, Guid VersionId, string Title, string Description,
         int WeekNumber, int DayNumber, int SortOrder, int SegmentCount, int CompletedSegments, bool IsComplete,
         bool HasAiContent, int TotalStages, int CompletedStages, StageOverviewDto[] Stages);
     private sealed record WorkflowStage(Guid Id, string Type, string Title, int Position,

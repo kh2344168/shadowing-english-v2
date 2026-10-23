@@ -38,6 +38,7 @@ export interface StageLink {
   route: string;
 }
 export interface LessonOverview {
+  studentId?: string;
   slotId: string;
   versionId: string;
   title: string;

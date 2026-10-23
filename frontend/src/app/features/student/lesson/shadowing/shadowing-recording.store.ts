@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 
 export interface StoredShadowingRecording {
   id: string;
+  studentId: string;
   slotId: string;
   reviewMode: boolean;
   repetition: number;
@@ -17,7 +18,8 @@ export class ShadowingRecordingStore {
   private readonly storeName = 'shadowing-recordings';
   private readonly maxPerStage = 6;
 
-  async list(slotId: string, reviewMode: boolean): Promise<StoredShadowingRecording[]> {
+  async list(studentId: string, slotId: string, reviewMode: boolean): Promise<StoredShadowingRecording[]> {
+    if (!studentId) return [];
     const db = await this.open();
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(this.storeName, 'readonly');
@@ -25,7 +27,7 @@ export class ShadowingRecordingStore {
       request.onerror = () => reject(request.error ?? new Error('indexeddb_read_failed'));
       request.onsuccess = () => {
         const rows = (request.result as StoredShadowingRecording[])
-          .filter((item) => item.slotId === slotId && item.reviewMode === reviewMode)
+          .filter((item) => item.studentId === studentId && item.slotId === slotId && item.reviewMode === reviewMode)
           .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
         resolve(rows);
       };
@@ -33,6 +35,7 @@ export class ShadowingRecordingStore {
   }
 
   async save(recording: StoredShadowingRecording): Promise<void> {
+    if (!recording.studentId) throw new Error('recording_owner_missing');
     const db = await this.open();
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(this.storeName, 'readwrite');
@@ -41,23 +44,30 @@ export class ShadowingRecordingStore {
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error ?? new Error('indexeddb_transaction_failed'));
     });
-    await this.trim(recording.slotId, recording.reviewMode);
+    await this.trim(recording.studentId, recording.slotId, recording.reviewMode);
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, studentId: string): Promise<void> {
+    if (!studentId) throw new Error('recording_owner_missing');
     const db = await this.open();
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction(this.storeName, 'readwrite');
-      transaction.objectStore(this.storeName).delete(id);
+      const store = transaction.objectStore(this.storeName);
+      const lookup = store.get(id);
+      lookup.onsuccess = () => {
+        if ((lookup.result as StoredShadowingRecording | undefined)?.studentId === studentId)
+          store.delete(id);
+      };
+      lookup.onerror = () => reject(lookup.error ?? new Error('indexeddb_read_failed'));
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error ?? new Error('indexeddb_delete_failed'));
     });
   }
 
-  private async trim(slotId: string, reviewMode: boolean): Promise<void> {
-    const rows = await this.list(slotId, reviewMode);
+  private async trim(studentId: string, slotId: string, reviewMode: boolean): Promise<void> {
+    const rows = await this.list(studentId, slotId, reviewMode);
     const excess = rows.slice(this.maxPerStage);
-    for (const row of excess) await this.delete(row.id);
+    for (const row of excess) await this.delete(row.id, studentId);
   }
 
   private open(): Promise<IDBDatabase> {
