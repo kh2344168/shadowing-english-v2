@@ -643,8 +643,8 @@ namespace ShadowingEnglish.Infrastructure.Database.Migrations
 
                     b.Property<string>("FeedbackJson")
                         .IsRequired()
-                        .HasMaxLength(3000)
-                        .HasColumnType("nvarchar(3000)");
+                        .HasMaxLength(32000)
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("Position")
                         .HasColumnType("int");

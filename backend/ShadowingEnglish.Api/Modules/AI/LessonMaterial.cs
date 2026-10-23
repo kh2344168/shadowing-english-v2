@@ -36,8 +36,11 @@ public sealed record ConversationResult(bool GoalMet, int ReplyCount, int Releva
 
 public static class LessonMaterialRules
 {
+    public const int MaxStoredJsonChars = 32000;
     public static readonly string[] DictationModes = ["full-sentence", "missing-word", "word-order", "single-word"];
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    public static bool FitsStoredPayload(LessonMaterial material) =>
+        JsonSerializer.Serialize(material, Json).Length <= MaxStoredJsonChars;
     private static readonly string[] DefaultApprovalStages = [
         "vocabulary", "listen-type", "grammar", "vocabulary-quiz", "grammar-quiz",
         "word-order", "conversation"
@@ -489,7 +492,7 @@ public static class LessonMaterialRules
                             end <= start || end - start > 10 || end > 600))) return false;
             }
         }
-        return true;
+        return FitsStoredPayload(material);
     }
 
     public static DictationCard SuggestedDictation(int position, string text, string level, bool enabled)
@@ -586,7 +589,8 @@ public static class LessonMaterialRules
                 result.MetSteps?.All(x => Field(x, 160)) != false &&
                 result.Issues is not { Length: > 3 } &&
                 result.Issues?.All(x => Field(x.Original, 300) && Field(x.Suggested, 300) &&
-                    Field(x.Reason, 160) && Field(x.Kind, 40)) != false ? result : null;
+                    Field(x.Reason, 160) && Field(x.Kind, 40)) != false &&
+                JsonSerializer.Serialize(result, Json).Length <= MaxStoredJsonChars ? result : null;
         }
         catch (JsonException) { return null; }
     }

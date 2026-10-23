@@ -345,6 +345,38 @@ internal static class AiTextChecks
                 script.Contains("[AiContentId]", StringComparison.Ordinal) &&
                 script.Contains("CREATE TABLE [LessonWorkflows]") &&
                 script.Contains("[WorkflowStagesJson]"), "ai_migration_sql_missing");
+            Assert(model.Model.FindEntityType(typeof(StudentPracticeAttempt))!
+                .FindProperty(nameof(StudentPracticeAttempt.FeedbackJson))!.GetMaxLength() == 32000 &&
+                script.Contains("ALTER TABLE [StudentPracticeAttempts] ALTER COLUMN [FeedbackJson] nvarchar(max)"),
+                "feedback_column_still_too_short");
+            return Task.CompletedTask;
+        });
+        await check("AI payload and feedback honor persisted JSON size boundaries", () =>
+        {
+            var words = Enumerable.Range(0, 20).Select(i => ((char)('a' + i)).ToString()).ToArray();
+            var oversized = LessonMaterialRules.EmptyDraft() with
+            {
+                VocabularyOnly = true,
+                Vocabulary = words.Select(word => new VocabularyCard(word, new string('م', 120),
+                    "Hello world", new string('م', 200), Explanation: new string('م', 300),
+                    ExtraExample: "Hello world", UsageNote: new string('م', 200),
+                    ImageUrl: "https://example.com/" + new string('a', 950))).ToArray()
+            };
+            Assert(LessonMaterialRules.Valid(oversized with
+                { Vocabulary = [oversized.Vocabulary[0]] }, words[0]) &&
+                JsonSerializer.Serialize(oversized, LessonMaterialRules.Json).Length >
+                LessonMaterialRules.MaxStoredJsonChars &&
+                !LessonMaterialRules.Valid(oversized, string.Join(' ', words)),
+                "oversized_ai_payload_accepted_before_save");
+            var feedback = new ChatFeedback(new string('r', 400), new string('c', 300),
+                new string('b', 300), new string('g', 300), true,
+                Enumerable.Repeat(new string('s', 160), 6).ToArray(),
+                Enumerable.Range(0, 3).Select(_ => new ConversationIssue(new string('o', 300),
+                    new string('n', 300), new string('x', 160), new string('k', 40))).ToArray(), true);
+            var serialized = JsonSerializer.Serialize(feedback, LessonMaterialRules.Json);
+            Assert(serialized.Length > 3000 && serialized.Length <= LessonMaterialRules.MaxStoredJsonChars &&
+                LessonMaterialRules.ParseFeedback(serialized) is not null,
+                "valid_long_ai_feedback_rejected_or_unbounded");
             return Task.CompletedTask;
         });
         await check("Router falls back after 429 and validates JSON before returning", async () =>

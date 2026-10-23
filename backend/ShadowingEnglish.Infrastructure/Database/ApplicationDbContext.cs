@@ -235,7 +235,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.HasKey(x => x.Id);
             entity.Property(x => x.StageKey).IsRequired().HasMaxLength(32);
             entity.Property(x => x.Answer).IsRequired().HasMaxLength(600);
-            entity.Property(x => x.FeedbackJson).IsRequired().HasMaxLength(3000);
+            entity.Property(x => x.FeedbackJson).IsRequired().HasMaxLength(32000);
             entity.HasIndex(x => x.PublishedCurriculumVersionId);
             entity.HasIndex(x => new { x.SlotId, x.PublishedCurriculumVersionId });
             entity.HasIndex(x => new { x.StudentId, x.SlotId, x.StageKey, x.CreatedAtUtc });

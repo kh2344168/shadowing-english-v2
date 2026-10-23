@@ -142,10 +142,18 @@ public sealed class LessonAiWorker(IServiceScopeFactory scopes, LessonAiJobSigna
                         }
                         material = material with { Vocabulary = cards };
                     }
-                    job.PayloadJson = JsonSerializer.Serialize(material, LessonMaterialRules.Json);
-                    job.ProviderName = completion.Provider;
-                    job.ErrorCode = null;
-                    job.Status = "Draft";
+                    if (!LessonMaterialRules.FitsStoredPayload(material))
+                    {
+                        job.Status = "Failed";
+                        job.ErrorCode = "ai_material_too_large";
+                    }
+                    else
+                    {
+                        job.PayloadJson = JsonSerializer.Serialize(material, LessonMaterialRules.Json);
+                        job.ProviderName = completion.Provider;
+                        job.ErrorCode = null;
+                        job.Status = "Draft";
+                    }
                 }
             }
             job.Revision = Guid.NewGuid();
@@ -257,6 +265,11 @@ public sealed class LessonAiWorker(IServiceScopeFactory scopes, LessonAiJobSigna
             job.ErrorCode = providerFailure ?? (stageType == "listen-type" ?
                 "stage_audio_missing_or_invalid" : "providers_unavailable_or_invalid_output");
         }
+        else if (!LessonMaterialRules.FitsStoredPayload(generated))
+        {
+            job.Status = "Failed";
+            job.ErrorCode = "ai_material_too_large";
+        }
         else
         {
             job.PayloadJson = JsonSerializer.Serialize(generated, LessonMaterialRules.Json);
@@ -319,11 +332,19 @@ public sealed class LessonAiWorker(IServiceScopeFactory scopes, LessonAiJobSigna
                     var image = await images.FindAsync(cards[index].Word, cancel);
                     if (image is not null) cards[index] = cards[index] with { ImageUrl = image };
                 }
-            job.PayloadJson = JsonSerializer.Serialize(completion.Value with { Vocabulary = cards },
-                LessonMaterialRules.Json);
-            job.ProviderName = completion.Provider;
-            job.Status = "Draft";
-            job.ErrorCode = null;
+            var material = completion.Value with { Vocabulary = cards };
+            if (!LessonMaterialRules.FitsStoredPayload(material))
+            {
+                job.Status = "Failed";
+                job.ErrorCode = "ai_material_too_large";
+            }
+            else
+            {
+                job.PayloadJson = JsonSerializer.Serialize(material, LessonMaterialRules.Json);
+                job.ProviderName = completion.Provider;
+                job.Status = "Draft";
+                job.ErrorCode = null;
+            }
         }
         job.Revision = Guid.NewGuid();
         job.UpdatedAtUtc = DateTimeOffset.UtcNow;
