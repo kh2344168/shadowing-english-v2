@@ -372,6 +372,10 @@ public static class StudentAiLearningEndpoints
                 var limit = Math.Clamp(config.GetValue<int?>("AiText:StudentDailyLimit") ?? 10, 1, 20);
                 await using (var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, http.RequestAborted))
                 {
+                    // A browser retry may use a new request ID after a crash. Release abandoned
+                    // reservations for this student before checking the daily limit.
+                    await ReclaimStaleReservations(db, student.Value, DateTimeOffset.UtcNow.AddMinutes(-3),
+                        http.RequestAborted);
                     if (await db.StudentStageProgress.AnyAsync(x => x.StudentId == student &&
                         x.PublishedCurriculumVersionId == data.VersionId && x.SlotId == slotId &&
                         x.StageKey == "conversation" && x.IsComplete, http.RequestAborted))
@@ -968,6 +972,27 @@ public static class StudentAiLearningEndpoints
         if (usage is not null && usage.UsedRequests > 0) usage.UsedRequests--;
         await db.SaveChangesAsync(cancel);
         await tx.CommitAsync(cancel);
+    }
+    internal static async Task<int> ReclaimStaleReservations(ApplicationDbContext db, Guid studentId,
+        DateTimeOffset beforeUtc, CancellationToken cancel)
+    {
+        // The student daily limit bounds new pending rows. Cap one sweep so an old account
+        // cannot make a login request scan an unbounded history.
+        var stale = await db.StudentPracticeAttempts
+            .Where(x => x.StudentId == studentId && x.StageKey == "conversation" &&
+                x.FeedbackJson == "" && x.CreatedAtUtc < beforeUtc)
+            .OrderByDescending(x => x.CreatedAtUtc).Take(100).ToListAsync(cancel);
+        if (stale.Count == 0) return 0;
+        foreach (var day in stale.GroupBy(x => DateOnly.FromDateTime(x.CreatedAtUtc.UtcDateTime)))
+        {
+            var usage = await db.StudentAiDailyUsages.SingleOrDefaultAsync(x =>
+                x.StudentId == studentId && x.DayUtc == day.Key, cancel);
+            if (usage is not null)
+                usage.UsedRequests = Math.Max(0, usage.UsedRequests - day.Count());
+        }
+        db.StudentPracticeAttempts.RemoveRange(stale);
+        await db.SaveChangesAsync(cancel);
+        return stale.Count;
     }
     private static StudentPracticeAttempt Attempt(Guid id, Guid student, Guid version, Guid slot, string stage,
         int position, string answer, string feedback) => new()

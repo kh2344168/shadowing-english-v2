@@ -426,6 +426,59 @@ internal static class AiTextChecks
         using var other = await app.LoginAsync("other");
         using var adminClient = await app.LoginAsync("admin");
         var path = $"/api/student/learning/slots/{slotId}";
+        await check("Interrupted AI turns release only their owner's expired daily reservations", async () =>
+        {
+            var day = DateOnly.FromDateTime(DateTime.UtcNow);
+            var staleId = Guid.NewGuid(); var freshId = Guid.NewGuid();
+            var finishedId = Guid.NewGuid(); var otherId = Guid.NewGuid();
+            Guid studentId; Guid otherStudentId;
+            using (var scope = app.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                studentId = await db.Users.Where(x => x.Email == "student@v2-test.invalid")
+                    .Select(x => x.Id).SingleAsync();
+                otherStudentId = await db.Users.Where(x => x.Email == "other@v2-test.invalid")
+                    .Select(x => x.Id).SingleAsync();
+                var old = DateTimeOffset.UtcNow.AddMinutes(-5);
+                db.StudentAiDailyUsages.AddRange(
+                    new StudentAiDailyUsage { StudentId = studentId, DayUtc = day, UsedRequests = 3 },
+                    new StudentAiDailyUsage { StudentId = otherStudentId, DayUtc = day, UsedRequests = 1 });
+                foreach (var (id, owner, created, feedback) in new[]
+                {
+                    (staleId, studentId, old, ""),
+                    (freshId, studentId, DateTimeOffset.UtcNow, ""),
+                    (finishedId, studentId, old, "{\"reply\":\"ok\"}"),
+                    (otherId, otherStudentId, old, "")
+                })
+                    db.StudentPracticeAttempts.Add(new StudentPracticeAttempt { Id = id, StudentId = owner,
+                        PublishedCurriculumVersionId = publishedId, SlotId = slotId,
+                        StageKey = "conversation", Answer = "Hello", FeedbackJson = feedback,
+                        CreatedAtUtc = created });
+                await db.SaveChangesAsync();
+            }
+            using (var scope = app.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                await using var tx = await db.Database.BeginTransactionAsync();
+                var reclaimed = await StudentAiLearningEndpoints.ReclaimStaleReservations(db, studentId,
+                    DateTimeOffset.UtcNow.AddMinutes(-3), CancellationToken.None);
+                await tx.CommitAsync();
+                Assert(reclaimed == 1, "unexpected_reservation_recovery_count");
+            }
+            using (var scope = app.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                Assert(!await db.StudentPracticeAttempts.AnyAsync(x => x.Id == staleId) &&
+                    await db.StudentPracticeAttempts.AnyAsync(x => x.Id == freshId) &&
+                    await db.StudentPracticeAttempts.AnyAsync(x => x.Id == finishedId) &&
+                    await db.StudentPracticeAttempts.AnyAsync(x => x.Id == otherId) &&
+                    await db.StudentAiDailyUsages.Where(x => x.StudentId == studentId && x.DayUtc == day)
+                        .Select(x => x.UsedRequests).SingleAsync() == 2 &&
+                    await db.StudentAiDailyUsages.Where(x => x.StudentId == otherStudentId && x.DayUtc == day)
+                        .Select(x => x.UsedRequests).SingleAsync() == 1,
+                    "stale_recovery_changed_fresh_completed_or_other_student_reservations");
+            }
+        });
         await check("Vocabulary count survives material serialization", () =>
         {
             var configured = material with { VocabularyTargetCount = 7 };
