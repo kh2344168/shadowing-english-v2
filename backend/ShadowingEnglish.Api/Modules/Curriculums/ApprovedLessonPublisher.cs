@@ -123,22 +123,14 @@ public static class ApprovedLessonPublisher
                 // Persist the new snapshot inside this transaction before the FK-bound copy.
                 // INSERT...SELECT keeps large attempt histories out of the API heap and EF tracker.
                 await db.SaveChangesAsync(cancellation);
-                foreach (var oldSlot in oldSlots)
-                {
-                    var newSlotId = nextSlots[oldSlot.Id].Id;
-                    if (oldSlot.Id != target.Id)
-                    {
-                        await CopyAttemptsSqlAsync(db, previous.Id, oldSlot.Id, next.Id,
-                            newSlotId, null, cancellation);
-                        continue;
-                    }
-                    var allowedStages = unchangedStages.ToHashSet(StringComparer.Ordinal);
-                    if (allowedStages.Contains("conversation"))
-                        allowedStages.Add("conversation-result");
-                    foreach (var stageKey in allowedStages)
-                        await CopyAttemptsSqlAsync(db, previous.Id, oldSlot.Id, next.Id,
-                            newSlotId, stageKey, cancellation);
-                }
+                var mappingJson = JsonSerializer.Serialize(oldSlots.Select(slot => new
+                    { oldSlotId = slot.Id, newSlotId = nextSlots[slot.Id].Id }), Json);
+                var allowedStages = unchangedStages.ToHashSet(StringComparer.Ordinal);
+                if (allowedStages.Contains("conversation"))
+                    allowedStages.Add("conversation-result");
+                var allowedStagesJson = JsonSerializer.Serialize(allowedStages, Json);
+                await CopyAttemptsSqlAsync(db, previous.Id, next.Id, target.Id,
+                    mappingJson, allowedStagesJson, cancellation);
             }
             else
             {
@@ -173,26 +165,22 @@ public static class ApprovedLessonPublisher
     }
 
     private static Task<int> CopyAttemptsSqlAsync(ApplicationDbContext db, Guid oldVersionId,
-        Guid oldSlotId, Guid newVersionId, Guid newSlotId, string? stageKey,
-        CancellationToken cancellation) => stageKey is null
-        ? db.Database.ExecuteSqlInterpolatedAsync($"""
+        Guid newVersionId, Guid changedSlotId, string mappingJson, string allowedStagesJson,
+        CancellationToken cancellation) => db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO [StudentPracticeAttempts]
                 ([Id], [StudentId], [PublishedCurriculumVersionId], [SlotId], [StageKey],
                  [Position], [Answer], [FeedbackJson], [CreatedAtUtc])
-            SELECT NEWID(), [StudentId], {newVersionId}, {newSlotId}, [StageKey],
-                   [Position], [Answer], [FeedbackJson], [CreatedAtUtc]
-            FROM [StudentPracticeAttempts]
-            WHERE [PublishedCurriculumVersionId] = {oldVersionId} AND [SlotId] = {oldSlotId}
-            """, cancellation)
-        : db.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO [StudentPracticeAttempts]
-                ([Id], [StudentId], [PublishedCurriculumVersionId], [SlotId], [StageKey],
-                 [Position], [Answer], [FeedbackJson], [CreatedAtUtc])
-            SELECT NEWID(), [StudentId], {newVersionId}, {newSlotId}, [StageKey],
-                   [Position], [Answer], [FeedbackJson], [CreatedAtUtc]
-            FROM [StudentPracticeAttempts]
-            WHERE [PublishedCurriculumVersionId] = {oldVersionId} AND [SlotId] = {oldSlotId}
-                AND [StageKey] = {stageKey}
+            SELECT NEWID(), attempt.[StudentId], {newVersionId}, mapping.[NewSlotId],
+                   attempt.[StageKey], attempt.[Position], attempt.[Answer],
+                   attempt.[FeedbackJson], attempt.[CreatedAtUtc]
+            FROM [StudentPracticeAttempts] AS attempt
+            INNER JOIN OPENJSON({mappingJson}) WITH
+                ([OldSlotId] uniqueidentifier '$.oldSlotId',
+                 [NewSlotId] uniqueidentifier '$.newSlotId') AS mapping
+                ON mapping.[OldSlotId] = attempt.[SlotId]
+            WHERE attempt.[PublishedCurriculumVersionId] = {oldVersionId}
+                AND (attempt.[SlotId] <> {changedSlotId} OR attempt.[StageKey] IN
+                    (SELECT [value] FROM OPENJSON({allowedStagesJson})))
             """, cancellation);
 
     private static AdminLessonWorkflowEndpoints.WorkflowStage[] ReadStages(string? json)

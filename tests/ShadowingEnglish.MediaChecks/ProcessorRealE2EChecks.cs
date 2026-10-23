@@ -32,7 +32,8 @@ internal static class ProcessorRealE2EChecks
 
     public static async Task<int> RunAsync(string manifestPath, Func<string, Func<Task>, Task> check,
         Func<int> failures, int studentCount = 0, int concurrentStudents = 0, int maxConcurrency = 0,
-        int republishAttempts = 1, int groupCount = 0, int groupStudents = 0, int groupAttempts = 0)
+        int republishAttempts = 1, int groupCount = 0, int groupStudents = 0, int groupAttempts = 0,
+        int groupLessons = 1)
     {
         var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
         var manifestFile = Path.GetFullPath(manifestPath);
@@ -148,17 +149,18 @@ internal static class ProcessorRealE2EChecks
             await StudentLoadAsync(app, concurrentStudents, maxConcurrency, publishedSlotId, wave, check);
         if (groupCount > 0)
             await GroupRepublishLoadAsync(app, curriculumId, versionId, publishedId,
-                publishedSlotId, groupCount, groupStudents, groupAttempts, check);
+                publishedSlotId, groupCount, groupStudents, groupAttempts, groupLessons, check);
         return failures() == 0 ? 0 : 1;
     }
 
     private static async Task GroupRepublishLoadAsync(SqlProcessorApp app, Guid curriculumId,
         Guid lessonVersionId, Guid firstVersionId, Guid firstSlotId, int groupCount,
-        int studentsPerGroup, int attemptsPerStudent, Func<string, Func<Task>, Task> check)
+        int studentsPerGroup, int attemptsPerStudent, int lessonCount,
+        Func<string, Func<Task>, Task> check)
     {
-        var groups = new List<(Guid GroupId, Guid VersionId, Guid SlotId)>
-            { (app.GroupId, firstVersionId, firstSlotId) };
-        await check($"Seed {groupCount} isolated groups and {groupCount * studentsPerGroup} students", async () =>
+        var groups = new List<(Guid GroupId, Guid VersionId, Guid[] SlotIds)>();
+        await check($"Seed {groupCount} isolated groups, {lessonCount} lessons and " +
+            $"{groupCount * studentsPerGroup} students", async () =>
         {
             using var scope = app.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -166,15 +168,55 @@ internal static class ProcessorRealE2EChecks
                 .SingleAsync(x => x.Id == firstVersionId);
             var originalSlot = await db.PublishedLessonSlots.AsNoTracking()
                 .SingleAsync(x => x.Id == firstSlotId);
+            var originalSegment = await db.LessonSegments.AsNoTracking()
+                .SingleAsync(x => x.LessonVersionId == lessonVersionId);
             var adminId = await db.StudyGroups.AsNoTracking().Where(x => x.Id == app.GroupId)
                 .Select(x => x.CreatedByAdminId).SingleAsync();
             var now = DateTimeOffset.UtcNow;
+            var lessonIds = new List<Guid> { lessonVersionId };
+            var firstSlotIds = new Guid[lessonCount];
+            firstSlotIds[0] = firstSlotId;
+            for (var index = 1; index < lessonCount; index++)
+            {
+                var definitionId = Guid.NewGuid();
+                var extraLessonId = Guid.NewGuid();
+                var slotId = Guid.NewGuid();
+                lessonIds.Add(extraLessonId);
+                firstSlotIds[index] = slotId;
+                db.LessonDefinitions.Add(new LessonDefinition
+                    { Id = definitionId, Title = $"Publisher extra lesson {index}" });
+                db.LessonVersions.Add(new LessonVersion
+                {
+                    Id = extraLessonId, LessonDefinitionId = definitionId, VersionNumber = 1,
+                    Title = $"Publisher extra lesson {index}", Description = "Load fixture",
+                    LessonType = "clip", Level = "A1", Goal = "Measure republish", CreatedAtUtc = now
+                });
+                db.LessonSegments.Add(new LessonSegment
+                {
+                    Id = Guid.NewGuid(), LessonVersionId = extraLessonId, Position = 1,
+                    Text = originalSegment.Text, AudioStorageKey = originalSegment.AudioStorageKey
+                });
+                db.CurriculumDraftLessonSlots.Add(new CurriculumDraftLessonSlot
+                {
+                    Id = Guid.NewGuid(), CurriculumTemplateId = curriculumId,
+                    LessonVersionId = extraLessonId, WeekNumber = 1, DayNumber = 1,
+                    SortOrder = index + 1
+                });
+                db.PublishedLessonSlots.Add(new PublishedLessonSlot
+                {
+                    Id = slotId, PublishedCurriculumVersionId = firstVersionId,
+                    LessonVersionId = extraLessonId, AiContentId = null,
+                    WorkflowStagesJson = originalSlot.WorkflowStagesJson,
+                    WeekNumber = 1, DayNumber = 1, SortOrder = index + 1, AvailableAtUtc = now
+                });
+            }
+            groups.Add((app.GroupId, firstVersionId, firstSlotIds));
             for (var number = 1; number < groupCount; number++)
             {
                 var groupId = Guid.NewGuid();
                 var versionId = Guid.NewGuid();
-                var slotId = Guid.NewGuid();
-                groups.Add((groupId, versionId, slotId));
+                var slotIds = lessonIds.Select(_ => Guid.NewGuid()).ToArray();
+                groups.Add((groupId, versionId, slotIds));
                 db.StudyGroups.Add(new StudyGroup
                 {
                     Id = groupId, Name = $"Publisher load {number}", CreateRequestId = Guid.NewGuid(),
@@ -188,19 +230,23 @@ internal static class ProcessorRealE2EChecks
                     SourceDraftRevision = original.SourceDraftRevision, VersionNumber = 1,
                     Title = original.Title, PublishedAtUtc = now, AvailableAtUtc = now
                 });
-                db.PublishedLessonSlots.Add(new PublishedLessonSlot
+                for (var index = 0; index < lessonCount; index++)
                 {
-                    Id = slotId, PublishedCurriculumVersionId = versionId,
-                    LessonVersionId = lessonVersionId, AiContentId = originalSlot.AiContentId,
-                    WorkflowStagesJson = originalSlot.WorkflowStagesJson,
-                    WeekNumber = 1, DayNumber = 1, SortOrder = 1, AvailableAtUtc = now
-                });
+                    db.PublishedLessonSlots.Add(new PublishedLessonSlot
+                    {
+                        Id = slotIds[index], PublishedCurriculumVersionId = versionId,
+                        LessonVersionId = lessonIds[index],
+                        AiContentId = index == 0 ? originalSlot.AiContentId : null,
+                        WorkflowStagesJson = originalSlot.WorkflowStagesJson,
+                        WeekNumber = 1, DayNumber = 1, SortOrder = index + 1, AvailableAtUtc = now
+                    });
+                }
                 db.GroupCurriculumAssignments.Add(new GroupCurriculumAssignment
                     { GroupId = groupId, PublishedCurriculumVersionId = versionId });
             }
             await db.SaveChangesAsync();
             db.ChangeTracker.Clear();
-            foreach (var (groupId, versionId, slotId) in groups)
+            foreach (var (groupId, versionId, slotIds) in groups)
             {
                 var accounts = Enumerable.Range(0, studentsPerGroup).Select(_ =>
                 {
@@ -214,29 +260,31 @@ internal static class ProcessorRealE2EChecks
                     Id = Guid.NewGuid(), StudentId = user.Id, GroupId = groupId,
                     StartedAtUtc = now, AssignedByAdminId = adminId
                 }));
-                db.StudentStageProgress.AddRange(accounts.Select(user => new StudentStageProgress
+                db.StudentStageProgress.AddRange(accounts.SelectMany(user =>
+                    slotIds.Select(slotId => new StudentStageProgress
                 {
                     StudentId = user.Id, PublishedCurriculumVersionId = versionId,
                     SlotId = slotId, StageKey = "shadowing", CompletedSegments = 1,
                     IsComplete = true, UpdatedAtUtc = now
-                }));
+                })));
                 db.StudentPracticeAttempts.AddRange(accounts.SelectMany(user =>
-                    Enumerable.Range(1, attemptsPerStudent).Select(position => new StudentPracticeAttempt
+                    slotIds.SelectMany(slotId =>
+                        Enumerable.Range(1, attemptsPerStudent).Select(position => new StudentPracticeAttempt
                     {
                         Id = Guid.NewGuid(), StudentId = user.Id,
                         PublishedCurriculumVersionId = versionId, SlotId = slotId,
-                        StageKey = "shadowing", Position = position, Answer = "done",
+                        StageKey = "shadowing", Position = position, Answer = slotId.ToString("D"),
                         FeedbackJson = "{}", CreatedAtUtc = now
-                    })));
+                    }))));
                 await db.SaveChangesAsync();
                 db.ChangeTracker.Clear();
             }
             var oldIds = groups.Select(x => x.VersionId).ToArray();
             Assert(await db.StudentStageProgress.CountAsync(x =>
-                oldIds.Contains(x.PublishedCurriculumVersionId)) == groupCount * studentsPerGroup &&
+                oldIds.Contains(x.PublishedCurriculumVersionId)) == groupCount * studentsPerGroup * lessonCount &&
                 await db.StudentPracticeAttempts.CountAsync(x =>
                     oldIds.Contains(x.PublishedCurriculumVersionId)) ==
-                    groupCount * studentsPerGroup * attemptsPerStudent,
+                    groupCount * studentsPerGroup * lessonCount * attemptsPerStudent,
                 "group_load_seed_incomplete");
         });
         if (groups.Count != groupCount) return;
@@ -264,19 +312,50 @@ internal static class ProcessorRealE2EChecks
                 NullLogger.Instance, CancellationToken.None);
             clock.Stop();
             var groupIds = groups.Select(x => x.GroupId).ToArray();
-            var latest = await db.GroupCurriculumAssignments.AsNoTracking()
+            var latestAssignments = await db.GroupCurriculumAssignments.AsNoTracking()
                 .Where(x => groupIds.Contains(x.GroupId))
-                .Select(x => x.PublishedCurriculumVersionId).ToArrayAsync();
+                .Select(x => new { x.GroupId, x.PublishedCurriculumVersionId }).ToArrayAsync();
+            var latest = latestAssignments.Select(x => x.PublishedCurriculumVersionId).ToArray();
+            var newSlots = await db.PublishedLessonSlots.AsNoTracking()
+                .Where(x => latest.Contains(x.PublishedCurriculumVersionId))
+                .Select(x => new { x.Id, x.PublishedCurriculumVersionId, x.SortOrder })
+                .ToArrayAsync();
+            var attemptBuckets = await db.StudentPracticeAttempts.AsNoTracking()
+                .Where(x => latest.Contains(x.PublishedCurriculumVersionId))
+                .GroupBy(x => new { x.SlotId, x.Answer })
+                .Select(x => new { x.Key.SlotId, x.Key.Answer, Count = x.Count() })
+                .ToArrayAsync();
+            var progressBuckets = await db.StudentStageProgress.AsNoTracking()
+                .Where(x => latest.Contains(x.PublishedCurriculumVersionId))
+                .GroupBy(x => x.SlotId)
+                .Select(x => new { SlotId = x.Key, Count = x.Count() })
+                .ToArrayAsync();
+            var oldSlotByNewSlot = latestAssignments.SelectMany(assignment =>
+            {
+                var original = groups.Single(x => x.GroupId == assignment.GroupId);
+                return newSlots.Where(x => x.PublishedCurriculumVersionId ==
+                        assignment.PublishedCurriculumVersionId)
+                    .Select(x => new { x.Id, OriginalSlotId = original.SlotIds[x.SortOrder - 1] });
+            }).ToDictionary(x => x.Id, x => x.OriginalSlotId.ToString("D"));
             Assert(published == groupCount && latest.Distinct().Count() == groupCount &&
                 !latest.Intersect(groups.Select(x => x.VersionId)).Any() &&
+                newSlots.Length == groupCount * lessonCount &&
                 await db.StudentStageProgress.CountAsync(x =>
-                    latest.Contains(x.PublishedCurriculumVersionId)) == groupCount * studentsPerGroup &&
+                    latest.Contains(x.PublishedCurriculumVersionId)) == groupCount * studentsPerGroup * lessonCount &&
                 await db.StudentPracticeAttempts.CountAsync(x =>
                     latest.Contains(x.PublishedCurriculumVersionId)) ==
-                    groupCount * studentsPerGroup * attemptsPerStudent,
+                    groupCount * studentsPerGroup * lessonCount * attemptsPerStudent &&
+                oldSlotByNewSlot.Count == newSlots.Length &&
+                attemptBuckets.Length == newSlots.Length &&
+                attemptBuckets.All(x => oldSlotByNewSlot.TryGetValue(x.SlotId, out var oldId) &&
+                    x.Answer == oldId && x.Count == studentsPerGroup * attemptsPerStudent) &&
+                progressBuckets.Length == newSlots.Length &&
+                progressBuckets.All(x => oldSlotByNewSlot.ContainsKey(x.SlotId) &&
+                    x.Count == studentsPerGroup),
                 "group_republish_lost_data_or_skipped_group");
-            Console.WriteLine($"GroupRepublish Groups={groupCount} Students={groupCount * studentsPerGroup} " +
-                $"Attempts={groupCount * studentsPerGroup * attemptsPerStudent} " +
+            Console.WriteLine($"GroupRepublish Groups={groupCount} Lessons={lessonCount} " +
+                $"Students={groupCount * studentsPerGroup} " +
+                $"Attempts={groupCount * studentsPerGroup * lessonCount * attemptsPerStudent} " +
                 $"DurationMs={clock.ElapsedMilliseconds} WorkingSetBeforeMb={beforeMb} " +
                 $"PeakWorkingSetMb={Process.GetCurrentProcess().PeakWorkingSet64 / 1_048_576} " +
                 $"TrackedEntities={db.ChangeTracker.Entries().Count()}");
