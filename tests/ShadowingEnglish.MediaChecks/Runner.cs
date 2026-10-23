@@ -93,6 +93,9 @@ internal static class Runner
         }
         if (args.Length == 2 && args[0] == "--processor-real-e2e")
             return await ProcessorRealE2EChecks.RunAsync(args[1], Check, () => failures);
+        if (args.Length == 3 && args[0] == "--processor-republish-load" &&
+            int.TryParse(args[2], out var students) && students is >= 1 and <= 3000)
+            return await ProcessorRealE2EChecks.RunAsync(args[1], Check, () => failures, students);
         if (args.SequenceEqual(new[] { "--health-check" }))
         {
             var apiRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "backend/ShadowingEnglish.Api"));
