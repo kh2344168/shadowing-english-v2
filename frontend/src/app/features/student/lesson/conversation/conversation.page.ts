@@ -148,6 +148,8 @@ export class StudentConversationPage implements OnInit, OnDestroy {
   private audioContext: AudioContext | null = null;
   private recordingRequest = 0;
   private audio: HTMLAudioElement | null = null;
+  private audioUrl: string | null = null;
+  private speechRequest = 0;
   private destroyed = false;
   private readonly syncViewportHeight = (): void => {
     if (typeof window === 'undefined') return;
@@ -172,7 +174,7 @@ export class StudentConversationPage implements OnInit, OnDestroy {
     window.visualViewport?.removeEventListener('resize', this.syncViewportHeight);
     window.removeEventListener('resize', this.syncViewportHeight);
     this.cancelRecording();
-    this.audio?.pause();
+    this.stopSpeech();
   }
   async load(): Promise<void> {
     this.loading.set(true);
@@ -344,7 +346,7 @@ export class StudentConversationPage implements OnInit, OnDestroy {
     }
     const request = ++this.recordingRequest;
     this.requestingMicrophone.set(true);
-    this.audio?.pause();
+    this.stopSpeech();
     try {
       this.voiceNotice.set('');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -488,32 +490,47 @@ export class StudentConversationPage implements OnInit, OnDestroy {
 
   async playReply(turnId?: string, automatic = false): Promise<void> {
     if (this.recording() || this.requestingMicrophone()) return;
-    this.audio?.pause();
-    const audio = new Audio(
-      this.api.conversationAudioUrl(this.slotId, this.selectedVoice(), turnId),
-    );
-    this.audio = audio;
-    audio.onerror = () => {
-      if (this.audio === audio)
-        this.speechNotice.set('الصوت غير متاح الآن. الرد المكتوب موجود أمامك.');
-    };
+    this.stopSpeech();
+    const request = this.speechRequest;
     try {
+      await firstValueFrom(this.auth.csrf());
+      if (request !== this.speechRequest || this.destroyed) return;
+      const sound = await firstValueFrom(
+        this.api.conversationAudio(this.slotId, this.selectedVoice(), turnId),
+      );
+      if (request !== this.speechRequest || this.destroyed) return;
+      this.audioUrl = URL.createObjectURL(sound);
+      const audio = new Audio(this.audioUrl);
+      this.audio = audio;
+      audio.onended = () => { if (this.audio === audio) this.stopSpeech(); };
+      audio.onerror = () => {
+        if (this.audio !== audio) return;
+        this.stopSpeech();
+        this.speechNotice.set('الصوت غير متاح الآن. الرد المكتوب موجود أمامك.');
+      };
       await audio.play();
       if (this.audio === audio) this.speechNotice.set('');
     } catch {
-      if (this.audio === audio)
-        this.speechNotice.set(
-          automatic
-            ? 'التشغيل التلقائي غير متاح هنا. اضغط زر الصوت لسماع سؤال المعلّم.'
-            : 'تعذر تشغيل الصوت الآن. يمكنك متابعة المحادثة من النص المكتوب.',
-        );
+      if (request !== this.speechRequest || this.destroyed) return;
+      this.stopSpeech();
+      this.speechNotice.set(automatic
+        ? 'التشغيل التلقائي غير متاح هنا. اضغط زر الصوت لسماع سؤال المعلّم.'
+        : 'تعذر تشغيل الصوت الآن. يمكنك متابعة المحادثة من النص المكتوب.');
     }
+  }
+
+  private stopSpeech(): void {
+    this.speechRequest++;
+    this.audio?.pause();
+    this.audio = null;
+    if (this.audioUrl) URL.revokeObjectURL(this.audioUrl);
+    this.audioUrl = null;
   }
 
   selectVoice(voice: ConversationVoice): void {
     this.voicePickerOpen.set(false);
     if (this.selectedVoice() === voice) return;
-    this.audio?.pause();
+    this.stopSpeech();
     this.audio = null;
     this.selectedVoice.set(voice);
     this.speechNotice.set('تم تغيير الصوت. اضغط زر الاستماع على أي رسالة لتسمعها بالصوت الجديد.');

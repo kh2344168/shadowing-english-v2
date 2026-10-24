@@ -119,6 +119,8 @@ export class StudentVocabularyPage implements OnInit, OnDestroy {
     const request = this.speechRequest;
     this.speaking.set(target);
     try {
+      await firstValueFrom(this.auth.csrf());
+      if (request !== this.speechRequest) return;
       const sound = await firstValueFrom(
         this.api.vocabularyAudio(this.slotId, this.completed() + 1, target),
       );

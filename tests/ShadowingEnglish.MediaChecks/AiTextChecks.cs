@@ -641,11 +641,29 @@ internal static class AiTextChecks
         });
         await check("Vocabulary audio stays student-scoped and requires a configured natural voice", async () =>
         {
-            using var outsider = await other.GetAsync(path + "/vocabulary/audio?position=1&part=word");
+            using var outsider = await other.PostAsJsonAsync(path + "/vocabulary/audio?position=1&part=word", new { });
             Assert(outsider.StatusCode == HttpStatusCode.NotFound, "vocabulary_audio_leaked_to_other_student");
-            using var configured = await studentClient.GetAsync(path + "/vocabulary/audio?position=1&part=word");
+            using var configured = await studentClient.PostAsJsonAsync(path + "/vocabulary/audio?position=1&part=word", new { });
             Assert(configured.StatusCode == HttpStatusCode.ServiceUnavailable,
                 "vocabulary_audio_should_require_voice_provider");
+        });
+        await check("Student speech generation rejects GET and POST without CSRF", async () =>
+        {
+            var token = studentClient.DefaultRequestHeaders.GetValues("X-XSRF-TOKEN").Single();
+            studentClient.DefaultRequestHeaders.Remove("X-XSRF-TOKEN");
+            try
+            {
+                foreach (var route in new[] { "/vocabulary/audio?position=1&part=word", "/conversation/audio?voice=Kore" })
+                {
+                    using var get = await studentClient.GetAsync(path + route);
+                    Assert(!get.IsSuccessStatusCode, "speech_get_still_enabled");
+                    using var post = await studentClient.PostAsJsonAsync(path + route, new { });
+                    Assert(post.StatusCode == HttpStatusCode.BadRequest &&
+                        (await post.Content.ReadAsStringAsync()).Contains("invalid_csrf"),
+                        "speech_without_csrf_allowed");
+                }
+            }
+            finally { studentClient.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token); }
         });
         await check("Admin approval requires four saved review decisions", async () =>
         {

@@ -251,7 +251,7 @@ export class StudentLearningApi {
     );
   }
   vocabularyAudio(slotId: string, position: number, part: 'word' | 'example') {
-    return this.http.get(`${this.base}/slots/${encodeURIComponent(slotId)}/vocabulary/audio`, {
+    return this.http.post(`${this.base}/slots/${encodeURIComponent(slotId)}/vocabulary/audio`, {}, {
       params: { position, part },
       responseType: 'blob',
     });
@@ -322,10 +322,10 @@ export class StudentLearningApi {
       form,
     );
   }
-  conversationAudioUrl(slotId: string, voice: string, turnId?: string): string {
+  conversationAudio(slotId: string, voice: string, turnId?: string) {
     const path = `${this.base}/slots/${encodeURIComponent(slotId)}/conversation/audio`;
     const params = new URLSearchParams({ voice });
     if (turnId) params.set('turnId', turnId);
-    return `${path}?${params}`;
+    return this.http.post(`${path}?${params}`, {}, { responseType: 'blob' });
   }
 }

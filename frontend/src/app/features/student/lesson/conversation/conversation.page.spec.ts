@@ -103,6 +103,40 @@ describe('StudentConversationPage', () => {
     return { http, fixture, page: fixture.componentInstance };
   }
 
+  it('plays speech from a protected POST and releases the audio on exit', async () => {
+    const { http, fixture, page } = await setup();
+    const play = vi.fn().mockResolvedValue(undefined);
+    const pause = vi.fn();
+    const revoke = vi.fn();
+    vi.stubGlobal('URL', { createObjectURL: () => 'blob:reply', revokeObjectURL: revoke });
+    vi.stubGlobal('Audio', class { play = play; pause = pause; });
+    const playing = page.playReply('turn-1');
+    await Promise.resolve();
+    const request = http.expectOne((r) => r.url.includes('/conversation/audio'));
+    expect(request.request.method).toBe('POST');
+    request.flush(new Blob(['audio']));
+    await playing;
+    expect(play).toHaveBeenCalledOnce();
+    fixture.destroy();
+    expect(pause).toHaveBeenCalled();
+    expect(revoke).toHaveBeenCalledWith('blob:reply');
+    http.verify();
+  });
+
+  it('ignores speech received after leaving the page', async () => {
+    const { http, fixture, page } = await setup();
+    const create = vi.fn();
+    vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: vi.fn() });
+    const playing = page.playReply('turn-1');
+    await Promise.resolve();
+    const request = http.expectOne((r) => r.url.includes('/conversation/audio'));
+    fixture.destroy();
+    request.flush(new Blob(['audio']));
+    await playing;
+    expect(create).not.toHaveBeenCalled();
+    http.verify();
+  });
+
   it('captures voice, shows a real level meter, stops and transcribes without sending automatically', async () => {
     const { stopTrack } = mockMicrophone();
     const { http, fixture, page } = await setup();
@@ -691,9 +725,11 @@ describe('StudentConversationPage', () => {
     expect(voices.length).toBe(3);
     (voices[1] as HTMLButtonElement).click();
     expect(page.selectedVoice()).toBe('Puck');
-    expect(TestBed.inject(StudentLearningApi).conversationAudioUrl('s1', 'Puck', 'turn-1')).toBe(
-      '/api/student/learning/slots/s1/conversation/audio?voice=Puck&turnId=turn-1',
-    );
+    TestBed.inject(StudentLearningApi).conversationAudio('s1', 'Puck', 'turn-1').subscribe();
+    const voiceRequest = http.expectOne(
+      '/api/student/learning/slots/s1/conversation/audio?voice=Puck&turnId=turn-1');
+    expect(voiceRequest.request.method).toBe('POST');
+    voiceRequest.flush(new Blob(['audio']));
     http.verify();
   });
 

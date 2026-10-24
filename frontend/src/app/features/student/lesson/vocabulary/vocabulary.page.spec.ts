@@ -104,9 +104,11 @@ describe('StudentVocabularyPage', () => {
     );
     vi.stubGlobal('URL', { createObjectURL: () => 'blob:lesson-word', revokeObjectURL: () => {} });
     const playing = fixture.componentInstance.speak('word');
+    await Promise.resolve();
     const audio = http.expectOne(
       (request) => request.url === '/api/student/learning/slots/s1/vocabulary/audio',
     );
+    expect(audio.request.method).toBe('POST');
     expect(audio.request.params.get('position')).toBe('1');
     expect(audio.request.params.get('part')).toBe('word');
     audio.flush(new Blob(['wav'], { type: 'audio/wav' }));

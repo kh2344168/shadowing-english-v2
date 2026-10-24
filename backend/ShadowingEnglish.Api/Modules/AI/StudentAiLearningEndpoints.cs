@@ -666,10 +666,11 @@ public static class StudentAiLearningEndpoints
             return Results.Ok(new { text });
         }).RequireRateLimiting("student-voice");
 
-        group.MapGet("/vocabulary/audio", async (Guid slotId, int position, string? part, HttpContext http,
+        group.MapPost("/vocabulary/audio", async (Guid slotId, int position, string? part, HttpContext http,
             ApplicationDbContext db,
-            GroqVoiceService groqVoice, GeminiSpeechService geminiVoice, IConfiguration config) =>
+            GroqVoiceService groqVoice, GeminiSpeechService geminiVoice, IConfiguration config, IAntiforgery csrf) =>
         {
+            if (!await ValidCsrf(csrf, http)) return Invalid("invalid_csrf");
             var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
@@ -693,10 +694,11 @@ public static class StudentAiLearningEndpoints
             return Results.File(audio, "audio/wav");
         }).RequireRateLimiting("student-voice");
 
-        group.MapGet("/conversation/audio", async (Guid slotId, Guid? turnId, string? voice, HttpContext http,
+        group.MapPost("/conversation/audio", async (Guid slotId, Guid? turnId, string? voice, HttpContext http,
             ApplicationDbContext db,
-            GroqVoiceService groqVoice, GeminiSpeechService geminiVoice, IConfiguration config) =>
+            GroqVoiceService groqVoice, GeminiSpeechService geminiVoice, IConfiguration config, IAntiforgery csrf) =>
         {
+            if (!await ValidCsrf(csrf, http)) return Invalid("invalid_csrf");
             var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
