@@ -286,6 +286,13 @@ internal static class ProcessorRealE2EChecks
                     SlotId = slotId, StageKey = "shadowing", CompletedSegments = 1,
                     IsComplete = true, UpdatedAtUtc = now
                 })));
+                // A stale, non-enabled stage must not reappear in the next snapshot.
+                db.StudentStageProgress.Add(new StudentStageProgress
+                {
+                    StudentId = accounts[0].Id, PublishedCurriculumVersionId = versionId,
+                    SlotId = slotIds[0], StageKey = "vocabulary", CompletedSegments = 1,
+                    IsComplete = true, UpdatedAtUtc = now
+                });
                 db.StudentPracticeAttempts.AddRange(accounts.SelectMany(user =>
                     slotIds.SelectMany(slotId =>
                         Enumerable.Range(1, attemptsPerStudent).Select(position => new StudentPracticeAttempt
@@ -300,7 +307,8 @@ internal static class ProcessorRealE2EChecks
             }
             var oldIds = groups.Select(x => x.VersionId).ToArray();
             Assert(await db.StudentStageProgress.CountAsync(x =>
-                oldIds.Contains(x.PublishedCurriculumVersionId)) == groupCount * studentsPerGroup * lessonCount &&
+                oldIds.Contains(x.PublishedCurriculumVersionId)) ==
+                    groupCount * studentsPerGroup * lessonCount + groupCount &&
                 await db.StudentPracticeAttempts.CountAsync(x =>
                     oldIds.Contains(x.PublishedCurriculumVersionId)) ==
                     groupCount * studentsPerGroup * lessonCount * attemptsPerStudent,

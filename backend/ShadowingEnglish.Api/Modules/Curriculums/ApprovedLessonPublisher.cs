@@ -81,10 +81,6 @@ public static class ApprovedLessonPublisher
                 AvailableAtUtc = x.AvailableAtUtc
             });
             db.PublishedLessonSlots.AddRange(nextSlots.Values);
-            var oldIds = oldSlots.Select(x => x.Id).ToArray();
-            var progress = await db.StudentStageProgress.AsNoTracking()
-                .Where(x => x.PublishedCurriculumVersionId == previous.Id && oldIds.Contains(x.SlotId))
-                .ToArrayAsync(cancellation);
             var oldStages = ReadStages(target.WorkflowStagesJson);
             LessonMaterial? oldMaterial = null;
             if (target.AiContentId == approved.Id) oldMaterial = material;
@@ -107,16 +103,8 @@ public static class ApprovedLessonPublisher
             bool Carry(Guid slotId, string stageKey) => slotId != target.Id ||
                 unchangedStages.Contains(stageKey) ||
                 stageKey == "conversation-result" && unchangedStages.Contains("conversation");
-            var carriedProgress = progress.Where(x => Carry(x.SlotId, x.StageKey))
-                .Select(x => new StudentStageProgress
-            {
-                StudentId = x.StudentId, PublishedCurriculumVersionId = next.Id,
-                SlotId = nextSlots[x.SlotId].Id, StageKey = x.StageKey,
-                CompletedSegments = x.CompletedSegments, IsComplete = x.IsComplete,
-                UpdatedAtUtc = x.UpdatedAtUtc
-            }).ToArray();
-            db.StudentStageProgress.AddRange(carriedProgress);
             pointer.PublishedCurriculumVersionId = next.Id;
+            StudentStageProgress[] carriedProgress = [];
             StudentPracticeAttempt[] carriedAttempts = [];
             if (db.Database.IsSqlServer())
             {
@@ -129,12 +117,27 @@ public static class ApprovedLessonPublisher
                 if (allowedStages.Contains("conversation"))
                     allowedStages.Add("conversation-result");
                 var allowedStagesJson = JsonSerializer.Serialize(allowedStages, Json);
+                await CopyProgressSqlAsync(db, previous.Id, next.Id, target.Id,
+                    mappingJson, allowedStagesJson, cancellation);
                 await CopyAttemptsSqlAsync(db, previous.Id, next.Id, target.Id,
                     mappingJson, allowedStagesJson, cancellation);
             }
             else
             {
                 // SQLite remains a small, portable path for the in-memory contract tests.
+                var oldIds = oldSlots.Select(x => x.Id).ToArray();
+                var progress = await db.StudentStageProgress.AsNoTracking()
+                    .Where(x => x.PublishedCurriculumVersionId == previous.Id && oldIds.Contains(x.SlotId))
+                    .ToArrayAsync(cancellation);
+                carriedProgress = progress.Where(x => Carry(x.SlotId, x.StageKey))
+                    .Select(x => new StudentStageProgress
+                    {
+                        StudentId = x.StudentId, PublishedCurriculumVersionId = next.Id,
+                        SlotId = nextSlots[x.SlotId].Id, StageKey = x.StageKey,
+                        CompletedSegments = x.CompletedSegments, IsComplete = x.IsComplete,
+                        UpdatedAtUtc = x.UpdatedAtUtc
+                    }).ToArray();
+                db.StudentStageProgress.AddRange(carriedProgress);
                 var attempts = await db.StudentPracticeAttempts.AsNoTracking()
                     .Where(x => x.PublishedCurriculumVersionId == previous.Id && oldIds.Contains(x.SlotId))
                     .ToArrayAsync(cancellation);
@@ -163,6 +166,25 @@ public static class ApprovedLessonPublisher
         }
         return published;
     }
+
+    private static Task<int> CopyProgressSqlAsync(ApplicationDbContext db, Guid oldVersionId,
+        Guid newVersionId, Guid changedSlotId, string mappingJson, string allowedStagesJson,
+        CancellationToken cancellation) => db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO [StudentStageProgress]
+                ([StudentId], [PublishedCurriculumVersionId], [SlotId], [StageKey],
+                 [CompletedSegments], [IsComplete], [UpdatedAtUtc])
+            SELECT progress.[StudentId], {newVersionId}, mapping.[NewSlotId],
+                   progress.[StageKey], progress.[CompletedSegments], progress.[IsComplete],
+                   progress.[UpdatedAtUtc]
+            FROM [StudentStageProgress] AS progress
+            INNER JOIN OPENJSON({mappingJson}) WITH
+                ([OldSlotId] uniqueidentifier '$.oldSlotId',
+                 [NewSlotId] uniqueidentifier '$.newSlotId') AS mapping
+                ON mapping.[OldSlotId] = progress.[SlotId]
+            WHERE progress.[PublishedCurriculumVersionId] = {oldVersionId}
+                AND (progress.[SlotId] <> {changedSlotId} OR progress.[StageKey] IN
+                    (SELECT [value] FROM OPENJSON({allowedStagesJson})))
+            """, cancellation);
 
     private static Task<int> CopyAttemptsSqlAsync(ApplicationDbContext db, Guid oldVersionId,
         Guid newVersionId, Guid changedSlotId, string mappingJson, string allowedStagesJson,
