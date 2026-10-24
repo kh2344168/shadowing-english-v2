@@ -90,6 +90,19 @@ const { chromium } = require('../../node_modules/playwright');
       (await (await fetch(`/api/student/learning/slots/${slotId}`, { cache: 'no-store' })).json()).studentId, slot);
     if (owner.toLowerCase() !== process.env.DEMO_B_ID.toLowerCase())
       throw Error('B received A overview');
+    await page.setViewportSize({ width: 390, height: 844 });
+    for (const path of [
+      '/student/dashboard', '/student/curriculum', '/student/progress',
+      '/student/recordings', '/student/knowledge-bank', '/student/messages',
+      `/student/lessons/${slot}/overview`, `/student/lessons/${slot}/shadowing`
+    ]) {
+      await page.goto(base + path, { waitUntil: 'domcontentloaded' });
+      await page.locator('main, section').first().waitFor();
+      if (page.url().includes('/login')) throw Error(`Unexpected login redirect at ${path}`);
+      const width = await page.evaluate(() => document.documentElement.scrollWidth);
+      if (width > 392) throw Error(`Mobile horizontal overflow at ${path}: ${width}px`);
+    }
+    console.log('Student main pages at 390px without horizontal overflow: PASS');
     if (failures.length) throw Error(`Server errors: ${failures.join(', ')}`);
     console.log('Same-browser account switch and recording isolation: PASS');
   } finally {
