@@ -861,6 +861,31 @@ internal static class AiTextChecks
                 new { requestId = Guid.NewGuid(), message = "Hello!" });
             Assert(chat.StatusCode == HttpStatusCode.ServiceUnavailable, "chat_without_keys_did_not_fail_safely");
         });
+        await check("Chunked conversation audio has an aggregate limit before transcription", async () =>
+        {
+            var configuration = app.Services.GetRequiredService<IConfiguration>();
+            var previousKey = configuration["AiVoice:Groq:ApiKey"];
+            configuration["AiVoice:Groq:ApiKey"] = "synthetic-test-key";
+            try
+            {
+                using var form = new MultipartFormDataContent();
+                for (var index = 0; index < 2; index++)
+                {
+                    var part = new ByteArrayContent(new byte[1_500_000]);
+                    part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/webm");
+                    form.Add(part, index == 0 ? "audio" : "extra", $"part{index}.webm");
+                }
+                using var request = new HttpRequestMessage(HttpMethod.Post, path + "/conversation/transcribe")
+                    { Content = form };
+                request.Headers.TransferEncodingChunked = true;
+                request.Content.Headers.ContentLength = null;
+                Assert(request.Content.Headers.ContentLength is null, "voice_chunked_has_content_length");
+                using var response = await studentClient.SendAsync(request);
+                Assert(response.StatusCode == HttpStatusCode.RequestEntityTooLarge,
+                    "voice_aggregate_limit_status_" + response.StatusCode);
+            }
+            finally { configuration["AiVoice:Groq:ApiKey"] = previousKey; }
+        });
         await check("V1 stages pin selected dictation and word-order answers to the published slot", async () =>
         {
             var reviewSlot = Guid.NewGuid(); var reviewContent = Guid.NewGuid();

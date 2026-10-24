@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using ShadowingEnglish.Api.Common;
 using ShadowingEnglish.Core.Learning;
 using ShadowingEnglish.Api.Modules.Student;
 using ShadowingEnglish.Infrastructure.Database;
@@ -15,6 +16,9 @@ namespace ShadowingEnglish.Api.Modules.AI;
 
 public static class StudentAiLearningEndpoints
 {
+    private const long MaxTranscriptionRequestBytes = 2_500_000;
+    private const long MaxTranscriptionAudioBytes = 2_000_000;
+
     public static IEndpointRouteBuilder MapStudentAiLearningEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/student/learning/slots/{slotId:guid}")
@@ -601,7 +605,27 @@ public static class StudentAiLearningEndpoints
             IAntiforgery csrf, ApplicationDbContext db,
             GroqVoiceService voice, IConfiguration config) =>
         {
-            if (!await ValidCsrf(csrf, http)) return Invalid("invalid_csrf");
+            if (http.Request.ContentLength > MaxTranscriptionRequestBytes)
+                return Results.Json(new { error = "invalid_audio" },
+                    statusCode: StatusCodes.Status413PayloadTooLarge);
+            if (!http.Request.HasFormContentType) return Invalid("invalid_audio");
+            var bodyLimit = http.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (bodyLimit is { IsReadOnly: false })
+                bodyLimit.MaxRequestBodySize = MaxTranscriptionRequestBytes + 128 * 1024;
+            http.Request.Body = new CappedRequestStream(http.Request.Body,
+                MaxTranscriptionRequestBytes, "invalid_audio");
+            http.Features.Set<IFormFeature>(new FormFeature(http.Request,
+                new FormOptions { MultipartBodyLengthLimit = MaxTranscriptionAudioBytes }));
+            try { await csrf.ValidateRequestAsync(http); }
+            catch (AntiforgeryValidationException) { return Invalid("invalid_csrf"); }
+            catch (BadHttpRequestException)
+            { return Results.Json(new { error = "invalid_audio" },
+                statusCode: StatusCodes.Status413PayloadTooLarge); }
+            catch (InvalidDataException ex) when (ex.Message.Contains("Multipart body length limit",
+                StringComparison.OrdinalIgnoreCase))
+            { return Results.Json(new { error = "invalid_audio" },
+                statusCode: StatusCodes.Status413PayloadTooLarge); }
+            catch (InvalidDataException) { return Invalid("invalid_audio"); }
             var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
@@ -616,13 +640,18 @@ public static class StudentAiLearningEndpoints
                 return Results.Conflict(new { error = "conversation_attempt_limit" });
             if (!await voice.IsConfiguredAsync(http.RequestAborted))
                 return Results.Json(new { error = "voice_not_configured" }, statusCode: 503);
-            if (http.Request.ContentLength is > 2_500_000 || !http.Request.HasFormContentType)
-                return Invalid("invalid_audio");
-            var bodyLimit = http.Features.Get<IHttpMaxRequestBodySizeFeature>();
-            if (bodyLimit is { IsReadOnly: false }) bodyLimit.MaxRequestBodySize = 2_500_000;
-            var form = await http.Request.ReadFormAsync(http.RequestAborted);
+            IFormCollection form;
+            try { form = await http.Request.ReadFormAsync(http.RequestAborted); }
+            catch (BadHttpRequestException)
+            { return Results.Json(new { error = "invalid_audio" },
+                statusCode: StatusCodes.Status413PayloadTooLarge); }
+            catch (InvalidDataException ex) when (ex.Message.Contains("Multipart body length limit",
+                StringComparison.OrdinalIgnoreCase))
+            { return Results.Json(new { error = "invalid_audio" },
+                statusCode: StatusCodes.Status413PayloadTooLarge); }
+            catch (InvalidDataException) { return Invalid("invalid_audio"); }
             var file = form.Files.GetFile("audio");
-            if (file is null || file.Length is < 100 or > 2_000_000)
+            if (file is null || file.Length is < 100 or > MaxTranscriptionAudioBytes)
                 return Invalid("invalid_audio");
             var contentType = file.ContentType.Split(';', 2)[0].Trim().ToLowerInvariant();
             if (contentType is not ("audio/webm" or "audio/ogg" or "audio/mp4" or "audio/wav"))
