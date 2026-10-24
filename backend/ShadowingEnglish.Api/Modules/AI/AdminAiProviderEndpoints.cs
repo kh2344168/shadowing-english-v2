@@ -60,7 +60,7 @@ public static class AdminAiProviderEndpoints
                 return Results.Ok(new
                 {
                     encryptionReady = protector.IsConfigured,
-                    items = rows.Select(x => ToDto(x, emails.GetValueOrDefault(x.UpdatedByAdminId))).ToArray()
+                    items = rows.Select(x => ToDto(x, emails.GetValueOrDefault(x.UpdatedByAdminId) ?? "")).ToArray()
                 });
             }
             catch (Exception ex)
