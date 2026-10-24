@@ -535,6 +535,17 @@ internal static class AiTextChecks
             }
             var ids = Enumerable.Range(0, 3).Select(_ => Guid.NewGuid()).ToArray();
             Guid firstAttemptId = Guid.Empty;
+            using (var form = Report(Guid.NewGuid()))
+            {
+                var recording = new ByteArrayContent([1, 2, 3]);
+                recording.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/webm");
+                form.Add(recording, "recording", "sample.webm");
+                using var rejected = await studentClient.PostAsync(path + "/shadowing/completion", form);
+                var result = await rejected.Content.ReadFromJsonAsync<JsonElement>();
+                Assert(rejected.StatusCode == HttpStatusCode.BadRequest &&
+                    result.GetProperty("error").GetString() == "recording_upload_disabled",
+                    "shadowing_recording_upload_was_accepted");
+            }
             foreach (var id in ids)
             {
                 using var form = Report(id);
@@ -566,7 +577,7 @@ internal static class AiTextChecks
                 recording.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/webm");
                 form.Add(recording, "recording", "sample.webm");
                 using var blocked = await studentClient.PostAsync(path + "/shadowing/completion", form);
-                Assert(blocked.StatusCode == HttpStatusCode.Conflict,
+                Assert(blocked.StatusCode == HttpStatusCode.BadRequest,
                     "recording_was_processed_after_report_limit");
             }
             using var scope = app.Services.CreateScope();

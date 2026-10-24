@@ -1466,7 +1466,6 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
         : '00000000-0000-4000-8000-' + Date.now().toString().slice(-12).padStart(12, '0');
     }
     const requestId = this.completionRequestId;
-    const latestRecording = this.recordings[0]?.blob ?? null;
     this.completionReportSaving = true;
     this.completionReportError = '';
     this.refreshView();
@@ -1480,7 +1479,7 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
         averageSpeechMatchScore: this.completionMatchScore,
         bestSpeechMatchScore: this.completionBestRepetitionScore,
         speechRecognitionSupported: this.studentSpeechRecognitionSupported,
-      }, latestRecording));
+      }));
       this.completionReportSaved = result.saved;
       this.log('CompletionReport.Save.Success', {
         slotId: this.slotId,

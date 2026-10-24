@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using ShadowingEnglish.Api.Common;
-using ShadowingEnglish.Api.Modules.Media;
 using ShadowingEnglish.Core.Learning;
 using ShadowingEnglish.Infrastructure.Database;
 
@@ -16,8 +15,7 @@ namespace ShadowingEnglish.Api.Modules.Student;
 
 public static class StudentShadowingReportingEndpoints
 {
-    private const long MaxRecordingBytes = 8 * 1024 * 1024;
-    private const long MaxRequestBytes = MaxRecordingBytes + 128 * 1024;
+    private const long MaxRequestBytes = 16 * 1024;
     private const int MaxCompletionReportsPerStage = 3;
 
     public static IEndpointRouteBuilder MapStudentShadowingReportingEndpoints(this IEndpointRouteBuilder app)
@@ -30,7 +28,6 @@ public static class StudentShadowingReportingEndpoints
             HttpContext http,
             IAntiforgery antiforgery,
             ApplicationDbContext db,
-            IShadowingMediaStore media,
             ILoggerFactory loggers) =>
         {
             var started = Stopwatch.GetTimestamp();
@@ -51,7 +48,7 @@ public static class StudentShadowingReportingEndpoints
             http.Request.Body = new CappedRequestStream(http.Request.Body, MaxRequestBytes,
                 "recording_too_large");
             http.Features.Set<IFormFeature>(new FormFeature(http.Request,
-                new FormOptions { MultipartBodyLengthLimit = MaxRecordingBytes }));
+                new FormOptions { MultipartBodyLengthLimit = MaxRequestBytes }));
 
             try { await antiforgery.ValidateRequestAsync(http); }
             catch (AntiforgeryValidationException)
@@ -80,6 +77,9 @@ public static class StudentShadowingReportingEndpoints
                         statusCode: StatusCodes.Status413PayloadTooLarge);
                 return Results.Json(new { error = "invalid_form" }, statusCode: StatusCodes.Status400BadRequest);
             }
+            // Reports contain metrics only. Reject uploads from stale clients without persisting audio.
+            if (form.Files.Count > 0)
+                return Results.BadRequest(new { error = "recording_upload_disabled" });
             if (!Guid.TryParse(form["requestId"].ToString(), out var requestId) ||
                 !bool.TryParse(form["reviewMode"].ToString(), out var reviewMode) ||
                 !int.TryParse(form["repetitions"].ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var repetitions) ||
@@ -151,33 +151,6 @@ public static class StudentShadowingReportingEndpoints
                 return Results.Conflict(new { error = "completion_report_limit",
                     limit = MaxCompletionReportsPerStage });
 
-            var file = form.Files.GetFile("recording");
-            string? recordingKey = null;
-            string? recordingContentType = null;
-            if (file is { Length: > 0 })
-            {
-                if (file.Length > MaxRecordingBytes)
-                    return Results.Json(new { error = "recording_too_large" }, statusCode: StatusCodes.Status413PayloadTooLarge);
-                var mediaType = NormalizeRecordingType(file.ContentType);
-                if (mediaType is null) return Results.BadRequest(new { error = "unsupported_recording_type" });
-                if (!media.IsConfigured)
-                    return Results.Json(new { error = "media_storage_not_configured" }, statusCode: StatusCodes.Status503ServiceUnavailable);
-
-                recordingContentType = mediaType.Value.ContentType;
-                recordingKey = $"student-shadowing-{Guid.NewGuid():N}.{mediaType.Value.Extension}";
-                try
-                {
-                    await using var stream = file.OpenReadStream();
-                    await media.WriteAsync(recordingKey, stream, http.RequestAborted);
-                }
-                catch (MediaStorageUnavailableException)
-                {
-                    log.LogWarning("Student.Shadowing.Completion.RecordingUnavailable StudentId={StudentId} SlotId={SlotId} DurationMs={DurationMs}",
-                        studentId, slotId, Ms(started));
-                    return Results.Json(new { error = "media_storage_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
-                }
-            }
-
             try
             {
                 var feedbackJson = JsonSerializer.Serialize(new
@@ -187,8 +160,8 @@ public static class StudentShadowingReportingEndpoints
                     averageSpeechMatchScore = average,
                     bestSpeechMatchScore = best,
                     speechRecognitionSupported,
-                    recordingKey,
-                    recordingContentType,
+                    recordingKey = (string?)null,
+                    recordingContentType = (string?)null,
                     metric = average.HasValue ? "browser_text_match" : null,
                     note = average.HasValue
                         ? "Text captured by browser speech recognition; not an accent or pronunciation score."
@@ -211,20 +184,12 @@ public static class StudentShadowingReportingEndpoints
                 await db.SaveChangesAsync(http.RequestAborted);
                 await tx.CommitAsync(http.RequestAborted);
 
-                log.LogInformation("Student.Shadowing.Completion.Success StudentId={StudentId} SlotId={SlotId} AttemptId={AttemptId} Repetitions={Repetitions} RecordingSaved={RecordingSaved} DurationMs={DurationMs}",
-                    studentId, slotId, attempt.Id, repetitions, recordingKey is not null, Ms(started));
-                return Results.Ok(new { saved = true, attemptId = attempt.Id, recordedAtUtc = attempt.CreatedAtUtc, recordingSaved = recordingKey is not null });
+                log.LogInformation("Student.Shadowing.Completion.Success StudentId={StudentId} SlotId={SlotId} AttemptId={AttemptId} Repetitions={Repetitions} DurationMs={DurationMs}",
+                    studentId, slotId, attempt.Id, repetitions, Ms(started));
+                return Results.Ok(new { saved = true, attemptId = attempt.Id, recordedAtUtc = attempt.CreatedAtUtc, recordingSaved = false });
             }
             catch (Exception ex)
             {
-                if (recordingKey is not null)
-                {
-                    try { await media.DeleteAsync(recordingKey, http.RequestAborted); }
-                    catch (Exception cleanupError)
-                    {
-                        log.LogWarning("Student.Shadowing.Completion.CleanupFailed AssetKey={AssetKey} ErrorType={ErrorType}", recordingKey, cleanupError.GetType().Name);
-                    }
-                }
                 log.LogError("Student.Shadowing.Completion.Failed StudentId={StudentId} SlotId={SlotId} ErrorType={ErrorType} DurationMs={DurationMs}",
                     studentId, slotId, ex.GetType().Name, Ms(started));
                 return Results.Problem(title: "Unable to save shadowing completion report", statusCode: StatusCodes.Status500InternalServerError);
@@ -253,19 +218,6 @@ public static class StudentShadowingReportingEndpoints
             return (key, type);
         }
         catch (JsonException) { return (null, null); }
-    }
-
-    private static (string ContentType, string Extension)? NormalizeRecordingType(string? contentType)
-    {
-        var normalized = (contentType ?? string.Empty).Split(';', 2)[0].Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "audio/webm" => ("audio/webm", "webm"),
-            "video/webm" => ("audio/webm", "webm"),
-            "audio/mp4" => ("audio/mp4", "mp4"),
-            "audio/x-m4a" => ("audio/mp4", "mp4"),
-            _ => null
-        };
     }
 
     private static IResult Reject(ILogger log, long started, Guid slotId, string reason)

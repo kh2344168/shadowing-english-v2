@@ -27,7 +27,6 @@ export class ShadowingReportingApi {
   saveCompletion(
     slotId: string,
     payload: ShadowingCompletionPayload,
-    recording: Blob | null,
   ): Observable<ShadowingCompletionResponse> {
     const body = new FormData();
     body.set('requestId', payload.requestId);
@@ -40,10 +39,6 @@ export class ShadowingReportingApi {
     }
     if (payload.bestSpeechMatchScore !== null) {
       body.set('bestSpeechMatchScore', String(payload.bestSpeechMatchScore));
-    }
-    if (recording && recording.size > 0) {
-      const extension = recording.type.includes('mp4') ? 'm4a' : 'webm';
-      body.set('recording', recording, `shadowing-final.${extension}`);
     }
     return this.http.post<ShadowingCompletionResponse>(
       `${this.base}/slots/${encodeURIComponent(slotId)}/shadowing/completion`,
