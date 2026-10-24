@@ -72,6 +72,10 @@ const { chromium } = require('../../node_modules/playwright');
     await page.getByText('التسجيلات المحفوظة').waitFor();
     if (await page.locator('audio[src^="blob:"]').count() !== 1)
       throw Error('A recording did not restore');
+    await page.goto(`${base}/student/recordings`);
+    await page.getByText('عندك 1 تسجيل على الجهاز ده.').waitFor();
+    if (await page.locator('audio[src^="blob:"]').count() !== 1)
+      throw Error('A recording missing from recordings page');
     console.log('A recording restored for A: PASS');
     await page.goto(`${base}/logout`);
     await page.waitForURL(/\/login/, { timeout: 20000 });
@@ -90,6 +94,10 @@ const { chromium } = require('../../node_modules/playwright');
       (await (await fetch(`/api/student/learning/slots/${slotId}`, { cache: 'no-store' })).json()).studentId, slot);
     if (owner.toLowerCase() !== process.env.DEMO_B_ID.toLowerCase())
       throw Error('B received A overview');
+    await page.goto(`${base}/student/recordings`);
+    await page.getByText('لسه ما عندكش تسجيلات على الجهاز ده').waitFor();
+    if (await page.locator('audio[src^="blob:"]').count())
+      throw Error('A recording visible to B on recordings page');
     await page.setViewportSize({ width: 390, height: 844 });
     for (const path of [
       '/student/dashboard', '/student/curriculum', '/student/progress',

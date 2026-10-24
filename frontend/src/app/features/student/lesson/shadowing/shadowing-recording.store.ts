@@ -19,6 +19,11 @@ export class ShadowingRecordingStore {
   private readonly maxPerStage = 6;
 
   async list(studentId: string, slotId: string, reviewMode: boolean): Promise<StoredShadowingRecording[]> {
+    const rows = await this.listForStudent(studentId);
+    return rows.filter((item) => item.slotId === slotId && item.reviewMode === reviewMode);
+  }
+
+  async listForStudent(studentId: string): Promise<StoredShadowingRecording[]> {
     if (!studentId) return [];
     const db = await this.open();
     return new Promise((resolve, reject) => {
@@ -27,7 +32,7 @@ export class ShadowingRecordingStore {
       request.onerror = () => reject(request.error ?? new Error('indexeddb_read_failed'));
       request.onsuccess = () => {
         const rows = (request.result as StoredShadowingRecording[])
-          .filter((item) => item.studentId === studentId && item.slotId === slotId && item.reviewMode === reviewMode)
+          .filter((item) => item.studentId === studentId)
           .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
         resolve(rows);
       };

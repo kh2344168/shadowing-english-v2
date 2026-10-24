@@ -1,4 +1,24 @@
+@use '../learning';
+
 :host {
   display: block;
   min-width: 0;
+}
+
+.recordings-note {
+  max-width: 40rem;
+  margin: 0 0 1rem;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.recordings-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.recordings-list audio {
+  display: block;
+  width: 100%;
+  max-width: 32rem;
+  margin-top: 0.75rem;
 }
