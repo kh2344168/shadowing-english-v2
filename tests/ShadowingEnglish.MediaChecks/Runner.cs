@@ -284,6 +284,34 @@ internal static class Runner
                 Assert(limited.StatusCode == HttpStatusCode.TooManyRequests,
                     "unknown_account_attempts_not_limited");
             });
+            await Check("Login rejects oversized bodies and passwords before password checks", async () =>
+            {
+                using var boundedApp = new MediaApp(apiRoot, new DisabledShadowingMediaStore(), authLogs);
+                await boundedApp.SetupAsync();
+                using var client = boundedApp.Client();
+                await boundedApp.RefreshCsrfAsync(client);
+                using var oversized = await client.PostAsJsonAsync("/api/auth/login",
+                    new { email = "student@v2-test.invalid", password = new string('x', 5000) });
+                Assert(oversized.StatusCode == HttpStatusCode.RequestEntityTooLarge,
+                    "oversized_login_body_was_accepted");
+                using var chunkedRequest = new HttpRequestMessage(HttpMethod.Post, "/api/auth/login")
+                {
+                    Content = JsonContent.Create(new
+                    {
+                        email = "student@v2-test.invalid",
+                        password = new string('x', 5000)
+                    })
+                };
+                chunkedRequest.Headers.TransferEncodingChunked = true;
+                chunkedRequest.Content.Headers.ContentLength = null;
+                using var chunked = await client.SendAsync(chunkedRequest);
+                Assert(chunked.StatusCode == HttpStatusCode.RequestEntityTooLarge,
+                    "chunked_login_body_was_accepted");
+                using var longPassword = await client.PostAsJsonAsync("/api/auth/login",
+                    new { email = "student@v2-test.invalid", password = new string('x', 257) });
+                Assert(longPassword.StatusCode == HttpStatusCode.BadRequest,
+                    "long_login_password_was_hashed");
+            });
             await Check("Valid school logins remain available behind one public IP", async () =>
             {
                 for (var attempt = 0; attempt < 25; attempt++)

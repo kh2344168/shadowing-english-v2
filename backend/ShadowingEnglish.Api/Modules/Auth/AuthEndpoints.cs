@@ -56,7 +56,8 @@ public static class AuthEndpoints
             }
 
             var email = request.Email?.Trim();
-            if (string.IsNullOrWhiteSpace(email) || email.Length > 256 || string.IsNullOrWhiteSpace(request.Password))
+            if (string.IsNullOrWhiteSpace(email) || email.Length > 256 ||
+                string.IsNullOrWhiteSpace(request.Password) || request.Password.Length > 256)
             {
                 logger.LogWarning("Auth.Login.Rejected Reason=InvalidInput DurationMs={DurationMs}",
                     Stopwatch.GetElapsedTime(started).TotalMilliseconds);
@@ -86,7 +87,7 @@ public static class AuthEndpoints
             logger.LogInformation("Auth.Login.Success UserId={UserId} DurationMs={DurationMs}",
                 user.Id, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             return Results.Ok(new { authenticated = true, userId = user.Id, roles });
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("login-concurrency");
 
         auth.MapGet("/session", async (HttpContext context, UserManager<ApplicationUser> users,
             ILoggerFactory loggerFactory) =>

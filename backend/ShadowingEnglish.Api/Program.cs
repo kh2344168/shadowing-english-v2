@@ -122,6 +122,15 @@ builder.Services.AddHostedService<LessonMediaDeletionWorker>();
 // Bound sensitive authentication and write requests with built-in policies.
 builder.Services.AddRateLimiter(options =>
 {
+    // Bound password checks before endpoint binding. This shared concurrency policy
+    // preserves successful school logins from one public IP.
+    options.AddConcurrencyLimiter("login-concurrency", limit =>
+    {
+        limit.PermitLimit = 64;
+        limit.QueueLimit = 128;
+        limit.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+    });
+
     options.AddPolicy("admin-create", context => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
         factory: _ => new FixedWindowRateLimiterOptions
@@ -287,6 +296,24 @@ app.UseStaticFiles(new StaticFileOptions
             ? "public,max-age=31536000,immutable"
             : "no-cache";
     }
+});
+app.Use(async (http, next) =>
+{
+    if (HttpMethods.IsPost(http.Request.Method) &&
+        http.Request.Path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase))
+    {
+        const long maxLoginBodyBytes = 4096;
+        if (http.Request.ContentLength > maxLoginBodyBytes)
+        {
+            http.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            return;
+        }
+        var bodyLimit = http.Features.Get<IHttpMaxRequestBodySizeFeature>();
+        if (bodyLimit is { IsReadOnly: false }) bodyLimit.MaxRequestBodySize = maxLoginBodyBytes;
+        http.Request.Body = new CappedRequestStream(http.Request.Body, maxLoginBodyBytes,
+            "login_request_too_large");
+    }
+    await next(http);
 });
 app.UseRouting(); // Required before endpoint-specific rate-limiting policies.
 app.UseAuthentication();
