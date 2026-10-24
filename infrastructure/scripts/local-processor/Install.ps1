@@ -27,6 +27,24 @@ function Test-ProcessorListening {
     }
 }
 
+function Test-ProcessorConnection {
+    param([object]$Connection)
+
+    try {
+        $headers = @{
+            Origin = [string]$Connection.origin
+            Authorization = 'Bearer ' + [string]$Connection.token
+        }
+        $health = Invoke-RestMethod -Uri 'http://127.0.0.1:43127/v1/health' -Method Get `
+            -Headers $headers -TimeoutSec 3 -ErrorAction Stop
+        return ($health.protocolVersion -eq 1 -and $health.installed -eq $true -and
+            $health.linked -eq $true -and $health.profile -eq 'shadowing-v2-1')
+    }
+    catch {
+        return $false
+    }
+}
+
 function Protect-ProcessorPath {
     param([string]$Path, [bool]$IsDirectory)
 
@@ -86,7 +104,7 @@ function Start-ProcessorHiddenAndVerify {
         Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList $arguments | Out-Null
     }
     catch {
-        if (Test-ProcessorListening) {
+        if (Test-ProcessorConnection -Connection $link) {
             $durationMs = [int]((Get-Date) - $startedAt).TotalMilliseconds
             Write-Host "[Installer.BackgroundStart.Success] Port=43127 Result=already_listening DurationMs=$durationMs"
             return
@@ -99,7 +117,7 @@ function Start-ProcessorHiddenAndVerify {
     $deadline = (Get-Date).AddSeconds(20)
     do {
         Start-Sleep -Milliseconds 500
-        if (Test-ProcessorListening) {
+        if (Test-ProcessorConnection -Connection $link) {
             $durationMs = [int]((Get-Date) - $startedAt).TotalMilliseconds
             Write-Host "[Installer.BackgroundStart.Success] Port=43127 DurationMs=$durationMs"
             return
@@ -130,6 +148,9 @@ if (Test-ProcessorListening) {
     }
     if (-not $sameConnection) {
         throw 'A Local Processor is already running with a different connection. Close it before installing a new connection; existing models were left untouched.'
+    }
+    if (-not (Test-ProcessorConnection -Connection $link)) {
+        throw 'Port 43127 is in use, but the connected Local Processor did not answer. Close the program using this port or restart the Local Processor, then run Install.cmd again.'
     }
     Protect-ProcessorPath -Path $processorRoot -IsDirectory $true
     Protect-ProcessorPath -Path $installedLinkPath -IsDirectory $false
