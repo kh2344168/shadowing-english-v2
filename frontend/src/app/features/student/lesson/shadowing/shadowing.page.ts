@@ -878,6 +878,7 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
   async toggleMicrophoneTest(): Promise<void> {
     if (this.microphoneTestActive) {
       this.stopMicrophoneTest(true);
+      this.refreshView();
       return;
     }
     if (this.state === 'teacher' || this.state === 'student' || this.microphoneTestStarting) return;
@@ -888,11 +889,15 @@ export class StudentShadowingPage implements OnInit, OnDestroy {
     this.microphoneTestStarting = false;
     if (!ready || !this.micStream) {
       this.microphoneTestActive = false;
+      this.refreshView();
       return;
     }
 
     await this.startMicVisualizer(this.micStream);
-    this.microphoneTestTimerId = window.setTimeout(() => this.stopMicrophoneTest(true), 30_000);
+    this.microphoneTestTimerId = window.setTimeout(() => {
+      this.stopMicrophoneTest(true);
+      this.refreshView();
+    }, 30_000);
   }
 
   async deleteRecording(recording: LocalRecordingView): Promise<void> {

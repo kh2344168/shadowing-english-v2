@@ -4,9 +4,13 @@ const { chromium } = require('../../node_modules/playwright');
   const base = process.env.DEMO_URL;
   if (!base?.startsWith('https://') || !base.endsWith('.trycloudflare.com'))
     throw Error('Unexpected demo URL');
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream']
+  });
   try {
-    const page = await browser.newPage();
+    const context = await browser.newContext({ permissions: ['microphone'] });
+    const page = await context.newPage();
     const failures = [];
     page.on('response', response => {
       if (new URL(response.url()).pathname.startsWith('/api/auth/'))
@@ -39,6 +43,13 @@ const { chromium } = require('../../node_modules/playwright');
     const shadowing = `${base}/student/lessons/${slot}/shadowing`;
     await page.goto(shadowing);
     await page.locator('.shadowing-mobile-ui').waitFor({ state: 'attached' });
+    await page.locator('#btn-toggle-settings').click();
+    await page.getByRole('button', { name: 'اختبر الميكروفون' }).click();
+    await page.getByRole('button', { name: 'إيقاف الاختبار' }).waitFor();
+    await page.getByRole('button', { name: 'إيقاف الاختبار' }).click();
+    await page.getByRole('button', { name: 'اختبر الميكروفون' }).waitFor({ timeout: 3000 });
+    await page.getByRole('button', { name: 'إغلاق إعدادات الشادوينج' }).click();
+    console.log('Student microphone test with fake browser device: PASS');
     await page.evaluate(async ({ studentId, slotId }) => {
       await new Promise((resolve, reject) => {
         const request = indexedDB.open('shadowing-v2-local', 1);
