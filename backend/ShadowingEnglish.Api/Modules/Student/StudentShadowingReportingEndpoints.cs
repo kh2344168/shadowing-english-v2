@@ -1,18 +1,15 @@
 using System.Data;
 using System.Diagnostics;
 using System.Globalization;
-using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using ShadowingEnglish.Api.Modules.Media;
 using ShadowingEnglish.Core.Learning;
 using ShadowingEnglish.Infrastructure.Database;
-using ShadowingEnglish.Infrastructure.Identity;
 
 namespace ShadowingEnglish.Api.Modules.Student;
 
@@ -32,7 +29,6 @@ public static class StudentShadowingReportingEndpoints
             HttpContext http,
             IAntiforgery antiforgery,
             ApplicationDbContext db,
-            UserManager<ApplicationUser> users,
             IShadowingMediaStore media,
             ILoggerFactory loggers) =>
         {
@@ -65,10 +61,9 @@ public static class StudentShadowingReportingEndpoints
                 return Results.Json(new { error = "recording_too_large" }, statusCode: StatusCodes.Status413PayloadTooLarge);
             }
 
-            var rawUserId = http.User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (!Guid.TryParse(rawUserId, out var studentId)) return Results.Forbid();
-            var user = await users.FindByIdAsync(rawUserId!);
-            if (user is null || !await users.IsInRoleAsync(user, "Student")) return Results.Forbid();
+            var student = await StudentAccess.LiveStudentIdAsync(http, db);
+            if (student is null) return Results.Forbid();
+            var studentId = student.Value;
 
             IFormCollection form;
             try { form = await http.Request.ReadFormAsync(http.RequestAborted); }

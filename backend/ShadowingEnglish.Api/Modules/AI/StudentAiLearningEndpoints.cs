@@ -1,17 +1,15 @@
 using System.Data;
 using System.Diagnostics;
-using System.Security.Claims;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using ShadowingEnglish.Core.Learning;
+using ShadowingEnglish.Api.Modules.Student;
 using ShadowingEnglish.Infrastructure.Database;
-using ShadowingEnglish.Infrastructure.Identity;
 
 namespace ShadowingEnglish.Api.Modules.AI;
 
@@ -23,11 +21,11 @@ public static class StudentAiLearningEndpoints
             .RequireAuthorization(new AuthorizeAttribute { Roles = "Student" });
 
         group.MapGet("/ai-material", async (Guid slotId, HttpContext http, ApplicationDbContext db,
-            UserManager<ApplicationUser> users, ILoggerFactory logs) =>
+            ILoggerFactory logs) =>
         {
             var watch = Stopwatch.GetTimestamp(); var log = logs.CreateLogger("Student.AILearning");
             log.LogInformation("Student.AiMaterial.Start SlotId={SlotId} TraceId={TraceId}", slotId, http.TraceIdentifier);
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             try
             {
@@ -118,13 +116,13 @@ public static class StudentAiLearningEndpoints
         });
 
         group.MapPut("/vocabulary/progress", async (Guid slotId, MarkRequest request, HttpContext http,
-            IAntiforgery csrf, ApplicationDbContext db, UserManager<ApplicationUser> users, ILoggerFactory logs) =>
+            IAntiforgery csrf, ApplicationDbContext db, ILoggerFactory logs) =>
         {
             var watch = Stopwatch.GetTimestamp(); var log = logs.CreateLogger("Student.AILearning");
             log.LogInformation("Student.Vocabulary.Mark.Start SlotId={SlotId} Position={Position} TraceId={TraceId}",
                 slotId, request.Position, http.TraceIdentifier);
             if (!await ValidCsrf(csrf, http)) return Invalid("invalid_csrf");
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             try
             {
@@ -145,10 +143,10 @@ public static class StudentAiLearningEndpoints
         }).RequireRateLimiting("student-progress-write");
 
         group.MapPut("/grammar/progress", async (Guid slotId, HttpContext http, IAntiforgery csrf,
-            ApplicationDbContext db, UserManager<ApplicationUser> users) =>
+            ApplicationDbContext db) =>
         {
             if (!await ValidCsrf(csrf, http)) return Invalid("invalid_csrf");
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
             if (data is null) return Missing();
@@ -159,10 +157,10 @@ public static class StudentAiLearningEndpoints
         }).RequireRateLimiting("student-progress-write");
 
         group.MapPut("/shadowing-review/progress", async (Guid slotId, MarkRequest request, HttpContext http,
-            IAntiforgery csrf, ApplicationDbContext db, UserManager<ApplicationUser> users) =>
+            IAntiforgery csrf, ApplicationDbContext db) =>
         {
             if (!await ValidCsrf(csrf, http)) return Invalid("invalid_csrf");
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
             if (data is null) return Missing();
@@ -177,13 +175,13 @@ public static class StudentAiLearningEndpoints
         }).RequireRateLimiting("student-progress-write");
 
         group.MapPost("/listen-type/answers", async (Guid slotId, AnswerRequest request, HttpContext http,
-            IAntiforgery csrf, ApplicationDbContext db, UserManager<ApplicationUser> users, ILoggerFactory logs) =>
+            IAntiforgery csrf, ApplicationDbContext db, ILoggerFactory logs) =>
         {
             var watch = Stopwatch.GetTimestamp(); var log = logs.CreateLogger("Student.AILearning");
             log.LogInformation("Student.Dictation.Answer.Start SlotId={SlotId} Position={Position} TraceId={TraceId}",
                 slotId, request.Position, http.TraceIdentifier);
             if (!await ValidCsrf(csrf, http)) return Invalid("invalid_csrf");
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             if (request.RequestId == Guid.Empty || request.Position < 1 || !AnswerValid(request.Answer))
                 return Invalid("invalid_answer");
@@ -236,13 +234,13 @@ public static class StudentAiLearningEndpoints
         }).RequireRateLimiting("student-progress-write");
 
         group.MapPost("/quiz/answers", async (Guid slotId, QuizAnswerRequest request, HttpContext http,
-            IAntiforgery csrf, ApplicationDbContext db, UserManager<ApplicationUser> users, ILoggerFactory logs) =>
+            IAntiforgery csrf, ApplicationDbContext db, ILoggerFactory logs) =>
         {
             var watch = Stopwatch.GetTimestamp(); var log = logs.CreateLogger("Student.AILearning");
             log.LogInformation("Student.Quiz.Answer.Start SlotId={SlotId} Position={Position} TraceId={TraceId}",
                 slotId, request.Position, http.TraceIdentifier);
             if (!await ValidCsrf(csrf, http)) return Invalid("invalid_csrf");
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             if (request.RequestId == Guid.Empty || request.Position < 1 || request.OptionIndex is < 0 or > 3 ||
                 request.Answer is { Length: > 200 })
@@ -287,9 +285,9 @@ public static class StudentAiLearningEndpoints
         }).RequireRateLimiting("student-progress-write");
 
         group.MapGet("/conversation/turns", async (Guid slotId, HttpContext http, ApplicationDbContext db,
-            UserManager<ApplicationUser> users, IConfiguration config) =>
+            IConfiguration config) =>
         {
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
             if (data is null) return Missing();
@@ -333,13 +331,13 @@ public static class StudentAiLearningEndpoints
         });
 
         group.MapPost("/conversation/turns", async (Guid slotId, ChatRequest request, HttpContext http,
-            IAntiforgery csrf, ApplicationDbContext db, UserManager<ApplicationUser> users, TextAiRouter ai,
+            IAntiforgery csrf, ApplicationDbContext db, TextAiRouter ai,
             IConfiguration config, ILoggerFactory logs) =>
         {
             var watch = Stopwatch.GetTimestamp(); var log = logs.CreateLogger("Student.AILearning");
             log.LogInformation("Student.Conversation.Turn.Start SlotId={SlotId} TraceId={TraceId}", slotId, http.TraceIdentifier);
             if (!await ValidCsrf(csrf, http)) return Invalid("invalid_csrf");
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             if (request.RequestId == Guid.Empty || !AnswerValid(request.Message) || request.Message!.Length > 400)
                 return Invalid("invalid_message");
@@ -551,10 +549,10 @@ public static class StudentAiLearningEndpoints
         }).RequireRateLimiting("student-ai-write");
 
         group.MapPost("/conversation/finish", async (Guid slotId, HttpContext http,
-            IAntiforgery csrf, ApplicationDbContext db, UserManager<ApplicationUser> users) =>
+            IAntiforgery csrf, ApplicationDbContext db) =>
         {
             if (!await ValidCsrf(csrf, http)) return Invalid("invalid_csrf");
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
             if (data is null) return Missing();
@@ -600,11 +598,11 @@ public static class StudentAiLearningEndpoints
         }).RequireRateLimiting("student-progress-write");
 
         group.MapPost("/conversation/transcribe", async (Guid slotId, HttpContext http,
-            IAntiforgery csrf, ApplicationDbContext db, UserManager<ApplicationUser> users,
+            IAntiforgery csrf, ApplicationDbContext db,
             GroqVoiceService voice, IConfiguration config) =>
         {
             if (!await ValidCsrf(csrf, http)) return Invalid("invalid_csrf");
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
             if (data is null) return Missing();
@@ -640,10 +638,10 @@ public static class StudentAiLearningEndpoints
         }).RequireRateLimiting("student-voice");
 
         group.MapGet("/vocabulary/audio", async (Guid slotId, int position, string? part, HttpContext http,
-            ApplicationDbContext db, UserManager<ApplicationUser> users,
+            ApplicationDbContext db,
             GroqVoiceService groqVoice, GeminiSpeechService geminiVoice, IConfiguration config) =>
         {
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
             if (data is null) return Missing();
@@ -667,10 +665,10 @@ public static class StudentAiLearningEndpoints
         }).RequireRateLimiting("student-voice");
 
         group.MapGet("/conversation/audio", async (Guid slotId, Guid? turnId, string? voice, HttpContext http,
-            ApplicationDbContext db, UserManager<ApplicationUser> users,
+            ApplicationDbContext db,
             GroqVoiceService groqVoice, GeminiSpeechService geminiVoice, IConfiguration config) =>
         {
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             var data = await ScopedContent(db, student.Value, slotId, http.RequestAborted);
             if (data is null) return Missing();
@@ -703,9 +701,9 @@ public static class StudentAiLearningEndpoints
         }).RequireRateLimiting("student-voice");
 
         app.MapGet("/api/student/learning/conversation-review", async (HttpContext http,
-            ApplicationDbContext db, UserManager<ApplicationUser> users) =>
+            ApplicationDbContext db) =>
         {
-            var student = await StudentId(http, users);
+            var student = await StudentId(http, db);
             if (student is null) return Results.Forbid();
             var rows = await (from attempt in db.StudentPracticeAttempts.AsNoTracking()
                 join slot in db.PublishedLessonSlots.AsNoTracking() on attempt.SlotId equals slot.Id
@@ -999,13 +997,8 @@ public static class StudentAiLearningEndpoints
         { Id = id, StudentId = student, PublishedCurriculumVersionId = version, SlotId = slot,
             StageKey = stage, Position = position, Answer = answer, FeedbackJson = feedback,
             CreatedAtUtc = DateTimeOffset.UtcNow };
-    private static async Task<Guid?> StudentId(HttpContext http, UserManager<ApplicationUser> users)
-    {
-        var raw = http.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!Guid.TryParse(raw, out var id)) return null;
-        var user = await users.FindByIdAsync(raw!);
-        return user is not null && await users.IsInRoleAsync(user, "Student") ? id : null;
-    }
+    private static Task<Guid?> StudentId(HttpContext http, ApplicationDbContext db) =>
+        StudentAccess.LiveStudentIdAsync(http, db);
     private static string[] Words(string text) => Regex.Matches(text.ToLowerInvariant(), "[a-z0-9]+(?:'[a-z0-9]+)?")
         .Select(x => x.Value).ToArray();
     private static bool AnswerValid(string? text) => !string.IsNullOrWhiteSpace(text) && text.Length <= 600;

@@ -242,8 +242,17 @@ internal static class Runner
                     (await users.RemoveFromRoleAsync(account, "Student")).Succeeded,
                     "student_role_revocation_failed");
                 using var response = await student.GetAsync("/api/student/learning/curriculum");
-                Assert(response.StatusCode == HttpStatusCode.Forbidden,
-                    "removed_student_role_still_reads_curriculum");
+                using var ai = await student.GetAsync(
+                    $"/api/student/learning/slots/{Guid.NewGuid()}/ai-material");
+                await app.RefreshCsrfAsync(student);
+                using var form = new MultipartFormDataContent
+                    { { new StringContent(Guid.NewGuid().ToString()), "requestId" } };
+                using var recording = await student.PostAsync(
+                    $"/api/student/learning/slots/{Guid.NewGuid()}/shadowing/completion", form);
+                Assert(response.StatusCode == HttpStatusCode.Forbidden &&
+                    ai.StatusCode == HttpStatusCode.Forbidden &&
+                    recording.StatusCode == HttpStatusCode.Forbidden,
+                    "removed_student_role_still_reads_or_writes_learning_data");
             });
             return failures == 0 ? 0 : 1;
         }

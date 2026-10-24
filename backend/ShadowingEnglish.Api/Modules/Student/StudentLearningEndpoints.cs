@@ -1,6 +1,5 @@
 using System.Data;
 using System.Diagnostics;
-using System.Security.Claims;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
@@ -279,18 +278,8 @@ public static class StudentLearningEndpoints
         return app;
     }
 
-    private static async Task<Guid?> StudentId(HttpContext http, ApplicationDbContext db)
-    {
-        var raw = http.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!Guid.TryParse(raw, out var id)) return null;
-        // Check the live role in one query so a removed role takes effect immediately.
-        var activeStudent = await (from user in db.Users.AsNoTracking()
-            join membership in db.UserRoles.AsNoTracking() on user.Id equals membership.UserId
-            join role in db.Roles.AsNoTracking() on membership.RoleId equals role.Id
-            where user.Id == id && role.NormalizedName == "STUDENT"
-            select user.Id).AnyAsync(http.RequestAborted);
-        return activeStudent ? id : null;
-    }
+    private static Task<Guid?> StudentId(HttpContext http, ApplicationDbContext db) =>
+        StudentAccess.LiveStudentIdAsync(http, db);
 
     private static async Task<ScopedLesson?> ScopedSlot(ApplicationDbContext db, Guid studentId, Guid slotId)
     {
