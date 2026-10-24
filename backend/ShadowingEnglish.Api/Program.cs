@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Net;
@@ -291,6 +292,18 @@ app.UseRouting(); // Required before endpoint-specific rate-limiting policies.
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
+app.Use(async (http, next) =>
+{
+    if (http.Request.Path.StartsWithSegments("/api/admin") &&
+        http.User.Identity?.IsAuthenticated == true &&
+        !await AdminAccess.HasLiveRoleAsync(http,
+            http.RequestServices.GetRequiredService<ApplicationDbContext>()))
+    {
+        await http.ForbidAsync();
+        return;
+    }
+    await next(http);
+});
 
 app.MapAuthEndpoints();
 app.MapAdminAccountsEndpoints();

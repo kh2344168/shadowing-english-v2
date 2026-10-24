@@ -310,6 +310,30 @@ internal static class Runner
                     csp.Single().Contains("form-action 'self'"), "missing_script_or_connect_csp");
                 Assert(response.Headers.CacheControl?.NoStore == true, "private_api_response_cached");
             });
+            await Check("Removing an admin's live role blocks the old cookie on all admin routes", async () =>
+            {
+                using var revokedApp = new MediaApp(apiRoot, new DisabledShadowingMediaStore(), authLogs);
+                await revokedApp.SetupAsync();
+                using var client = await revokedApp.LoginAsync("admin");
+                using var before = await client.GetAsync("/api/admin/shadowing/lessons");
+                Assert(before.StatusCode == HttpStatusCode.OK, "admin_read_before_revocation_failed");
+                using (var scope = revokedApp.Services.CreateScope())
+                {
+                    var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+                    var account = await users.FindByEmailAsync("admin@v2-test.invalid");
+                    Assert(account is not null &&
+                        (await users.RemoveFromRoleAsync(account, "Admin")).Succeeded,
+                        "admin_role_revocation_failed");
+                }
+                using var read = await client.GetAsync("/api/admin/shadowing/lessons");
+                using var report = await client.GetAsync("/api/admin/diagnostics/traffic");
+                using var write = await client.PostAsJsonAsync("/api/admin/shadowing/curriculums",
+                    new { requestId = Guid.NewGuid(), name = "Revoked admin", description = "" });
+                Assert(read.StatusCode == HttpStatusCode.Forbidden &&
+                    report.StatusCode == HttpStatusCode.Forbidden &&
+                    write.StatusCode == HttpStatusCode.Forbidden,
+                    "stale_admin_cookie_retained_access");
+            });
             using var uploadApp = new MediaApp(apiRoot, new DisabledShadowingMediaStore(), authLogs);
             await uploadApp.SetupAsync();
             await Check("Oversized student recordings are rejected before form parsing", async () =>
