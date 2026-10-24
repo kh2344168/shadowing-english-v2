@@ -11,6 +11,7 @@ using ShadowingEnglish.Infrastructure.Database;
 using ShadowingEnglish.Infrastructure.Identity;
 using ShadowingEnglish.Api.Modules.Media;
 using ShadowingEnglish.Api.Modules.AI;
+using ShadowingEnglish.Api.Common;
 
 namespace ShadowingEnglish.Api.Modules.Lessons;
 
@@ -92,7 +93,15 @@ public static class AdminShadowingEndpoints
                 return Error(log, started, 413, "invalid_upload");
             var bodyFeature = http.Features.Get<IHttpMaxRequestBodySizeFeature>();
             if (bodyFeature is { IsReadOnly: false }) bodyFeature.MaxRequestBodySize = MaxRequestBytes;
-            if (!await ValidCsrfAsync(http, antiforgery)) return Error(log, started, 400, "invalid_csrf");
+            http.Request.Body = new CappedRequestStream(http.Request.Body, MaxRequestBytes, "invalid_upload");
+            http.Features.Set<IFormFeature>(new FormFeature(http.Request,
+                new FormOptions { MultipartBodyLengthLimit = MaxRequestBytes }));
+            try
+            {
+                if (!await ValidCsrfAsync(http, antiforgery)) return Error(log, started, 400, "invalid_csrf");
+            }
+            catch (BadHttpRequestException) { return Error(log, started, 413, "invalid_upload"); }
+            catch (InvalidDataException) { return Error(log, started, 413, "invalid_upload"); }
             var actor = await AdminAsync(http, users);
             if (actor is null) return Denied(log, started);
             if (!media.IsConfigured) return Error(log, started, 503, "media_storage_not_configured");

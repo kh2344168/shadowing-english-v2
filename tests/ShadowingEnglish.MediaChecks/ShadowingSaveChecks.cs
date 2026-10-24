@@ -20,7 +20,8 @@ internal static class ShadowingSaveChecks
             "backend/ShadowingEnglish.Api"));
         var wave = await File.ReadAllBytesAsync(Path.Combine(root, "DevelopmentMedia/day2-hello.wav"));
         using var logs = new SafeLogs();
-        using var app = new MediaApp(root, new MemoryMediaStore(), logs);
+        var media = new MemoryMediaStore();
+        using var app = new MediaApp(root, media, logs);
         await app.SetupAsync();
         using var admin = await app.LoginAsync("admin");
         var requestId = Guid.NewGuid();
@@ -67,12 +68,38 @@ internal static class ShadowingSaveChecks
                 (await retry.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("versionId").GetGuid() == versionId,
                 "shadowing_save_retry_not_idempotent");
         });
+        await check("Chunked admin lesson create and edit reject aggregate uploads before saving", async () =>
+        {
+            var before = await app.FingerprintAsync();
+            var storedClips = media.Count;
+            var payload = new byte[23_000_000];
+            foreach (var (method, path) in new[]
+            {
+                (HttpMethod.Post, "/api/admin/shadowing/lessons"),
+                (HttpMethod.Put, $"/api/admin/shadowing/lessons/{requestId}")
+            })
+            {
+                using var form = new MultipartFormDataContent();
+                form.Add(new ByteArrayContent(payload), "audio0", "large-0.wav");
+                form.Add(new ByteArrayContent(payload), "audio1", "large-1.wav");
+                using var request = new HttpRequestMessage(method, path) { Content = form };
+                request.Headers.TransferEncodingChunked = true;
+                request.Content.Headers.ContentLength = null;
+                Assert(request.Content.Headers.ContentLength is null, "admin_chunked_has_length");
+                using var response = await admin.SendAsync(request);
+                Assert(response.StatusCode == HttpStatusCode.RequestEntityTooLarge,
+                    "admin_chunked_limit_" + method + "_" + response.StatusCode);
+            }
+            Assert(before == await app.FingerprintAsync() && media.Count == storedClips,
+                "admin_oversize_upload_saved_data");
+        });
         return failures() == 0 ? 0 : 1;
     }
 
     private sealed class MemoryMediaStore : IShadowingMediaStore
     {
         private readonly ConcurrentDictionary<string, byte[]> data = new();
+        public int Count => data.Count;
         public bool IsConfigured => true;
         public async Task WriteAsync(string key, Stream source, CancellationToken cancellation)
         {

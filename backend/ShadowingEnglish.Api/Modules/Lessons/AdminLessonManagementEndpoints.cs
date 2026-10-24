@@ -12,6 +12,7 @@ using ShadowingEnglish.Api.Modules.Media;
 using ShadowingEnglish.Core.Learning;
 using ShadowingEnglish.Infrastructure.Database;
 using ShadowingEnglish.Infrastructure.Identity;
+using ShadowingEnglish.Api.Common;
 
 namespace ShadowingEnglish.Api.Modules.Lessons;
 
@@ -112,7 +113,15 @@ public static class AdminLessonManagementEndpoints
                 return Reject(log, started, 413, "invalid_upload");
             var bodyFeature = http.Features.Get<IHttpMaxRequestBodySizeFeature>();
             if (bodyFeature is { IsReadOnly: false }) bodyFeature.MaxRequestBodySize = MaxUploadBytes;
-            if (!await CsrfValid(http, antiforgery)) return Reject(log, started, 400, "invalid_csrf");
+            http.Request.Body = new CappedRequestStream(http.Request.Body, MaxUploadBytes, "invalid_upload");
+            http.Features.Set<IFormFeature>(new FormFeature(http.Request,
+                new FormOptions { MultipartBodyLengthLimit = MaxUploadBytes }));
+            try
+            {
+                if (!await CsrfValid(http, antiforgery)) return Reject(log, started, 400, "invalid_csrf");
+            }
+            catch (BadHttpRequestException) { return Reject(log, started, 413, "invalid_upload"); }
+            catch (InvalidDataException) { return Reject(log, started, 413, "invalid_upload"); }
             var actor = await users.GetUserAsync(http.User);
             if (actor is null || !await users.IsInRoleAsync(actor, "Admin")) return Results.Forbid();
 
@@ -221,6 +230,7 @@ public static class AdminLessonManagementEndpoints
             }
             catch (JsonException) { return Reject(log, started, 400, "invalid_segments"); }
             catch (BadHttpRequestException) { return Reject(log, started, 413, "invalid_upload"); }
+            catch (InvalidDataException) { return Reject(log, started, 413, "invalid_upload"); }
             catch (MediaStorageUnavailableException) { return Reject(log, started, 503, "media_storage_unavailable"); }
             catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
             { return Reject(log, started, 409, "lesson_version_changed"); }
