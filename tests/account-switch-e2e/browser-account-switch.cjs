@@ -12,6 +12,11 @@ const { chromium } = require('../../node_modules/playwright');
     const context = await browser.newContext({ permissions: ['microphone'] });
     const page = await context.newPage();
     const failures = [];
+    const cspFailures = [];
+    page.on('console', message => {
+      if (message.type() === 'error' && /content security policy|refused to (load|execute|connect)/i.test(message.text()))
+        cspFailures.push(message.text());
+    });
     page.on('response', response => {
       if (new URL(response.url()).pathname.startsWith('/api/auth/'))
         console.log(`AUTH ${new URL(response.url()).pathname} ${response.status()}`);
@@ -111,6 +116,7 @@ const { chromium } = require('../../node_modules/playwright');
       if (width > 392) throw Error(`Mobile horizontal overflow at ${path}: ${width}px`);
     }
     console.log('Student main pages at 390px without horizontal overflow: PASS');
+    if (cspFailures.length) throw Error(`Browser CSP errors: ${cspFailures.join(' | ')}`);
     if (failures.length) throw Error(`Server errors: ${failures.join(', ')}`);
     console.log('Same-browser account switch and recording isolation: PASS');
   } finally {
