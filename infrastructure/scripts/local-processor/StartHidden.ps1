@@ -38,6 +38,28 @@ function Test-ProcessorListening {
     }
 }
 
+function Test-ProcessorConnection {
+    param([object]$Connection = $null)
+
+    try {
+        if ($null -eq $Connection) {
+            $Connection = Get-Content -LiteralPath (Join-Path $processorRoot 'shadowing-link.json') `
+                -Raw -ErrorAction Stop | ConvertFrom-Json
+        }
+        $headers = @{
+            Origin = [string]$Connection.origin
+            Authorization = 'Bearer ' + [string]$Connection.token
+        }
+        $health = Invoke-RestMethod -Uri "http://127.0.0.1:$port/v1/health" -Method Get `
+            -Headers $headers -TimeoutSec 3 -ErrorAction Stop
+        return ($health.protocolVersion -eq 1 -and $health.installed -eq $true -and
+            $health.linked -eq $true -and $health.profile -eq 'shadowing-v2-1')
+    }
+    catch {
+        return $false
+    }
+}
+
 $watchdogMutex = $null
 $ownsWatchdogMutex = $false
 try {
@@ -56,7 +78,11 @@ try {
     }
 
     if (Test-ProcessorListening) {
-        Write-BackgroundEvent 'AlreadyRunning' "Port=$port Reason=ListenerExists"
+        if (Test-ProcessorConnection) {
+            Write-BackgroundEvent 'AlreadyRunning' "Port=$port Reason=ConnectedProcessor"
+        } else {
+            Write-BackgroundEvent 'Process.Failed' "Port=$port ErrorType=PortConflict"
+        }
         return
     }
 
@@ -89,7 +115,11 @@ try {
         }
 
         if (Test-ProcessorListening) {
-            Write-BackgroundEvent 'AlreadyRunning' "Port=$port Reason=ListenerAppeared"
+            if (Test-ProcessorConnection) {
+                Write-BackgroundEvent 'AlreadyRunning' "Port=$port Reason=ConnectedProcessor"
+            } else {
+                Write-BackgroundEvent 'Process.Failed' "Port=$port ErrorType=PortConflict"
+            }
             break
         }
 
