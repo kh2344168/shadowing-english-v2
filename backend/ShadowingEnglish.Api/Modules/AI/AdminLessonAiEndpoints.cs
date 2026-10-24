@@ -58,7 +58,7 @@ public static class AdminLessonAiEndpoints
                     }, statusCode: 503);
                 audio = result.Audio;
             }
-            http.Response.Headers.CacheControl = "private, max-age=3600";
+            http.Response.Headers.CacheControl = "no-store";
             return Results.File(audio, "audio/wav");
         }).RequireRateLimiting("student-voice");
 

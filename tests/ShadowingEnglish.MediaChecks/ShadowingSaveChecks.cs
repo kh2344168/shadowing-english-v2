@@ -25,6 +25,7 @@ internal static class ShadowingSaveChecks
         await app.SetupAsync();
         using var admin = await app.LoginAsync("admin");
         var requestId = Guid.NewGuid();
+        var savedVersionId = Guid.Empty;
 
         MultipartFormDataContent Upload()
         {
@@ -50,6 +51,7 @@ internal static class ShadowingSaveChecks
                 "shadowing_save_failed_" + response.StatusCode);
             var created = await response.Content.ReadFromJsonAsync<JsonElement>();
             var versionId = created.GetProperty("versionId").GetGuid();
+            savedVersionId = versionId;
             using var scope = app.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var version = await db.LessonVersions.AsNoTracking().SingleAsync(x => x.Id == versionId);
@@ -92,6 +94,18 @@ internal static class ShadowingSaveChecks
             }
             Assert(before == await app.FingerprintAsync() && media.Count == storedClips,
                 "admin_oversize_upload_saved_data");
+        });
+        await check("Admin lesson audio is not browser-cacheable after account logout", async () =>
+        {
+            var path = $"/api/admin/shadowing/lessons/versions/{savedVersionId}/segments/1/audio";
+            using var audio = await admin.GetAsync(path);
+            Assert(audio.StatusCode == HttpStatusCode.OK && audio.Headers.CacheControl?.NoStore == true,
+                "admin_audio_cacheable");
+            using var logout = await admin.PostAsync("/api/auth/logout", null);
+            Assert(logout.StatusCode == HttpStatusCode.NoContent, "admin_logout_failed");
+            using var after = await admin.GetAsync(path);
+            Assert(after.StatusCode == HttpStatusCode.Unauthorized,
+                "admin_audio_available_after_logout");
         });
         return failures() == 0 ? 0 : 1;
     }

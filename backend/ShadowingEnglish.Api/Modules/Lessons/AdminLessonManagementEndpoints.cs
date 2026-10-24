@@ -81,7 +81,7 @@ public static class AdminLessonManagementEndpoints
                     return Reject(log, started, 503, "media_storage_not_configured");
                 var audio = await media.OpenAsync(key, http.RequestAborted);
                 if (audio is null) return Reject(log, started, 404, "lesson_audio_not_found");
-                http.Response.Headers.CacheControl = "private, max-age=300";
+                http.Response.Headers.CacheControl = "no-store";
                 log.LogInformation(
                     "Admin.LessonLibrary.Audio.Success VersionId={VersionId} Position={Position} DurationMs={DurationMs}",
                     versionId, position, Duration(started));
