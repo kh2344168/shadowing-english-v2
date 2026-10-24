@@ -12,26 +12,48 @@ internal static class VoiceUsageBudget
         IConfiguration config, Guid userId, CancellationToken cancellationToken) =>
         await TryReserveAsync(db, userId, transcription: 1, characters: 0,
             Math.Clamp(config.GetValue<int?>("VoiceBudget:StudentDailyTranscriptions") ?? 12, 1, 100),
-            0, cancellationToken);
+            0, config, cancellationToken);
 
     internal static async Task<bool> TryReserveSynthesisAsync(ApplicationDbContext db,
         IConfiguration config, Guid userId, int characters, bool admin, CancellationToken cancellationToken) =>
         await TryReserveAsync(db, userId, transcription: 0, characters,
             0, Math.Clamp(config.GetValue<int?>(admin
                 ? "VoiceBudget:AdminDailyCharacters" : "VoiceBudget:StudentDailyCharacters") ??
-                (admin ? 3_000 : 10_000), 100, 100_000), cancellationToken);
+                (admin ? 3_000 : 10_000), 100, 100_000), config, cancellationToken);
 
     private static async Task<bool> TryReserveAsync(ApplicationDbContext db, Guid userId,
         int transcription, int characters, int transcriptionLimit, int characterLimit,
+        IConfiguration config,
         CancellationToken cancellationToken)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var globalTranscriptionLimit = Math.Clamp(
+            config.GetValue<int?>("VoiceBudget:GlobalDailyTranscriptions") ?? 500, 0, 100_000);
+        var globalCharacterLimit = Math.Clamp(
+            config.GetValue<int?>("VoiceBudget:GlobalDailyCharacters") ?? 100_000, 0, 10_000_000);
         for (var attempt = 0; attempt < 3; attempt++)
         {
             try
             {
                 await using var transaction = await db.Database.BeginTransactionAsync(
                     IsolationLevel.Serializable, cancellationToken);
+                // SQL Server needs a shared lock across users before reading the daily total.
+                // A serializable transaction alone does not serialize inserts for different UserIds.
+                if (db.Database.IsSqlServer())
+                    await db.Database.ExecuteSqlInterpolatedAsync(
+                        $"DECLARE @result int; EXEC @result = sp_getapplock @Resource = {"voice-budget-" + today.ToString("yyyyMMdd")}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000; IF @result < 0 THROW 51000, 'voice_budget_lock_failed', 1;",
+                        cancellationToken);
+                var totals = await db.VoiceDailyUsages.AsNoTracking()
+                    .Where(x => x.DayUtc == today)
+                    .GroupBy(_ => 1)
+                    .Select(rows => new
+                    {
+                        Transcriptions = rows.Sum(x => (long)x.TranscriptionRequests),
+                        Characters = rows.Sum(x => (long)x.SynthesisCharacters)
+                    }).SingleOrDefaultAsync(cancellationToken);
+                if (transcription > 0 && (totals?.Transcriptions ?? 0) > globalTranscriptionLimit - transcription ||
+                    characters > 0 && (totals?.Characters ?? 0) > globalCharacterLimit - characters)
+                    return false;
                 var usage = await db.VoiceDailyUsages.SingleOrDefaultAsync(x =>
                     x.UserId == userId && x.DayUtc == today, cancellationToken);
                 if (usage is null)
@@ -41,7 +63,10 @@ internal static class VoiceUsageBudget
                 }
                 if (transcription > 0 && usage.TranscriptionRequests > transcriptionLimit - transcription ||
                     characters > 0 && usage.SynthesisCharacters > characterLimit - characters)
+                {
+                    if (db.Entry(usage).State == EntityState.Added) db.Entry(usage).State = EntityState.Detached;
                     return false;
+                }
                 usage.TranscriptionRequests += transcription;
                 usage.SynthesisCharacters += characters;
                 await db.SaveChangesAsync(cancellationToken);
